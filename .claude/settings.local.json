@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"\nimport ast, sys\n\nfiles = [\n    'C:/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/strava/__init__.py',\n    'C:/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/strava/oauth.py',\n    'C:/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/strava/client.py',\n    'C:/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/strava/sync_engine.py',\n]\n\nfor path in files:\n    with open\\(path\\) as f:\n        src = f.read\\(\\)\n    try:\n        ast.parse\\(src\\)\n        print\\(f'OK  {path.split\\(\\\\\"/\\\\\"\\)[-1]}'\\)\n    except SyntaxError as e:\n        print\\(f'ERR {path.split\\(\\\\\"/\\\\\"\\)[-1]}: {e}'\\)\n        sys.exit\\(1\\)\n\")",
+      "Bash(python -c \"\nimport ast\n\nchecks = {\n    'oauth.py': [\n        'fitops.config.settings',\n        'fitops.utils.exceptions',\n        'fitops.utils.logging',\n    ],\n    'client.py': [\n        'fitops.config.settings',\n        'fitops.strava.oauth',\n        'fitops.utils.cache',\n        'fitops.utils.exceptions',\n        'fitops.utils.logging',\n    ],\n    'sync_engine.py': [\n        'fitops.config.settings',\n        'fitops.config.state',\n        'fitops.db.models.activity',\n        'fitops.db.models.athlete',\n        'fitops.db.session',\n        'fitops.strava.client',\n        'fitops.utils.exceptions',\n        'fitops.utils.logging',\n    ],\n}\n\nbase = 'C:/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/strava/'\nfor fname, expected_imports in checks.items\\(\\):\n    with open\\(base + fname\\) as f:\n        tree = ast.parse\\(f.read\\(\\)\\)\n    found = set\\(\\)\n    for node in ast.walk\\(tree\\):\n        if isinstance\\(node, ast.ImportFrom\\) and node.module:\n            found.add\\(node.module\\)\n    missing = [i for i in expected_imports if i not in found]\n    status = 'OK' if not missing else f'MISSING: {missing}'\n    print\\(f'{fname}: {status}'\\)\n\")",
+      "Bash(pip install -e \".[dev]\" -q 2>&1 | tail -5)",
+      "Bash(fitops --help 2>&1)",
+      "Bash(cd C:/Users/GL504GS/Desktop/repos/FitOps-CLI && python -m pytest tests/ -v 2>&1)",
+      "Bash(cd C:/Users/GL504GS/Desktop/repos/FitOps-CLI && python -m pytest tests/ -v --tb=short 2>&1 | tail -15)"
+    ]
+  }
+}
