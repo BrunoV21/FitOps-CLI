@@ -109,7 +109,7 @@ def vo2max(
     vo2max_block: dict = {
         "estimate": result.estimate, "unit": "ml/kg/min",
         "confidence": result.confidence, "confidence_label": result.confidence_label,
-        "method_estimates": {"vdot": result.vdot, "mcardle": result.mcardle, "costill": result.costill},
+        "method_estimates": {"daniels_vdot": result.vdot, "cooper": result.cooper},
         "based_on_activity": {
             "strava_id": result.activity_strava_id, "name": result.activity_name,
             "distance_km": result.distance_km, "pace_per_km": result.pace_per_km, "date": result.activity_date,

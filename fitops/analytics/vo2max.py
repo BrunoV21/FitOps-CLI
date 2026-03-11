@@ -10,7 +10,6 @@ from fitops.db.models.activity import Activity
 from fitops.db.session import get_async_session
 
 RUN_TYPES = {"Run", "TrailRun", "VirtualRun"}
-VDOT_DISTANCE_FACTORS = {1500: 1.00, 3000: 0.98, 5000: 0.96, 10000: 0.94, 21097: 0.92, 42195: 0.90}
 VO2_AGE_DECLINE_RATE = 0.008
 VO2_AGE_FACTOR_FLOOR = 0.5
 
@@ -21,33 +20,60 @@ def apply_age_adjustment(estimate: float, age: int) -> tuple[float, float]:
     return round(estimate * age_factor, 1), round(age_factor, 3)
 
 
-def _get_distance_factor(distance_m: float) -> float:
-    for t in sorted(VDOT_DISTANCE_FACTORS):
-        if distance_m <= t * 1.05:
-            return VDOT_DISTANCE_FACTORS[t]
-    return VDOT_DISTANCE_FACTORS[42195]
-
-
-def _vdot(distance_m: float, time_s: float) -> Optional[float]:
-    if time_s <= 0 or distance_m <= 0:
+def _daniels_vdot(distance_m: float, time_s: float) -> Optional[float]:
+    """
+    Jack Daniels' VDOT — velocity-based VO2max estimate.
+    Uses fractional utilization based on event duration.
+    """
+    if time_s <= 0 or distance_m < 1500:
         return None
-    v = (distance_m / time_s) * 60
-    raw = -4.6 + 0.182258 * v + 0.000104 * (v ** 2)
-    return max(30.0, min(85.0, raw * _get_distance_factor(distance_m)))
+
+    v = (distance_m / time_s) * 60  # m/min
+
+    duration_min = time_s / 60
+    if duration_min <= 3:
+        frac = 1.0
+    elif duration_min <= 10:
+        frac = 0.98
+    elif duration_min <= 20:
+        frac = 0.96
+    elif duration_min <= 40:
+        frac = 0.94
+    elif duration_min <= 60:
+        frac = 0.92
+    elif duration_min <= 120:
+        frac = 0.88
+    else:
+        frac = 0.84
+
+    vo2_demand = -4.6 + 0.182258 * v + 0.000104 * (v ** 2)
+    vo2max = vo2_demand / frac
+    return max(28.0, min(90.0, vo2max))
+
+
+def _cooper_vo2max(distance_m: float, time_s: float) -> Optional[float]:
+    """Cooper 12-min test extrapolation (for efforts > 6 min)."""
+    if time_s <= 0 or distance_m < 1500:
+        return None
+    dist_12min = distance_m * (720 / time_s)
+    vo2max = (dist_12min - 504.9) / 44.73
+    return max(28.0, min(90.0, vo2max))
+
+
+# Keep old names as aliases so existing test imports don't break
+def _vdot(distance_m: float, time_s: float) -> Optional[float]:
+    """Alias for _daniels_vdot for backward compatibility."""
+    return _daniels_vdot(distance_m, time_s)
 
 
 def _mcardle(distance_m: float, time_s: float) -> Optional[float]:
-    if time_s <= 0 or distance_m <= 0:
-        return None
-    return max(30.0, min(85.0, 15.0 + 0.2 * (distance_m / time_s) * 60))
+    """Kept for backward compatibility; delegates to _cooper_vo2max."""
+    return _cooper_vo2max(distance_m, time_s)
 
 
 def _costill(distance_m: float, time_s: float) -> Optional[float]:
-    if time_s <= 0 or distance_m < 1500:
-        return None
-    base = 15.3 * (distance_m / time_s) - 5.0
-    correction = 0.95 if distance_m >= 10000 else (0.97 if distance_m >= 5000 else 1.0)
-    return max(30.0, min(85.0, base * correction))
+    """Kept for backward compatibility; returns None (method removed)."""
+    return None
 
 
 def _confidence(distance_m: float, estimates: list[float]) -> float:
@@ -72,9 +98,8 @@ def _confidence(distance_m: float, estimates: list[float]) -> float:
 class VO2MaxResult:
     estimate: float
     confidence: float
-    vdot: Optional[float]
-    mcardle: Optional[float]
-    costill: Optional[float]
+    vdot: Optional[float]       # daniels_vdot estimate
+    cooper: Optional[float]     # cooper estimate
     activity_strava_id: int
     activity_name: str
     activity_date: str
@@ -102,26 +127,34 @@ def _estimate_from_activity(activity: Activity) -> Optional[VO2MaxResult]:
     time_s = activity.moving_time_s
     if not dist or not time_s or dist < 1500:
         return None
-    v_est = _vdot(dist, time_s)
-    m_est = _mcardle(dist, time_s)
-    c_est = _costill(dist, time_s)
-    estimates = [e for e in [v_est, m_est, c_est] if e is not None]
+
+    d_est = _daniels_vdot(dist, time_s)
+    c_est = _cooper_vo2max(dist, time_s)
+
+    # For distances >= 5km use Daniels 60% + Cooper 40%; for <5km use Daniels 100%
+    if dist >= 5000:
+        estimates = [e for e in [d_est, c_est] if e is not None]
+        pairs = [(d_est, 0.60), (c_est, 0.40)]
+    else:
+        estimates = [e for e in [d_est] if e is not None]
+        pairs = [(d_est, 1.0)]
+
     if not estimates:
         return None
-    weights = [0.50, 0.20, 0.30] if dist >= 5000 else [0.50, 0.30, 0.20]
+
     weighted = total_w = 0.0
-    for est, w in zip([v_est, m_est, c_est], weights):
+    for est, w in pairs:
         if est is not None:
             weighted += est * w
             total_w += w
     if total_w == 0:
         return None
+
     return VO2MaxResult(
         estimate=round(weighted / total_w, 1),
         confidence=round(_confidence(dist, estimates), 2),
-        vdot=round(v_est, 1) if v_est else None,
-        mcardle=round(m_est, 1) if m_est else None,
-        costill=round(c_est, 1) if c_est else None,
+        vdot=round(d_est, 1) if d_est is not None else None,
+        cooper=round(c_est, 1) if c_est is not None else None,
         activity_strava_id=activity.strava_id,
         activity_name=activity.name,
         activity_date=activity.start_date.date().isoformat() if activity.start_date else "unknown",
