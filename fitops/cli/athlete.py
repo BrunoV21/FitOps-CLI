@@ -102,6 +102,53 @@ def zones() -> None:
     typer.echo(json.dumps(out, indent=2, default=str))
 
 
+@app.command("set")
+def set_physiology(
+    weight: Optional[float] = typer.Option(None, "--weight", help="Body weight in kg."),
+    height: Optional[float] = typer.Option(None, "--height", help="Height in cm."),
+    birthday: Optional[str] = typer.Option(None, "--birthday", help="Date of birth (YYYY-MM-DD)."),
+    ftp: Optional[float] = typer.Option(None, "--ftp", help="FTP in watts (cyclists)."),
+) -> None:
+    """Set physiology values (weight, height, birthday, ftp) used for analytics."""
+    if weight is None and height is None and birthday is None and ftp is None:
+        typer.echo("Provide at least one of: --weight, --height, --birthday, --ftp", err=True)
+        raise typer.Exit(1)
+
+    from fitops.analytics.athlete_settings import get_athlete_settings
+    s = get_athlete_settings()
+    updates = {}
+    if weight is not None:
+        updates["weight_kg"] = weight
+    if height is not None:
+        updates["height_cm"] = height
+    if birthday is not None:
+        updates["birthday"] = birthday
+    if ftp is not None:
+        updates["ftp"] = ftp
+    s.set(**updates)
+
+    # Mirror weight/birthday to the DB athlete record so profile shows them
+    settings = get_settings()
+    if settings.athlete_id and (weight is not None or birthday is not None):
+        init_db()
+
+        async def _update_db():
+            async with get_async_session() as session:
+                result = await session.execute(
+                    select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+                )
+                athlete = result.scalar_one_or_none()
+                if athlete:
+                    if weight is not None:
+                        athlete.weight_kg = weight
+                    if birthday is not None:
+                        athlete.birthday = birthday
+
+        asyncio.run(_update_db())
+
+    typer.echo(json.dumps({"saved": updates}, indent=2))
+
+
 @app.command("equipment")
 def equipment(
     type_filter: Optional[str] = typer.Option(None, "--type", help="Filter by type: shoes or bikes."),
