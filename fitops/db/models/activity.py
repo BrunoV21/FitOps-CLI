@@ -20,6 +20,7 @@ class Activity(Base):
     athlete_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     sport_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    workout_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     start_date_local: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     timezone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -83,6 +84,10 @@ class Activity(Base):
         Index("ix_activities_sport_start", "sport_type", "start_date"),
     )
 
+    @property
+    def is_race(self) -> bool:
+        return self.workout_type == 1
+
     @staticmethod
     def get_adjusted_cadence(raw_cadence: Optional[float], sport_type: str) -> Optional[float]:
         if raw_cadence is None:
@@ -116,6 +121,7 @@ class Activity(Base):
             athlete_id=athlete_id,
             name=data.get("name", ""),
             sport_type=sport_type,
+            workout_type=data.get("workout_type"),
             start_date=parse_date(data.get("start_date")),
             start_date_local=parse_date(data.get("start_date_local")),
             timezone=data.get("timezone"),
@@ -156,6 +162,7 @@ class Activity(Base):
 
         self.name = data.get("name", self.name)
         self.sport_type = sport_type
+        self.workout_type = data.get("workout_type", self.workout_type)
         self.distance_m = data.get("distance", self.distance_m)
         self.moving_time_s = data.get("moving_time", self.moving_time_s)
         self.elapsed_time_s = data.get("elapsed_time", self.elapsed_time_s)

@@ -131,6 +131,7 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
             "commute": bool(row.get("commute", False)),
             "manual": bool(row.get("manual", False)),
             "private": bool(row.get("private", False)),
+            "is_race": bool(row.get("workout_type") == 1),
         },
         "social": {
             "kudos": row.get("kudos_count", 0) or 0,
