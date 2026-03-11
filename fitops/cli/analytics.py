@@ -227,6 +227,10 @@ def trends(
         typer.echo(json.dumps({"error": "No activity data found for the specified period."}, indent=2))
         return
 
+    # Compute overtraining indicators from training load history
+    tl_result = asyncio.run(compute_training_load(athlete_id=settings.athlete_id, days=days, sport_filter=sport))
+    overtraining = _compute_overtraining_indicators(tl_result.history)
+
     typer.echo(json.dumps({
         "_meta": make_meta(filters_applied={"sport": sport, "days": days}),
         "trends": {
@@ -236,6 +240,7 @@ def trends(
             "consistency": result.consistency,
             "seasonal": result.seasonal,
             "performance_trend": result.performance_trend,
+            "overtraining_indicators": overtraining,
         },
     }, indent=2, default=str))
 
