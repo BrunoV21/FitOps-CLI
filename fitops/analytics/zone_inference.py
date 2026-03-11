@@ -13,7 +13,6 @@ from fitops.db.session import get_async_session
 
 LTHR_PERCENTILE = 90
 MAX_HR_PERCENTILE = 98
-RESTING_HR_PCTILE = 5
 MAX_HR_CAP = 220
 ROLLING_WINDOW_S = 20 * 60  # 20 minutes
 
@@ -123,9 +122,6 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     max_hr_raw = _percentile(all_hr, MAX_HR_PERCENTILE)
     max_hr = min(MAX_HR_CAP, round(max_hr_raw)) if max_hr_raw else None
 
-    resting_raw = _percentile(all_hr, RESTING_HR_PCTILE)
-    resting_hr = round(resting_raw) if resting_raw else None
-
     if all_rolling:
         inference_method = "rolling_window"
         lthr_raw = _percentile(all_rolling, LTHR_PERCENTILE)
@@ -143,7 +139,7 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     return ZoneInferenceResult(
         lthr=lthr,
         max_hr=max_hr,
-        resting_hr=resting_hr,
+        resting_hr=None,  # cannot be inferred from activities — must be set manually
         confidence=_confidence_score(acts_with_hr, avg_quality, consistency_score),
         activity_count=acts_with_hr,
         inference_method=inference_method,
@@ -159,7 +155,5 @@ def save_inferred_zones(result: ZoneInferenceResult) -> None:
     if result.max_hr is not None:
         updates["max_hr"] = result.max_hr
         updates["max_hr_source"] = "inferred"
-    if result.resting_hr is not None:
-        updates["resting_hr"] = result.resting_hr
-        updates["resting_hr_source"] = "inferred"
+    # resting_hr is never inferred — user must set it via --set-resting-hr
     settings.set(**updates)
