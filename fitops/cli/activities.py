@@ -119,8 +119,9 @@ def get_activity(
             typer.echo(f"Activity {activity_id} not found locally. Run `fitops sync run` first.", err=True)
             raise typer.Exit(1)
 
+        client = StravaClient()
+
         if fetch_fresh or not row.detail_fetched:
-            client = StravaClient()
             data = await client.get_activity(activity_id)
             async with get_async_session() as session:
                 result2 = await session.execute(
@@ -132,8 +133,56 @@ def get_activity(
                     row2.detail_fetched = True
                     row = row2
 
+        if fetch_fresh or not row.streams_fetched:
+            try:
+                stream_data = await client.get_activity_streams(activity_id)
+                async with get_async_session() as session:
+                    result3 = await session.execute(
+                        select(Activity).where(Activity.strava_id == activity_id)
+                    )
+                    row3 = result3.scalar_one_or_none()
+                    if row3:
+                        for stream_type, stream_obj in stream_data.items():
+                            data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+                            existing = await session.execute(
+                                select(ActivityStream).where(
+                                    ActivityStream.activity_id == row3.id,
+                                    ActivityStream.stream_type == stream_type,
+                                )
+                            )
+                            if existing.scalar_one_or_none() is None:
+                                session.add(ActivityStream.from_strava_stream(row3.id, stream_type, data_list))
+                        row3.streams_fetched = True
+                        row = row3
+            except Exception:
+                pass  # streams are best-effort; don't block the activity output
+
         row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
         formatted = format_activity_row(row_dict, gear_lookup)
+
+        # Enrich with HR drift if streams are available
+        if row.streams_fetched:
+            from fitops.analytics.activity_insights import compute_hr_drift
+            async with get_async_session() as session:
+                hr_res = await session.execute(
+                    select(ActivityStream).where(
+                        ActivityStream.activity_id == row.id,
+                        ActivityStream.stream_type == "heartrate",
+                    )
+                )
+                vel_res = await session.execute(
+                    select(ActivityStream).where(
+                        ActivityStream.activity_id == row.id,
+                        ActivityStream.stream_type == "velocity_smooth",
+                    )
+                )
+                hr_row = hr_res.scalar_one_or_none()
+                vel_row = vel_res.scalar_one_or_none()
+            if hr_row and vel_row:
+                drift = compute_hr_drift(hr_row.data or [], vel_row.data or [])
+                if drift:
+                    formatted["insights"] = {"hr_drift": drift}
+
         return {"_meta": make_meta(total_count=1), "activity": formatted}
 
     output = asyncio.run(_fetch())
