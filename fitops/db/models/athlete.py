@@ -24,6 +24,7 @@ class Athlete(Base):
     weight_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     profile_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     premium: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    birthday: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bikes_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     shoes_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -46,6 +47,18 @@ class Athlete(Base):
         if self.shoes_json:
             return json.loads(self.shoes_json)
         return []
+
+    @property
+    def age(self) -> Optional[int]:
+        if not self.birthday:
+            return None
+        try:
+            from datetime import date
+            bday = date.fromisoformat(self.birthday)
+            today = date.today()
+            return today.year - bday.year - ((today.month, today.day) < (bday.month, bday.day))
+        except ValueError:
+            return None
 
     def get_gear_name(self, gear_id: str) -> Optional[str]:
         for item in self.bikes + self.shoes:
@@ -93,6 +106,7 @@ class Athlete(Base):
             weight_kg=data.get("weight"),
             profile_url=data.get("profile"),
             premium=data.get("premium", False),
+            birthday=data.get("birthday"),
             bikes_json=json.dumps(bikes),
             shoes_json=json.dumps(shoes),
         )
@@ -125,6 +139,7 @@ class Athlete(Base):
         self.weight_kg = data.get("weight", self.weight_kg)
         self.profile_url = data.get("profile", self.profile_url)
         self.premium = data.get("premium", self.premium)
+        self.birthday = data.get("birthday", self.birthday)
         self.bikes_json = json.dumps(bikes)
         self.shoes_json = json.dumps(shoes)
         self.updated_at = datetime.now(timezone.utc)
