@@ -7,7 +7,7 @@ from typing import Optional
 import typer
 
 from fitops.analytics.athlete_settings import get_athlete_settings
-from fitops.analytics.training_load import compute_training_load
+from fitops.analytics.training_load import compute_training_load, _compute_overtraining_indicators
 from fitops.analytics.vo2max import estimate_vo2max
 from fitops.analytics.zones import compute_zones
 from fitops.analytics.zone_inference import infer_zones, save_inferred_zones
@@ -46,6 +46,8 @@ def training_load(
     current = result.current
     ramp = result.ramp_rate_pct
 
+    overtraining = _compute_overtraining_indicators(result.history)
+
     if today:
         output = {
             "_meta": make_meta(filters_applied={"sport": sport, "today_only": True}),
@@ -59,6 +61,7 @@ def training_load(
                     "ramp_rate_pct": round(ramp, 2) if ramp is not None else None,
                     "ramp_label": result.ramp_label(ramp) if ramp is not None else None,
                 },
+                "overtraining_indicators": overtraining,
             },
         }
     else:
@@ -73,6 +76,7 @@ def training_load(
                     "ramp_rate_pct": round(ramp, 2) if ramp is not None else None,
                     "ramp_label": result.ramp_label(ramp) if ramp is not None else None,
                 },
+                "overtraining_indicators": overtraining,
                 "history": [
                     {"date": str(d.date), "ctl": d.ctl, "atl": d.atl, "tsb": d.tsb, "daily_tss": d.daily_tss}
                     for d in result.history

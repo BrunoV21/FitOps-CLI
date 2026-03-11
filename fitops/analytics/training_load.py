@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import statistics as _stats
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -161,3 +162,56 @@ async def compute_training_load(
         current += timedelta(days=1)
 
     return result_obj
+
+
+def _compute_overtraining_indicators(history: list) -> dict:
+    """Compute ACWR, training monotony, and training strain from DailyLoad history."""
+    if not history:
+        return {}
+
+    current = history[-1]
+    acwr = round(current.atl / current.ctl, 2) if current.ctl > 0 else None
+
+    if acwr is None:
+        acwr_label = "Unknown"
+    elif acwr < 0.8:
+        acwr_label = "Detraining"
+    elif acwr <= 1.3:
+        acwr_label = "Optimal"
+    elif acwr <= 1.5:
+        acwr_label = "Caution — elevated injury risk"
+    else:
+        acwr_label = "Danger — high injury risk"
+
+    # Training monotony from last 7 days of TSS
+    recent_tss = [d.daily_tss for d in history[-7:]]
+    monotony = None
+    strain = None
+    if len(recent_tss) >= 2:
+        mean_tss = sum(recent_tss) / len(recent_tss)
+        if mean_tss > 0:
+            try:
+                stdev = _stats.stdev(recent_tss)
+                monotony = round(mean_tss / stdev, 2) if stdev > 0 else None
+            except Exception:
+                monotony = None
+
+    if monotony is not None:
+        strain = round(monotony * sum(recent_tss), 1)
+
+    if monotony is None:
+        monotony_label = "Unknown"
+    elif monotony < 1.5:
+        monotony_label = "Varied — good training diversity"
+    elif monotony < 2.0:
+        monotony_label = "Monotonous — consider varying intensity"
+    else:
+        monotony_label = "High risk — vary training immediately"
+
+    return {
+        "acwr": acwr,
+        "acwr_label": acwr_label,
+        "training_monotony": monotony,
+        "monotony_label": monotony_label,
+        "training_strain": strain,
+    }
