@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fitops.db.base import Base
@@ -14,7 +15,47 @@ from fitops.db.models.activity_stream import ActivityStream  # noqa: F401
 from fitops.db.models.activity_laps import ActivityLap  # noqa: F401
 from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
 from fitops.db.models.workout import Workout  # noqa: F401
+from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
 from fitops.db.models.analytics_snapshot import AnalyticsSnapshot  # noqa: F401
+
+# Columns added to `athletes` after the initial schema.
+_ATHLETE_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("birthday", "TEXT"),
+]
+
+
+async def _migrate_athlete_columns(conn) -> None:
+    """Add new columns to the athletes table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(athletes)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _ATHLETE_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE athletes ADD COLUMN {col_name} {col_type}")
+            )
+
+
+# Columns added to `workouts` after the initial Phase 1 stub.
+# Each tuple: (column_name, SQLite type definition)
+_WORKOUT_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("athlete_id", "INTEGER"),
+    ("workout_file_name", "TEXT"),
+    ("workout_markdown", "TEXT"),
+    ("workout_meta", "TEXT"),
+    ("linked_at", "DATETIME"),
+    ("physiology_snapshot", "TEXT"),
+]
+
+
+async def _migrate_workout_columns(conn) -> None:
+    """Add new columns to the workouts table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(workouts)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _WORKOUT_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE workouts ADD COLUMN {col_name} {col_type}")
+            )
 
 
 async def create_all_tables(engine: AsyncEngine | None = None) -> None:
@@ -22,6 +63,9 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migrate any missing columns on pre-existing tables
+        await _migrate_athlete_columns(conn)
+        await _migrate_workout_columns(conn)
 
 
 def init_db() -> None:
