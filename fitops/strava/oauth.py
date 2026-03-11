@@ -58,7 +58,94 @@ class LocalCallbackServer:
             self.state = params.get("state", [None])[0]
             self.error = params.get("error", [None])[0]
 
-            body = b"<html><body><h2>FitOps: Authentication successful!</h2><p>You can close this tab.</p></body></html>"
+            body = b"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitOps \xe2\x80\x94 Connected</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 48px 56px;
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .icon {
+      font-size: 52px;
+      margin-bottom: 20px;
+      line-height: 1;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      margin-bottom: 10px;
+      color: #ffffff;
+    }
+    p {
+      font-size: 14px;
+      color: #888;
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #1c2f1c;
+      border: 1px solid #2e5a2e;
+      color: #4caf50;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 100px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      background: #4caf50;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .strava {
+      margin-top: 32px;
+      font-size: 12px;
+      color: #444;
+    }
+    .strava span { color: #FC4C02; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">\xf0\x9f\x8f\x83</div>
+    <h1>You&rsquo;re connected!</h1>
+    <p>FitOps is now linked to your Strava account.<br>You can close this tab and return to the terminal.</p>
+    <div class="badge">
+      <div class="dot"></div>
+      Authentication successful
+    </div>
+    <div class="strava">Powered by <span>Strava</span></div>
+  </div>
+</body>
+</html>"""
             response = (
                 b"HTTP/1.1 200 OK\r\n"
                 b"Content-Type: text/html\r\n"
