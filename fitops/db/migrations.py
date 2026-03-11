@@ -35,6 +35,23 @@ async def _migrate_athlete_columns(conn) -> None:
             )
 
 
+# Columns added to `activities` after the initial schema.
+_ACTIVITY_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("workout_type", "INTEGER"),
+]
+
+
+async def _migrate_activity_columns(conn) -> None:
+    """Add new columns to the activities table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(activities)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _ACTIVITY_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE activities ADD COLUMN {col_name} {col_type}")
+            )
+
+
 # Columns added to `workouts` after the initial Phase 1 stub.
 # Each tuple: (column_name, SQLite type definition)
 _WORKOUT_NEW_COLUMNS: list[tuple[str, str]] = [
@@ -65,6 +82,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await conn.run_sync(Base.metadata.create_all)
         # Migrate any missing columns on pre-existing tables
         await _migrate_athlete_columns(conn)
+        await _migrate_activity_columns(conn)
         await _migrate_workout_columns(conn)
 
 
