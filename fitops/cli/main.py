@@ -15,13 +15,15 @@ def _register_subapps() -> None:
     from fitops.cli.sync import app as sync_app
     from fitops.cli.activities import app as activities_app
     from fitops.cli.athlete import app as athlete_app
+    from fitops.cli.analytics import app as analytics_app
     from fitops.cli.workouts import app as workouts_app
 
     app.add_typer(auth_app, name="auth", help="Manage Strava authentication.")
     app.add_typer(sync_app, name="sync", help="Sync activities from Strava.")
     app.add_typer(activities_app, name="activities", help="View synced activities.")
     app.add_typer(athlete_app, name="athlete", help="View athlete profile and stats.")
-    app.add_typer(workouts_app, name="workouts", help="Manage workouts (Phase 3).")
+    app.add_typer(analytics_app, name="analytics", help="Training analytics (CTL, ATL, VO2max, zones).")
+    app.add_typer(workouts_app, name="workouts", help="Markdown workout definitions and activity linking.")
 
 
 _register_subapps()
