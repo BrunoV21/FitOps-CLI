@@ -8,10 +8,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.training_load import _compute_overtraining_indicators
+from fitops.analytics.vo2max import estimate_vo2max
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.analytics import (
     get_training_load_data,
     get_trends_data,
+    get_vo2max_history,
     get_weekly_volume,
 )
 
@@ -90,7 +92,33 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "weekly_json": weekly_json,
                 "selected_days": days,
                 "selected_sport": sport,
-                "active_page": "analytics",
+                "active_page": "trends",
+            },
+        )
+
+    @router.get("/analytics/performance", response_class=HTMLResponse)
+    async def performance(request: Request, days: int = 365):
+        settings = get_settings()
+        athlete_id = settings.athlete_id
+
+        best_vo2max = None
+        history = []
+
+        if athlete_id:
+            best_vo2max = await estimate_vo2max(athlete_id, max_activities=20)
+            history = await get_vo2max_history(athlete_id, days=days)
+
+        history_json = json.dumps(history)
+
+        return templates.TemplateResponse(
+            "analytics/performance.html",
+            {
+                "request": request,
+                "best_vo2max": best_vo2max,
+                "history": history,
+                "history_json": history_json,
+                "selected_days": days,
+                "active_page": "performance",
             },
         )
 

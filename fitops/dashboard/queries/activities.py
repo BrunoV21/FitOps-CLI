@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_laps import ActivityLap
+from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.session import get_async_session
 
 
@@ -64,6 +65,16 @@ async def get_activity_stats(athlete_id: int) -> dict:
             "total_distance_km": round((row.total_distance_m or 0) / 1000, 1),
             "total_elevation_m": round(row.total_elevation_m or 0),
         }
+
+
+async def get_activity_streams(activity_db_id: int) -> dict[str, list]:
+    """Return all streams for an activity as {stream_type: [values]}."""
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(ActivityStream).where(ActivityStream.activity_id == activity_db_id)
+        )
+        rows = result.scalars().all()
+    return {row.stream_type: row.data for row in rows}
 
 
 async def get_distinct_sports(athlete_id: int) -> list[str]:

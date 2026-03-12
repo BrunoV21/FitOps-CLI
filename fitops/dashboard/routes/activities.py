@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from fitops.analytics.activity_zones import compute_activity_analytics
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import (
     get_activity_detail,
     get_activity_laps,
+    get_activity_streams,
     get_distinct_sports,
     get_recent_activities,
 )
@@ -58,6 +61,14 @@ def _activity_row(a) -> dict:
     }
 
 
+def _downsample_streams(streams: dict, target: int = 500) -> dict:
+    n = max((len(v) for v in streams.values()), default=0)
+    if n <= target:
+        return streams
+    step = max(1, n // target)
+    return {k: v[::step] for k, v in streams.items()}
+
+
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/activities", response_class=HTMLResponse)
     async def activity_list(
@@ -95,12 +106,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
         settings = get_settings()
         athlete_id = settings.athlete_id
 
+        streams = {}
         activity = None
         laps = []
+        analytics = None
         if athlete_id:
             activity = await get_activity_detail(athlete_id, strava_id)
             if activity and activity.laps_fetched:
                 laps = await get_activity_laps(activity.id)
+            if activity and activity.streams_fetched:
+                streams = await get_activity_streams(activity.id)
+                analytics = compute_activity_analytics(activity, streams)
 
         if activity is None:
             return templates.TemplateResponse(
@@ -129,7 +145,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "activity": _activity_row(activity),
                 "activity_raw": activity,
                 "laps": lap_rows,
+                "analytics": analytics,
                 "has_polyline": bool(activity.map_summary_polyline),
+                "streams_json": json.dumps(_downsample_streams(streams)),
+                "has_streams": bool(streams),
+                "sport_type": activity.sport_type,
                 "active_page": "activities",
             },
         )

@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ activity.name if activity else "Not Found" }} — FitOps{% endblock %}
 
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block content %}
 {% if not activity %}
 <div class="text-center py-20">
@@ -74,7 +79,123 @@
     <p class="text-2xl font-bold text-blue-400 mt-1">{{ activity.tss }}</p>
   </div>
   {% endif %}
+
+  {% if analytics and analytics.vo2max %}
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">VO₂max Est.</p>
+    <p class="text-2xl font-bold text-purple-400 mt-1">{{ analytics.vo2max.estimate }} <span class="text-sm font-normal text-gray-400">ml/kg/min</span></p>
+    <p class="text-gray-600 text-xs mt-1">{{ analytics.vo2max.confidence_label }} confidence</p>
+  </div>
+  {% endif %}
 </div>
+
+<!-- Immersive Analysis: Map + Stream Chart -->
+{% if has_streams %}
+<div class="mb-6">
+  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+    <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Activity Analysis</h2>
+    <div class="flex items-center gap-3 flex-wrap">
+      <div id="metric-toggles" class="flex flex-wrap gap-2"></div>
+      <div class="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+        <button id="xaxis-distance"
+                class="px-3 py-1.5 font-medium transition-colors"
+                style="background:#f97316;color:#fff;"
+                onclick="setXAxis('distance')">Distance</button>
+        <button id="xaxis-time"
+                class="px-3 py-1.5 bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                onclick="setXAxis('time')">Time</button>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-col lg:flex-row gap-4">
+    <div class="lg:w-2/5 bg-gray-900 rounded-xl border border-gray-800 overflow-hidden" style="min-height:320px;">
+      <div id="activity-map" style="height:320px;background:#111827;"></div>
+    </div>
+    <div class="lg:w-3/5 bg-gray-900 rounded-xl p-4 border border-gray-800 flex flex-col" style="min-height:320px;">
+      <div class="flex-1" style="position:relative;min-height:280px;">
+        <canvas id="stream-chart" class="stream-chart-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Analytics: LT2 + zone distributions -->
+{% if analytics %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+  <!-- HR Zone Distribution -->
+  {% if analytics.hr_zones %}
+  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+    <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">Heart Rate Zones</h2>
+    {% set zone_colors = ["#6b7280", "#60a5fa", "#4ade80", "#fb923c", "#f87171"] %}
+    {% for z in analytics.hr_zones %}
+    <div class="mb-3">
+      <div class="flex justify-between text-xs text-gray-400 mb-1">
+        <span>Z{{ z.zone }} {{ z.name }}
+          {% if z.min_bpm and z.max_bpm %}<span class="text-gray-600">({{ z.min_bpm }}–{{ z.max_bpm }} bpm)</span>
+          {% elif z.min_bpm %}<span class="text-gray-600">({{ z.min_bpm }}+ bpm)</span>{% endif %}
+        </span>
+        <span class="text-gray-300">{{ z.time_fmt }} <span class="text-gray-500">({{ z.pct }}%)</span></span>
+      </div>
+      <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div class="h-full rounded-full" style="width: {{ z.pct }}%; background-color: {{ zone_colors[loop.index0] }}; min-width: {{ '2px' if z.pct > 0 else '0' }};"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Pace Zone Distribution -->
+  {% if analytics.pace_zones %}
+  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+    <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">Pace Zones</h2>
+    {% set zone_colors = ["#6b7280", "#60a5fa", "#4ade80", "#fb923c", "#f87171"] %}
+    {% for z in analytics.pace_zones %}
+    <div class="mb-3">
+      <div class="flex justify-between text-xs text-gray-400 mb-1">
+        <span>Z{{ z.zone }} {{ z.name }}
+          {% if z.max_pace and z.min_pace %}<span class="text-gray-600">({{ z.max_pace }}–{{ z.min_pace }})</span>
+          {% elif z.max_pace %}<span class="text-gray-600">(≤ {{ z.max_pace }})</span>
+          {% elif z.min_pace %}<span class="text-gray-600">(≥ {{ z.min_pace }})</span>{% endif %}
+        </span>
+        <span class="text-gray-300">{{ z.time_fmt }} <span class="text-gray-500">({{ z.pct }}%)</span></span>
+      </div>
+      <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div class="h-full rounded-full" style="width: {{ z.pct }}%; background-color: {{ zone_colors[loop.index0] }}; min-width: {{ '2px' if z.pct > 0 else '0' }};"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- LT2 inference card -->
+{% if analytics.lt2 %}
+<div class="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
+  <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">Lactate Threshold (LT2) — Inferred from Activity</h2>
+  <div class="flex flex-wrap gap-6">
+    <div>
+      <p class="text-gray-500 text-xs uppercase tracking-wider">Threshold HR</p>
+      <p class="text-2xl font-bold text-red-400 mt-1">{{ analytics.lt2.lthr_bpm }} <span class="text-sm font-normal text-gray-400">bpm</span></p>
+    </div>
+    {% if analytics.lt2.pace_fmt %}
+    <div>
+      <p class="text-gray-500 text-xs uppercase tracking-wider">Threshold Pace</p>
+      <p class="text-2xl font-bold text-brand-500 mt-1">{{ analytics.lt2.pace_fmt }}</p>
+    </div>
+    {% endif %}
+    <div class="text-gray-600 text-xs self-end pb-1">Detected from {{ "%.0f" | format(analytics.lt2.lthr_bpm) }} bpm steady-state segment</div>
+  </div>
+</div>
+{% endif %}
+
+{% elif activity_raw and not activity_raw.streams_fetched %}
+<div class="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6 text-gray-500 text-sm">
+  Stream data not synced for this activity. Run <code class="text-gray-400">fitops activities streams {{ activity.strava_id }}</code> to fetch it.
+</div>
+{% endif %}
 
 <!-- Laps -->
 {% if laps %}
@@ -114,4 +235,26 @@
 {% endif %}
 
 {% endif %}
+
+{% block scripts %}
+{% if has_streams %}
+<script>
+(function() {
+  const STREAMS = {{ streams_json | safe }};
+  const SPORT_TYPE = {{ sport_type | tojson }};
+  const latlng = STREAMS.latlng || [];
+  renderActivityMap('activity-map', latlng);
+  const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE);
+  const available = {
+    hr:   (STREAMS.heartrate || []).length > 0,
+    pace: (STREAMS.velocity_smooth || []).length > 0,
+    alt:  (STREAMS.altitude || []).length > 0,
+    cad:  (STREAMS.cadence || []).length > 0,
+    pwr:  (STREAMS.watts || []).length > 0,
+  };
+  initMetricToggles(chart, 'metric-toggles', available);
+})();
+</script>
+{% endif %}
+{% endblock %}
 {% endblock %}
