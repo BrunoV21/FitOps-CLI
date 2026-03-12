@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Performance — FitOps{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Performance</h1>
+    <p class="text-gray-400 text-sm mt-1">VO₂max estimates from recent runs</p>
+  </div>
+  <form method="get" class="flex items-center gap-3">
+    <select name="days"
+            class="bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500">
+      {% for d in [90, 180, 365] %}
+      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      {% endfor %}
+    </select>
+    <button type="submit"
+            class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+      Update
+    </button>
+  </form>
+</div>
+
+{% if best_vo2max %}
+<!-- Best estimate + methodology -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">Best VO₂max Estimate</p>
+    <p class="text-4xl font-bold text-purple-400 mt-2">{{ best_vo2max.estimate }}</p>
+    <p class="text-gray-500 text-xs mt-1">ml/kg/min · {{ best_vo2max.confidence_label }} confidence</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">From Activity</p>
+    <p class="text-lg font-semibold text-white mt-2 truncate">{{ best_vo2max.activity_name }}</p>
+    <p class="text-gray-500 text-xs mt-1">{{ best_vo2max.activity_date }} · {{ best_vo2max.distance_km }} km · {{ best_vo2max.pace_per_km }}/km</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">Algorithm Breakdown</p>
+    {% if best_vo2max.vdot %}
+    <div class="mt-2 flex items-center justify-between text-sm">
+      <span class="text-gray-400">Daniels VDOT</span>
+      <span class="text-white font-medium">{{ best_vo2max.vdot }}</span>
+    </div>
+    {% endif %}
+    {% if best_vo2max.cooper %}
+    <div class="mt-1 flex items-center justify-between text-sm">
+      <span class="text-gray-400">Cooper extrapolation</span>
+      <span class="text-white font-medium">{{ best_vo2max.cooper }}</span>
+    </div>
+    {% endif %}
+    <p class="text-gray-600 text-xs mt-2">60% VDOT + 40% Cooper (≥5 km)</p>
+  </div>
+</div>
+
+<!-- Fitness classification -->
+{% set vo2 = best_vo2max.estimate %}
+<div class="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
+  <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">Fitness Classification</h2>
+  <div class="flex flex-wrap gap-2">
+    {% set classes = [("Poor", 35, "#6b7280"), ("Fair", 42, "#60a5fa"), ("Good", 50, "#4ade80"), ("Excellent", 58, "#fb923c"), ("Elite", 999, "#f87171")] %}
+    {% for label, threshold, color in classes %}
+    {% set active = (vo2 < threshold and (loop.first or vo2 >= classes[loop.index0 - 1][1])) %}
+    <div class="px-4 py-2 rounded-lg border text-sm font-medium
+                {% if active %}border-transparent text-white{% else %}border-gray-700 text-gray-500{% endif %}"
+         style="{% if active %}background-color: {{ color }}30; border-color: {{ color }};{% endif %}">
+      {{ label }}
+      <span class="text-xs font-normal ml-1 opacity-70">
+        {% if label == "Poor" %}< 35
+        {% elif label == "Elite" %}58+
+        {% else %}{{ classes[loop.index0 - 1][1] }}–{{ threshold }}
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if history %}
+<!-- VO2max history chart -->
+<div class="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
+  <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">VO₂max Over Time</h2>
+  <canvas id="vo2maxChart" height="60"></canvas>
+</div>
+
+<!-- History table -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+  <div class="px-5 py-4 border-b border-gray-800">
+    <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Run History</h2>
+  </div>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-800 text-gray-500 text-xs uppercase tracking-wider">
+        <th class="px-4 py-3 text-left">Date</th>
+        <th class="px-4 py-3 text-left">Activity</th>
+        <th class="px-4 py-3 text-right">Distance</th>
+        <th class="px-4 py-3 text-right">VO₂max Est.</th>
+        <th class="px-4 py-3 text-right">VDOT</th>
+        <th class="px-4 py-3 text-right">Cooper</th>
+        <th class="px-4 py-3 text-right">Confidence</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in history | reverse %}
+      <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800">
+        <td class="px-4 py-2 text-gray-500">{{ row.date }}</td>
+        <td class="px-4 py-2 text-gray-300">
+          <a href="/activities/{{ row.strava_id }}" class="hover:text-white transition-colors">{{ row.name }}</a>
+        </td>
+        <td class="px-4 py-2 text-right text-gray-400">{{ row.distance_km }} km</td>
+        <td class="px-4 py-2 text-right font-semibold text-purple-400">{{ row.estimate }}</td>
+        <td class="px-4 py-2 text-right text-gray-400">{{ row.vdot if row.vdot else "—" }}</td>
+        <td class="px-4 py-2 text-right text-gray-400">{{ row.cooper if row.cooper else "—" }}</td>
+        <td class="px-4 py-2 text-right">
+          <span class="text-xs px-2 py-0.5 rounded
+            {% if row.confidence_label == 'High' %}bg-green-900 text-green-300
+            {% elif row.confidence_label == 'Moderate' %}bg-yellow-900 text-yellow-300
+            {% else %}bg-gray-800 text-gray-400{% endif %}">
+            {{ row.confidence_label }}
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center text-gray-500">
+  No run data found. Run <code class="text-gray-400">fitops sync run</code> to import activities.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const VO2MAX_HISTORY = {{ history_json | safe }};
+if (VO2MAX_HISTORY.length > 0) {
+  renderVo2maxChart("vo2maxChart", VO2MAX_HISTORY);
+}
+</script>
+{% endblock %}

@@ -149,9 +149,12 @@ async def compute_trends(
     weeks_active = len([w for w in weekly_data if w["activity_count"] > 0])
     weekly_consistency = weeks_active / total_weeks
 
+    activities_per_week = len(activities) / max(1, days / 7)
     consistency = {
         "consistency_score": round(consistency_score, 3),
         "weekly_consistency": round(weekly_consistency, 3),
+        "regularity_score": round(weekly_consistency, 3),
+        "activities_per_week": round(activities_per_week, 1),
         "avg_days_between_activities": round(avg_gap, 1) if avg_gap else None,
     }
 
@@ -214,6 +217,8 @@ async def compute_trends(
     performance_trend = {
         "pace_slope": round(pace_slope, 4) if pace_slope is not None else None,
         "pace_direction": pace_direction,
+        "pace_trend": pace_direction,
+        "pace_strength": _trend_strength(pace_slope) if pace_slope is not None else "weak",
         "hr_slope": round(hr_slope, 3) if hr_slope is not None else None,
         "hr_direction": hr_direction,
         "improvement_rate_pct_per_month": round(improvement_rate, 2) if improvement_rate is not None else None,

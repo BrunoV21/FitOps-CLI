@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -8,6 +10,7 @@ from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import get_activity_stats, get_recent_activities
 from fitops.dashboard.queries.analytics import get_training_load_data
 from fitops.dashboard.queries.athlete import get_athlete
+from fitops.dashboard.queries.profile import get_activity_heatmap_data
 
 router = APIRouter()
 
@@ -59,6 +62,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         recent = await get_recent_activities(athlete_id, limit=5) if athlete_id else []
         stats = await get_activity_stats(athlete_id) if athlete_id else {}
         tl = await get_training_load_data(athlete_id, days=1) if athlete_id else None
+        heatmap_data = await get_activity_heatmap_data(athlete_id) if athlete_id else []
 
         current_load = None
         if tl and tl.current:
@@ -78,6 +82,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "recent_activities": [_format_activity(a) for a in recent],
                 "stats": stats,
                 "current_load": current_load,
+                "heatmap_json": json.dumps(heatmap_data),
                 "active_page": "overview",
             },
         )
