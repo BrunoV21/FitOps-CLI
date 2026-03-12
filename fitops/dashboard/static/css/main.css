@@ -10,6 +10,7 @@ html { scroll-behavior: smooth; }
 
 /* Chart canvas */
 canvas { max-height: 400px; }
+.stream-chart-canvas { max-height: none; }
 
 /* Code styling */
 code {

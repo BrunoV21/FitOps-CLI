@@ -150,6 +150,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "streams_json": json.dumps(_downsample_streams(streams)),
                 "has_streams": bool(streams),
                 "sport_type": activity.sport_type,
+                "lt2_hr": (analytics.lt2 or {}).get("lthr_bpm") if analytics else None,
+                "lt1_hr": round(((analytics.lt2 or {}).get("lthr_bpm") or 0) * 0.92) or None if analytics else None,
                 "active_page": "activities",
             },
         )
