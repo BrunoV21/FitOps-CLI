@@ -1,0 +1,21 @@
+/* FitOps Dashboard — minimal custom styles (Tailwind handles the rest) */
+
+html { scroll-behavior: smooth; }
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+/* Chart canvas */
+canvas { max-height: 400px; }
+
+/* Code styling */
+code {
+  background: #1f2937;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: ui-monospace, monospace;
+}
