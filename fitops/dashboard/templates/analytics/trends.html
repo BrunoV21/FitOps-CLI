@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Trends — FitOps{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Training Trends</h1>
+    {% if trends %}
+    <p class="text-gray-400 text-sm mt-1">{{ trends.summary_label }}</p>
+    {% endif %}
+  </div>
+
+  <form method="get" class="flex items-center gap-3">
+    <select name="days"
+            class="bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500">
+      {% for d in [90, 180, 365] %}
+      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      {% endfor %}
+    </select>
+    <button type="submit"
+            class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+      Update
+    </button>
+  </form>
+</div>
+
+{% if trends %}
+<!-- Summary cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">Activities</p>
+    <p class="text-3xl font-bold text-white mt-1">{{ trends.activity_count }}</p>
+  </div>
+
+  {% if trends.consistency %}
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">Per Week</p>
+    <p class="text-3xl font-bold text-white mt-1">{{ "%.1f" | format(trends.consistency.activities_per_week) }}</p>
+    <p class="text-gray-600 text-xs mt-1">
+      Regularity {{ "%.0f%%" | format(trends.consistency.regularity_score * 100) }}
+    </p>
+  </div>
+  {% endif %}
+
+  {% if trends.volume_trend %}
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">Volume Trend</p>
+    <p class="text-2xl font-bold mt-1
+      {% if trends.volume_trend.direction == 'up' %}text-green-400
+      {% elif trends.volume_trend.direction == 'down' %}text-red-400
+      {% else %}text-gray-300{% endif %}">
+      {% if trends.volume_trend.direction == 'up' %}↑{% elif trends.volume_trend.direction == 'down' %}↓{% else %}→{% endif %}
+      {{ trends.volume_trend.direction | capitalize }}
+    </p>
+    <p class="text-gray-500 text-xs mt-1">{{ trends.volume_trend.strength | capitalize }}</p>
+  </div>
+  {% endif %}
+
+  {% if trends.performance_trend %}
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-gray-500 text-xs uppercase tracking-wider">Performance</p>
+    <p class="text-2xl font-bold mt-1
+      {% if trends.performance_trend.pace_trend == 'improving' %}text-green-400
+      {% elif trends.performance_trend.pace_trend == 'declining' %}text-red-400
+      {% else %}text-gray-300{% endif %}">
+      {{ trends.performance_trend.pace_trend | capitalize }}
+    </p>
+    <p class="text-gray-500 text-xs mt-1">{{ trends.performance_trend.pace_strength | capitalize }}</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Weekly volume chart -->
+<div class="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6">
+  <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">Weekly Volume (km)</h2>
+  <canvas id="weeklyVolumeChart" height="60"></canvas>
+</div>
+
+{% else %}
+<div class="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center text-gray-500">
+  No trend data found. Run <code class="text-gray-400">fitops sync run</code> first.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const WEEKLY_DATA = {{ weekly_json | safe }};
+if (WEEKLY_DATA.length > 0) {
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA);
+}
+</script>
+{% endblock %}
