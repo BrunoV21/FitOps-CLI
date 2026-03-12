@@ -16,12 +16,15 @@ async def get_recent_activities(
     limit: int = 50,
     sport: Optional[str] = None,
     days: Optional[int] = None,
+    since: Optional[datetime] = None,
 ) -> list[Activity]:
     async with get_async_session() as session:
         q = select(Activity).where(Activity.athlete_id == athlete_id)
         if sport:
             q = q.where(Activity.sport_type == sport)
-        if days:
+        if since:
+            q = q.where(Activity.start_date >= since)
+        elif days:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
         q = q.order_by(Activity.start_date.desc()).limit(limit)
@@ -50,14 +53,20 @@ async def get_activity_laps(activity_db_id: int) -> list[ActivityLap]:
         return list(result.scalars().all())
 
 
-async def get_activity_stats(athlete_id: int, days: Optional[int] = None) -> dict:
+async def get_activity_stats(
+    athlete_id: int,
+    days: Optional[int] = None,
+    since: Optional[datetime] = None,
+) -> dict:
     async with get_async_session() as session:
         q = select(
             func.count(Activity.id).label("total_count"),
             func.sum(Activity.distance_m).label("total_distance_m"),
             func.sum(Activity.total_elevation_gain_m).label("total_elevation_m"),
         ).where(Activity.athlete_id == athlete_id)
-        if days:
+        if since:
+            q = q.where(Activity.start_date >= since)
+        elif days:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
         result = await session.execute(q)
