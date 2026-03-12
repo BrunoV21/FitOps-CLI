@@ -10,7 +10,7 @@ _HERE = Path(__file__).parent
 
 
 def create_app() -> FastAPI:
-    from fitops.dashboard.routes import activities, analytics, overview, profile, workouts
+    from fitops.dashboard.routes import activities, analytics, api, overview, profile, workouts
 
     app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None)
 
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
 
     # Register all routers (each route module returns its router after
     # binding the shared templates instance)
+    app.include_router(api.register())
     app.include_router(overview.register(templates))
     app.include_router(activities.register(templates))
     app.include_router(analytics.register(templates))

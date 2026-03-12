@@ -113,8 +113,19 @@
         </a>
       </li>
     </ul>
-    <div class="px-5 py-3 border-t border-gray-800 text-xs text-gray-600">
-      FitOps Dashboard
+    <!-- Sync button -->
+    <div class="px-3 py-3 border-t border-gray-800">
+      <button id="sync-btn" onclick="triggerSync()"
+              class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg
+                     bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white
+                     text-sm font-medium transition-colors border border-gray-700">
+        <svg id="sync-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span id="sync-label">Sync</span>
+      </button>
+      <p id="sync-status" class="text-xs text-center mt-1.5 h-4 text-gray-600"></p>
     </div>
   </nav>
 
@@ -126,5 +137,57 @@
 
 <script src="/static/js/charts.js"></script>
 {% block scripts %}{% endblock %}
+<script>
+async function triggerSync() {
+  const btn   = document.getElementById('sync-btn');
+  const icon  = document.getElementById('sync-icon');
+  const label = document.getElementById('sync-label');
+  const status = document.getElementById('sync-status');
+
+  btn.disabled = true;
+  btn.classList.add('opacity-60', 'cursor-not-allowed');
+  icon.classList.add('animate-spin');
+  label.textContent = 'Syncing…';
+  status.textContent = '';
+
+  try {
+    const res  = await fetch('/api/sync', { method: 'POST' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Sync failed');
+    }
+
+    icon.classList.remove('animate-spin');
+    icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>`;
+    icon.style.stroke = '#4ade80';
+
+    const n = data.activities_created;
+    label.textContent = n > 0 ? `${n} new` : 'Up to date';
+    label.style.color = '#4ade80';
+
+    const streamsMsg = data.streams ? ` · ${data.streams.streams_fetched} streams` : '';
+    status.textContent = `${data.duration_s}s${streamsMsg}`;
+
+    setTimeout(() => location.reload(), 1800);
+  } catch (err) {
+    icon.classList.remove('animate-spin');
+    icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>`;
+    icon.style.stroke = '#f87171';
+    label.textContent = 'Error';
+    label.style.color = '#f87171';
+    status.textContent = err.message;
+    btn.disabled = false;
+    btn.classList.remove('opacity-60', 'cursor-not-allowed');
+    setTimeout(() => {
+      icon.style.stroke = '';
+      label.style.color = '';
+      label.textContent = 'Sync';
+      icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>`;
+      status.textContent = '';
+    }, 4000);
+  }
+}
+</script>
 </body>
 </html>

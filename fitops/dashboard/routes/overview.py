@@ -52,15 +52,23 @@ def _format_activity(a) -> dict:
     }
 
 
+_PERIOD_DAYS = {"month": 30, "year": 365, "all": None}
+_PERIOD_LABELS = {"month": "This Month", "year": "This Year", "all": "All Time"}
+
+
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
-    async def overview(request: Request):
+    async def overview(request: Request, period: str = "month"):
+        if period not in _PERIOD_DAYS:
+            period = "month"
+        days = _PERIOD_DAYS[period]
+
         settings = get_settings()
         athlete_id = settings.athlete_id
 
         athlete = await get_athlete(athlete_id) if athlete_id else None
-        recent = await get_recent_activities(athlete_id, limit=5) if athlete_id else []
-        stats = await get_activity_stats(athlete_id) if athlete_id else {}
+        recent = await get_recent_activities(athlete_id, limit=10, days=days) if athlete_id else []
+        stats = await get_activity_stats(athlete_id, days=days) if athlete_id else {}
         tl = await get_training_load_data(athlete_id, days=1) if athlete_id else None
         heatmap_data = await get_activity_heatmap_data(athlete_id) if athlete_id else []
 
@@ -83,6 +91,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "stats": stats,
                 "current_load": current_load,
                 "heatmap_json": json.dumps(heatmap_data),
+                "period": period,
+                "period_label": _PERIOD_LABELS[period],
                 "active_page": "overview",
             },
         )

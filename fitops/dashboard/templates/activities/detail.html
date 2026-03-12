@@ -242,12 +242,19 @@
 (function() {
   const STREAMS = {{ streams_json | safe }};
   const SPORT_TYPE = {{ sport_type | tojson }};
+  const THRESHOLDS = {
+    lt1: {{ lt1_hr | tojson }},
+    lt2: {{ lt2_hr | tojson }},
+  };
   const latlng = STREAMS.latlng || [];
   renderActivityMap('activity-map', latlng);
-  const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE);
+  const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE, THRESHOLDS);
+  const hasGap = (STREAMS.grade_adjusted_speed || []).length > 0
+    || ((STREAMS.grade_smooth || []).length > 0 && (STREAMS.velocity_smooth || []).length > 0);
   const available = {
     hr:   (STREAMS.heartrate || []).length > 0,
     pace: (STREAMS.velocity_smooth || []).length > 0,
+    gap:  hasGap,
     alt:  (STREAMS.altitude || []).length > 0,
     cad:  (STREAMS.cadence || []).length > 0,
     pwr:  (STREAMS.watts || []).length > 0,

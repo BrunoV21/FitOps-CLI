@@ -50,15 +50,17 @@ async def get_activity_laps(activity_db_id: int) -> list[ActivityLap]:
         return list(result.scalars().all())
 
 
-async def get_activity_stats(athlete_id: int) -> dict:
+async def get_activity_stats(athlete_id: int, days: Optional[int] = None) -> dict:
     async with get_async_session() as session:
-        result = await session.execute(
-            select(
-                func.count(Activity.id).label("total_count"),
-                func.sum(Activity.distance_m).label("total_distance_m"),
-                func.sum(Activity.total_elevation_gain_m).label("total_elevation_m"),
-            ).where(Activity.athlete_id == athlete_id)
-        )
+        q = select(
+            func.count(Activity.id).label("total_count"),
+            func.sum(Activity.distance_m).label("total_distance_m"),
+            func.sum(Activity.total_elevation_gain_m).label("total_elevation_m"),
+        ).where(Activity.athlete_id == athlete_id)
+        if days:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            q = q.where(Activity.start_date >= cutoff)
+        result = await session.execute(q)
         row = result.one()
         return {
             "total_count": row.total_count or 0,

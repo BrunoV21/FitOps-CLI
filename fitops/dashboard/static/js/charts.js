@@ -2,8 +2,34 @@
 
 // ─── Activity Detail: Map + Stream Chart ─────────────────────────────────────
 
+// Shared state for bidirectional map↔chart hover sync
+const _activitySync = { map: null, hoverMarker: null, chart: null, latlng: null, _busy: false };
+
+/** Find the index of the closest latlng point to (lat, lng). */
+function _nearestPointIndex(latlng, lat, lng) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < latlng.length; i++) {
+    const d = (latlng[i][0] - lat) ** 2 + (latlng[i][1] - lng) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/** Drive chart tooltip to a specific data index (called from map hover). */
+function _syncChartToIndex(idx) {
+  const chart = _activitySync.chart;
+  if (!chart || _activitySync._busy) return;
+  const acts = chart.data.datasets
+    .map((_, di) => ({ datasetIndex: di, index: idx }))
+    .filter((a) => !chart.data.datasets[a.datasetIndex]._isThreshold);
+  _activitySync._busy = true;
+  chart.tooltip.setActiveElements(acts, { x: 0, y: 0 });
+  chart.update('none');
+  _activitySync._busy = false;
+}
+
 /**
- * Render an interactive Leaflet map of the GPS route.
+ * Render an interactive Leaflet map of the GPS route with hover sync.
  * @param {string} containerId - ID of the div to mount the map into
  * @param {[number, number][]} latlng - Array of [lat, lng] pairs
  */
@@ -15,7 +41,10 @@ function renderActivityMap(containerId, latlng) {
     return;
   }
 
+  _activitySync.latlng = latlng;
+
   const map = L.map(containerId, { scrollWheelZoom: false, zoomControl: true });
+  _activitySync.map = map;
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap, © CARTO',
@@ -33,6 +62,25 @@ function renderActivityMap(containerId, latlng) {
   L.circleMarker(latlng[latlng.length - 1], {
     radius: 7, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 1, weight: 2,
   }).addTo(map).bindTooltip('End');
+
+  // Hover marker (orange dot, hidden until mousemove)
+  _activitySync.hoverMarker = L.circleMarker([0, 0], {
+    radius: 6, color: '#f97316', fillColor: '#f97316', fillOpacity: 1, weight: 2, opacity: 0,
+  }).addTo(map);
+
+  // Invisible thick polyline for reliable mouse hit detection
+  const hitPoly = L.polyline(latlng, { color: 'transparent', weight: 20, opacity: 0.001 }).addTo(map);
+  hitPoly.on('mousemove', (e) => {
+    const idx = _nearestPointIndex(latlng, e.latlng.lat, e.latlng.lng);
+    _syncChartToIndex(idx);
+    // Move the orange dot to the hovered point
+    _activitySync.hoverMarker.setLatLng(latlng[idx]).setStyle({ opacity: 1, fillOpacity: 1 });
+  });
+  hitPoly.on('mouseout', () => {
+    const chart = _activitySync.chart;
+    if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
+    _activitySync.hoverMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+  });
 
   map.on('click', () => map.scrollWheelZoom.enable());
   map.on('blur',  () => map.scrollWheelZoom.disable());
@@ -52,13 +100,14 @@ function _fmtMMSS(s) {
 
 
 /**
- * Render a multi-metric stream chart (HR, Pace, Altitude, Cadence, Power).
+ * Render a multi-metric stream chart (HR, Pace, GAP, Altitude, Cadence, Power).
  * @param {string} canvasId
  * @param {Object} streams - Stream arrays keyed by type
  * @param {string} sportType - Strava sport type string
+ * @param {{lt1?: number|null, lt2?: number|null}} [thresholds]
  * @returns {Chart} Chart.js instance
  */
-function renderStreamChart(canvasId, streams, sportType) {
+function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   const ctx = document.getElementById(canvasId);
   if (!ctx || !streams) return null;
 
@@ -124,6 +173,35 @@ function renderStreamChart(canvasId, streams, sportType) {
       suggestedMax: Math.max(...hrVals) * 1.02,
       ticks: { color: '#ef5350', font: { size: 11 } },
     };
+
+    // LT2 threshold line (dashed red)
+    if (thresholds.lt2) {
+      datasets.push({
+        label: 'LT2',
+        data: Array(xLabels.length).fill(thresholds.lt2),
+        borderColor: 'rgba(239,83,80,0.55)',
+        borderWidth: 1,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        yAxisID: 'yHR',
+        fill: false,
+        _isThreshold: true,
+      });
+    }
+    // LT1 threshold line (dashed orange)
+    if (thresholds.lt1) {
+      datasets.push({
+        label: 'LT1',
+        data: Array(xLabels.length).fill(thresholds.lt1),
+        borderColor: 'rgba(251,146,60,0.55)',
+        borderWidth: 1,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        yAxisID: 'yHR',
+        fill: false,
+        _isThreshold: true,
+      });
+    }
   }
 
   // Pace (from velocity_smooth)
@@ -157,6 +235,35 @@ function renderStreamChart(canvasId, streams, sportType) {
         maxTicksLimit: 6,
       },
     };
+
+    // Grade-Adjusted Pace — use Strava's stream if available, else compute from grade_smooth
+    const gasStream = streams.grade_adjusted_speed || [];
+    let gapData = null;
+    if (gasStream.length > 0) {
+      gapData = gasStream.map(v => v > 0.1 ? 1000 / v : null);
+    } else if ((streams.grade_smooth || []).length > 0) {
+      gapData = streams.velocity_smooth.map((v, i) => {
+        if (v <= 0.1) return null;
+        const g = streams.grade_smooth[i] || 0;
+        const adjSpeed = v * (1 + 0.033 * g);
+        return adjSpeed > 0.1 ? 1000 / adjSpeed : null;
+      });
+    }
+    if (gapData) {
+      datasets.push({
+        label: 'GAP',
+        data: gapData,
+        borderColor: '#38bdf8',
+        borderWidth: 1.5,
+        borderDash: [5, 3],
+        pointRadius: 0,
+        tension: 0.2,
+        yAxisID: 'yPace',
+        fill: false,
+        hidden: false,
+        _metricKey: 'gap',
+      });
+    }
   }
 
   // Cadence (hidden by default)
@@ -214,20 +321,43 @@ function renderStreamChart(canvasId, streams, sportType) {
       maintainAspectRatio: false,
       animation: false,
       interaction: { mode: 'index', intersect: false },
+      onHover: (event, activeElements) => {
+        if (_activitySync._busy || !_activitySync.hoverMarker) return;
+        const ll = _activitySync.latlng;
+        if (!ll) return;
+        if (!activeElements.length) {
+          _activitySync.hoverMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+          return;
+        }
+        const idx = activeElements[0].index;
+        if (idx < ll.length) {
+          _activitySync.hoverMarker.setLatLng(ll[idx]).setStyle({ opacity: 1, fillOpacity: 1 });
+        }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
+          filter: (item) => !item.dataset._isThreshold,
           callbacks: {
             label: (item) => {
               const ds = item.dataset;
               const v = item.parsed.y;
               if (v === null || v === undefined) return null;
               if (ds.label === 'Heart Rate') return ` HR: ${Math.round(v)} bpm`;
-              if (ds.label === 'Pace') return ` Pace: ${_fmtMMSS(v)}/km`;
-              if (ds.label === 'Altitude') return ` Alt: ${Math.round(v)} m`;
-              if (ds.label === 'Cadence') return ` Cadence: ${Math.round(v)} ${isRun ? 'spm' : 'rpm'}`;
-              if (ds.label === 'Power') return ` Power: ${Math.round(v)} W`;
+              if (ds.label === 'Pace')        return ` Pace: ${_fmtMMSS(v)}/km`;
+              if (ds.label === 'GAP')         return ` GAP: ${_fmtMMSS(v)}/km`;
+              if (ds.label === 'Altitude')    return ` Alt: ${Math.round(v)} m`;
+              if (ds.label === 'Cadence')     return ` Cadence: ${Math.round(v)} ${isRun ? 'spm' : 'rpm'}`;
+              if (ds.label === 'Power')       return ` Power: ${Math.round(v)} W`;
               return ` ${ds.label}: ${v}`;
+            },
+            afterBody: (items) => {
+              // Show threshold values when HR is being hovered
+              const lines = [];
+              if (thresholds.lt2) lines.push(` LT2: ${thresholds.lt2} bpm`);
+              if (thresholds.lt1) lines.push(` LT1: ${thresholds.lt1} bpm`);
+              const hasHR = items.some(i => i.dataset.label === 'Heart Rate');
+              return hasHR ? lines : [];
             },
           },
         },
@@ -240,6 +370,7 @@ function renderStreamChart(canvasId, streams, sportType) {
   chart._distLabels = distLabels.length > 0 ? distLabels : null;
   chart._timeLabels = timeLabels.length > 0 ? timeLabels : null;
   window._activeStreamChart = chart;
+  _activitySync.chart = chart;
 
   return chart;
 }
@@ -258,6 +389,7 @@ function initMetricToggles(chart, containerId, available) {
   const METRICS = [
     { key: 'hr',   label: 'HR',       color: '#ef5350', defaultOn: true  },
     { key: 'pace', label: 'Pace',     color: '#42a5f5', defaultOn: true  },
+    { key: 'gap',  label: 'GAP',      color: '#38bdf8', defaultOn: true  },
     { key: 'alt',  label: 'Altitude', color: '#66bb6a', defaultOn: true  },
     { key: 'cad',  label: 'Cadence',  color: '#ffa726', defaultOn: false },
     { key: 'pwr',  label: 'Power',    color: '#ab47bc', defaultOn: false },
