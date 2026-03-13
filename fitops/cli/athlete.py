@@ -12,6 +12,12 @@ from fitops.db.migrations import init_db
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
 from fitops.output.formatter import make_meta
+from fitops.output.text_formatter import (
+    print_athlete_profile,
+    print_athlete_stats,
+    print_athlete_zones,
+    print_equipment_table,
+)
 from fitops.strava.client import StravaClient
 from fitops.utils.exceptions import NotAuthenticatedError
 
@@ -19,7 +25,9 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.command("profile")
-def profile() -> None:
+def profile(
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+) -> None:
     """Show athlete profile and equipment."""
     settings = get_settings()
     try:
@@ -61,11 +69,16 @@ def profile() -> None:
         }
 
     out = asyncio.run(_fetch())
-    typer.echo(json.dumps(out, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_athlete_profile(out["athlete"])
 
 
 @app.command("stats")
-def stats() -> None:
+def stats(
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+) -> None:
     """Show Strava cumulative athlete statistics."""
     settings = get_settings()
     try:
@@ -80,11 +93,16 @@ def stats() -> None:
         return {"_meta": make_meta(), "stats": data}
 
     out = asyncio.run(_fetch())
-    typer.echo(json.dumps(out, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_athlete_stats(out["stats"])
 
 
 @app.command("zones")
-def zones() -> None:
+def zones(
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+) -> None:
     """Show HR and power zones configured in Strava."""
     settings = get_settings()
     try:
@@ -99,7 +117,10 @@ def zones() -> None:
         return {"_meta": make_meta(), "zones": data}
 
     out = asyncio.run(_fetch())
-    typer.echo(json.dumps(out, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_athlete_zones(out["zones"])
 
 
 @app.command("set")
@@ -146,12 +167,14 @@ def set_physiology(
 
         asyncio.run(_update_db())
 
-    typer.echo(json.dumps({"saved": updates}, indent=2))
+    parts = ", ".join(f"{k}={v}" for k, v in updates.items())
+    typer.echo(f"Saved: {parts}")
 
 
 @app.command("equipment")
 def equipment(
     type_filter: Optional[str] = typer.Option(None, "--type", help="Filter by type: shoes or bikes."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Show equipment (shoes/bikes) with distance and activity counts."""
     settings = get_settings()
@@ -216,7 +239,10 @@ def equipment(
         typer.echo("Athlete profile not found locally. Run `fitops sync run` first.", err=True)
         raise typer.Exit(1)
 
-    typer.echo(json.dumps({
-        "_meta": make_meta(total_count=len(items), filters_applied={"type": type_filter}),
-        "equipment": items,
-    }, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps({
+            "_meta": make_meta(total_count=len(items), filters_applied={"type": type_filter}),
+            "equipment": items,
+        }, indent=2, default=str))
+    else:
+        print_equipment_table(items)
