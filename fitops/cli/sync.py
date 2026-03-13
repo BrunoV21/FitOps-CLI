@@ -16,6 +16,7 @@ from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.session import get_async_session
 from fitops.strava.sync_engine import SyncEngine
 from fitops.utils.exceptions import FitOpsError, NotAuthenticatedError
+from fitops.output.text_formatter import print_sync_result, print_sync_streams_result, print_sync_status
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -59,6 +60,7 @@ def run(
     full: bool = typer.Option(False, "--full", help="Full historical sync from the beginning."),
     after: Optional[str] = typer.Option(None, "--after", help="Sync from this date (YYYY-MM-DD)."),
     streams: bool = typer.Option(False, "--streams", help="Also fetch HR streams for newly synced activities (up to 50)."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Sync activities from Strava."""
     settings = get_settings()
@@ -99,7 +101,10 @@ def run(
         }
         if streams_result:
             out["streams"] = streams_result
-        typer.echo(json.dumps(out, indent=2))
+        if json_output:
+            typer.echo(json.dumps(out, indent=2))
+        else:
+            print_sync_result(out)
     except FitOpsError as e:
         typer.echo(f"Sync failed: {e}", err=True)
         raise typer.Exit(1)
@@ -127,6 +132,7 @@ async def _fetch_and_cache_new_streams(limit: int) -> dict:
 def sync_streams(
     limit: int = typer.Option(50, "--limit", help="Max activities to fetch streams for (default 50, Strava rate limit safe)."),
     all_sports: bool = typer.Option(False, "--all", help="Include activities without HR data too."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Fetch and cache streams for activities that don't have them yet."""
     settings = get_settings()
@@ -161,23 +167,27 @@ def sync_streams(
 
     try:
         result = asyncio.run(_run())
-        typer.echo(json.dumps(result, indent=2))
+        if json_output:
+            typer.echo(json.dumps(result, indent=2))
+        else:
+            print_sync_streams_result(result)
     except FitOpsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
 
 
 @app.command("status")
-def status() -> None:
+def status(
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+) -> None:
     """Show sync state."""
     state = get_sync_state()
-    typer.echo(
-        json.dumps(
-            {
-                "last_sync_at": str(state.last_sync_at) if state.last_sync_at else None,
-                "activities_synced_total": state.activities_synced_total,
-                "recent_syncs": state.sync_history[:5],
-            },
-            indent=2,
-        )
-    )
+    state_dict = {
+        "last_sync_at": str(state.last_sync_at) if state.last_sync_at else None,
+        "activities_synced_total": state.activities_synced_total,
+        "recent_syncs": state.sync_history[:5],
+    }
+    if json_output:
+        typer.echo(json.dumps(state_dict, indent=2))
+    else:
+        print_sync_status(state_dict)

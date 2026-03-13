@@ -17,6 +17,16 @@ from fitops.analytics.power_curves import compute_power_curve
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.output.formatter import make_meta
+from fitops.output.text_formatter import (
+    print_training_load,
+    print_vo2max,
+    print_analytics_zones,
+    print_trends,
+    print_performance,
+    print_power_curve,
+    print_pace_zones,
+    print_snapshot,
+)
 from fitops.utils.exceptions import NotAuthenticatedError
 
 app = typer.Typer(no_args_is_help=True)
@@ -27,6 +37,7 @@ def training_load(
     days: int = typer.Option(90, "--days", help="Number of days of history to show."),
     sport: Optional[str] = typer.Option(None, "--sport", help="Filter by sport type (e.g. Run, Ride)."),
     today: bool = typer.Option(False, "--today", help="Show only today's current values."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Show CTL (fitness), ATL (fatigue), and TSB (form) training load."""
     settings = get_settings()
@@ -40,7 +51,7 @@ def training_load(
     result = asyncio.run(compute_training_load(athlete_id=settings.athlete_id, days=days, sport_filter=sport))
 
     if not result.history:
-        typer.echo(json.dumps({"error": "No activity data found. Run `fitops sync run` first."}, indent=2))
+        typer.echo("No activity data found. Run `fitops sync run` first.", err=True)
         return
 
     current = result.current
@@ -83,13 +94,17 @@ def training_load(
                 ],
             },
         }
-    typer.echo(json.dumps(output, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(output, indent=2, default=str))
+    else:
+        print_training_load(output, today)
 
 
 @app.command("vo2max")
 def vo2max(
     activities: int = typer.Option(10, "--activities", help="Number of recent qualifying activities to consider."),
     age_adjusted: bool = typer.Option(False, "--age-adjusted", help="Apply age-based adjustment to VO2max estimate."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Estimate VO2max from recent run activities."""
     settings = get_settings()
@@ -103,7 +118,7 @@ def vo2max(
     result = asyncio.run(estimate_vo2max(athlete_id=settings.athlete_id, max_activities=activities))
 
     if result is None:
-        typer.echo(json.dumps({"error": "No qualifying run activities found. Need at least 1500m run."}, indent=2))
+        typer.echo("No qualifying run activities found. Need at least 1500m run.", err=True)
         return
 
     vo2max_block: dict = {
@@ -141,10 +156,11 @@ def vo2max(
         else:
             vo2max_block["age_adjusted"] = {"error": "No birthday stored for athlete."}
 
-    typer.echo(json.dumps({
-        "_meta": make_meta(),
-        "vo2max": vo2max_block,
-    }, indent=2, default=str))
+    out = {"_meta": make_meta(), "vo2max": vo2max_block}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_vo2max(out)
 
 
 @app.command("zones")
@@ -154,6 +170,7 @@ def zones(
     set_max_hr: Optional[int] = typer.Option(None, "--set-max-hr", help="Set maximum HR (BPM)."),
     set_resting_hr: Optional[int] = typer.Option(None, "--set-resting-hr", help="Set resting HR (BPM)."),
     infer: bool = typer.Option(False, "--infer", help="Infer zones from cached activity streams."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Calculate heart rate training zones."""
     athlete_settings = get_athlete_settings()
@@ -180,7 +197,7 @@ def zones(
         inference_result = asyncio.run(infer_zones(athlete_id=settings.athlete_id))
         save_inferred_zones(inference_result)
         athlete_settings.reload()
-        typer.echo(json.dumps({
+        infer_out = {
             "_meta": make_meta(),
             "zone_inference": {
                 "lthr_inferred": inference_result.lthr,
@@ -190,27 +207,36 @@ def zones(
                 "activity_count": inference_result.activity_count,
                 "method": inference_result.inference_method,
             },
-        }, indent=2))
+        }
+        if json_output:
+            typer.echo(json.dumps(infer_out, indent=2))
+        else:
+            print_analytics_zones(infer_out)
 
     if method is None:
         method = athlete_settings.best_zone_method()
 
     if method == "none":
-        typer.echo(json.dumps({"error": "No zone parameters configured.", "hint": "Set LTHR: fitops analytics zones --set-lthr 165"}, indent=2))
+        typer.echo("No zone parameters configured. Set LTHR: fitops analytics zones --set-lthr 165", err=True)
         return
 
     zone_result = compute_zones(method=method, lthr=athlete_settings.lthr, max_hr=athlete_settings.max_hr, resting_hr=athlete_settings.resting_hr)
     if zone_result is None:
-        typer.echo(json.dumps({"error": f"Missing parameters for method '{method}'."}, indent=2))
+        typer.echo(f"Missing parameters for method '{method}'.", err=True)
         return
 
-    typer.echo(json.dumps({"_meta": make_meta(), "zones": zone_result.to_dict()}, indent=2, default=str))
+    zones_out = {"_meta": make_meta(), "zones": zone_result.to_dict()}
+    if json_output:
+        typer.echo(json.dumps(zones_out, indent=2, default=str))
+    else:
+        print_analytics_zones(zones_out)
 
 
 @app.command("trends")
 def trends(
     sport: Optional[str] = typer.Option(None, "--sport", help="Filter by sport type (e.g. Run, Ride)."),
     days: int = typer.Option(180, "--days", help="Number of days of history to analyse."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Analyse training trends: volume, consistency, seasonal patterns, and performance."""
     settings = get_settings()
@@ -224,14 +250,14 @@ def trends(
     result = asyncio.run(compute_trends(athlete_id=settings.athlete_id, days=days, sport_filter=sport))
 
     if result is None:
-        typer.echo(json.dumps({"error": "No activity data found for the specified period."}, indent=2))
+        typer.echo("No activity data found for the specified period.", err=True)
         return
 
     # Compute overtraining indicators from training load history
     tl_result = asyncio.run(compute_training_load(athlete_id=settings.athlete_id, days=days, sport_filter=sport))
     overtraining = _compute_overtraining_indicators(tl_result.history)
 
-    typer.echo(json.dumps({
+    trends_out = {
         "_meta": make_meta(filters_applied={"sport": sport, "days": days}),
         "trends": {
             "activity_count": result.activity_count,
@@ -242,12 +268,17 @@ def trends(
             "performance_trend": result.performance_trend,
             "overtraining_indicators": overtraining,
         },
-    }, indent=2, default=str))
+    }
+    if json_output:
+        typer.echo(json.dumps(trends_out, indent=2, default=str))
+    else:
+        print_trends(trends_out)
 
 
 @app.command("performance")
 def performance(
     sport: Optional[str] = typer.Option(None, "--sport", help="Sport type: Run or Ride."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Show performance metrics (running economy, FTP estimate, efficiency scores)."""
     settings = get_settings()
@@ -261,10 +292,10 @@ def performance(
     result = asyncio.run(compute_performance_metrics(athlete_id=settings.athlete_id, sport=sport))
 
     if result is None:
-        typer.echo(json.dumps({"error": "No qualifying activities found."}, indent=2))
+        typer.echo("No qualifying activities found.", err=True)
         return
 
-    typer.echo(json.dumps({
+    perf_out = {
         "_meta": make_meta(filters_applied={"sport": sport}),
         "performance": {
             "sport": result.sport,
@@ -273,13 +304,18 @@ def performance(
             "running": result.running,
             "cycling": result.cycling,
         },
-    }, indent=2, default=str))
+    }
+    if json_output:
+        typer.echo(json.dumps(perf_out, indent=2, default=str))
+    else:
+        print_performance(perf_out)
 
 
 @app.command("power-curve")
 def power_curve(
     sport: str = typer.Option("Ride", "--sport", help="Sport type: Ride or Run."),
     activities: int = typer.Option(20, "--activities", help="Max number of recent activities to use."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Compute mean maximal power curve and critical power model."""
     settings = get_settings()
@@ -293,10 +329,10 @@ def power_curve(
     result = asyncio.run(compute_power_curve(athlete_id=settings.athlete_id, sport=sport, max_activities=activities))
 
     if result is None:
-        typer.echo(json.dumps({"error": "No activities with stream data found."}, indent=2))
+        typer.echo("No activities with stream data found.", err=True)
         return
 
-    typer.echo(json.dumps({
+    pc_out = {
         "_meta": make_meta(filters_applied={"sport": sport, "max_activities": activities}),
         "power_curve": {
             "sport": result.sport,
@@ -308,12 +344,17 @@ def power_curve(
             "zones_from_cp": result.zones,
             "power_to_weight": result.power_to_weight,
         },
-    }, indent=2, default=str))
+    }
+    if json_output:
+        typer.echo(json.dumps(pc_out, indent=2, default=str))
+    else:
+        print_power_curve(pc_out)
 
 
 @app.command("pace-zones")
 def pace_zones_cmd(
     set_threshold_pace: Optional[str] = typer.Option(None, "--set-threshold-pace", help="Set threshold pace as MM:SS (e.g. 5:45)."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Show or configure running pace zones."""
     from fitops.analytics.pace_zones import get_pace_zones, set_threshold_pace as save_threshold
@@ -323,18 +364,18 @@ def pace_zones_cmd(
             result = save_threshold(set_threshold_pace)
             typer.echo(f"Threshold pace set: {result.threshold_pace_fmt}/km")
         except ValueError as e:
-            typer.echo(json.dumps({"error": str(e)}, indent=2))
+            typer.echo(str(e), err=True)
             raise typer.Exit(1)
     else:
         result = get_pace_zones()
         if result is None:
-            typer.echo(json.dumps({
-                "error": "No threshold pace configured.",
-                "hint": "Set with: fitops analytics pace-zones --set-threshold-pace 5:00",
-            }, indent=2))
+            typer.echo(
+                "No threshold pace configured. Set with: fitops analytics pace-zones --set-threshold-pace 5:00",
+                err=True,
+            )
             return
 
-    typer.echo(json.dumps({
+    pz_out = {
         "_meta": make_meta(),
         "pace_zones": {
             "threshold_pace": result.threshold_pace_fmt + "/km",
@@ -342,11 +383,17 @@ def pace_zones_cmd(
             "source": result.source,
             "zones": result.zones,
         },
-    }, indent=2, default=str))
+    }
+    if json_output:
+        typer.echo(json.dumps(pz_out, indent=2, default=str))
+    else:
+        print_pace_zones(pz_out)
 
 
 @app.command("snapshot")
-def snapshot() -> None:
+def snapshot(
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+) -> None:
     """Compute and save today's analytics snapshot (CTL, ATL, TSB, VO2max)."""
     from datetime import date, datetime, timezone
 
@@ -397,4 +444,8 @@ def snapshot() -> None:
         return {"date": str(today), **{k: v for k, v in vals.items() if k != "computed_at"}}
 
     result_data = asyncio.run(_save())
-    typer.echo(json.dumps({"_meta": make_meta(), "snapshot": result_data}, indent=2, default=str))
+    snap_out = {"_meta": make_meta(), "snapshot": result_data}
+    if json_output:
+        typer.echo(json.dumps(snap_out, indent=2, default=str))
+    else:
+        print_snapshot(snap_out)

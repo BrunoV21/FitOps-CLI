@@ -16,6 +16,12 @@ from fitops.db.models.activity_laps import ActivityLap
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
 from fitops.output.formatter import format_activity_row, make_meta, _fmt_seconds, _round2
+from fitops.output.text_formatter import (
+    print_activities_table,
+    print_activity_detail,
+    print_laps_table,
+    print_streams_summary,
+)
 from fitops.strava.client import StravaClient
 from fitops.utils.exceptions import FitOpsError, NotAuthenticatedError
 
@@ -47,8 +53,9 @@ def list_activities(
     sport: Optional[str] = typer.Option(None, "--sport", help="Filter by sport type (e.g. Run, Ride)."),
     limit: int = typer.Option(20, "--limit", help="Max number of activities to return."),
     after: Optional[str] = typer.Option(None, "--after", help="Filter activities after date (YYYY-MM-DD)."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
-    """List synced activities (LLM-friendly JSON)."""
+    """List synced activities."""
     settings = get_settings()
     try:
         settings.require_auth()
@@ -89,13 +96,17 @@ def list_activities(
         return {"_meta": make_meta(total_count=len(formatted), filters_applied=filters), "activities": formatted}
 
     output = asyncio.run(_fetch())
-    typer.echo(json.dumps(output, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(output, indent=2, default=str))
+    else:
+        print_activities_table(output["activities"])
 
 
 @app.command("get")
 def get_activity(
     activity_id: int = typer.Argument(..., help="Strava activity ID."),
     fetch_fresh: bool = typer.Option(False, "--fresh", help="Re-fetch detail from Strava API."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Get detailed info for a single activity."""
     settings = get_settings()
@@ -186,13 +197,17 @@ def get_activity(
         return {"_meta": make_meta(total_count=1), "activity": formatted}
 
     output = asyncio.run(_fetch())
-    typer.echo(json.dumps(output, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(output, indent=2, default=str))
+    else:
+        print_activity_detail(output["activity"])
 
 
 @app.command("streams")
 def get_streams(
     activity_id: int = typer.Argument(..., help="Strava activity ID."),
     fetch_fresh: bool = typer.Option(False, "--fresh", help="Re-fetch streams from Strava API."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Get activity stream data (heartrate, pace, power, etc.)."""
     settings = get_settings()
@@ -246,13 +261,17 @@ def get_streams(
         }
 
     out = asyncio.run(_fetch())
-    typer.echo(json.dumps(out, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_streams_summary(out["streams"], activity_id)
 
 
 @app.command("laps")
 def get_laps(
     activity_id: int = typer.Argument(..., help="Strava activity ID."),
     fetch_fresh: bool = typer.Option(False, "--fresh", help="Re-fetch laps from Strava API."),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Get lap splits for an activity."""
     settings = get_settings()
@@ -315,4 +334,7 @@ def get_laps(
         }
 
     out = asyncio.run(_fetch())
-    typer.echo(json.dumps(out, indent=2, default=str))
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_laps_table(out["laps"], activity_id)
