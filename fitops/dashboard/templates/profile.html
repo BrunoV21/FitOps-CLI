@@ -364,6 +364,32 @@
     {% else %}
     <p style="font-size:12px;color:var(--text-dim);">Set a threshold pace above (e.g. <code>4:30</code>) to compute pace zones, or edit manually below.</p>
     {% endif %}
+    {% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Threshold Paces (GAP)</p>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        {% if lt1_pace_fmt %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-dim);">LT1 — Aerobic threshold</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-blue);font-variant-numeric:tabular-nums;">{{ lt1_pace_fmt }}</span>
+        </div>
+        {% endif %}
+        {% if lt2_pace_fmt %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-dim);">LT2 — Lactate threshold</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-amber);font-variant-numeric:tabular-nums;">{{ lt2_pace_fmt }}</span>
+        </div>
+        {% endif %}
+        {% if vo2max_pace_fmt %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-dim);">vVO₂max — from VDOT</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-red);font-variant-numeric:tabular-nums;">{{ vo2max_pace_fmt }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <p style="font-size:10px;color:var(--text-dim);margin-top:6px;">Run <code>fitops analytics zones --infer</code> to update</p>
+    </div>
+    {% endif %}
     <!-- Custom pace zones edit form -->
     <div id="pace-edit" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
       <form method="POST" action="/profile/pace-zones">
@@ -402,11 +428,46 @@
 
 </div>
 
-<!-- Equipment Mileage -->
-{% if shoes or bikes %}
-<div class="panel" style="margin-top:1px;--delay:200ms">
+<!-- Race Predictions + Equipment -->
+<div class="grid-2" style="margin-top:1px;">
+
+  <!-- Race Predictions -->
+  <div class="panel" style="--delay:160ms">
+    <p class="panel-label">Race Predictions
+      {% if vo2max %}
+      <span style="font-size:10px;font-weight:400;text-transform:none;color:var(--text-dim);margin-left:6px;">VDOT {{ vo2max.vdot }}</span>
+      {% endif %}
+    </p>
+    {% if race_predictions %}
+    <table class="data-table" style="border:none;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th>Distance</th>
+          <th class="r">Pace</th>
+          <th class="r">Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in race_predictions %}
+        <tr {% if r.label == '12 K' %}style="background:color-mix(in srgb,var(--accent-primary) 6%,transparent);font-weight:600;"{% endif %}>
+          <td>{{ r.label }}</td>
+          <td class="r" style="font-variant-numeric:tabular-nums;">{{ r.pace }}</td>
+          <td class="r" style="font-variant-numeric:tabular-nums;">{{ r.time }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p style="font-size:10px;color:var(--text-dim);margin-top:10px;">Daniels VDOT · 12K row highlighted</p>
+    {% else %}
+    <p style="font-size:12px;color:var(--text-dim);">Sync run activities to generate race predictions.</p>
+    {% endif %}
+  </div>
+
+  <!-- Equipment Mileage -->
+  {% if shoes or bikes %}
+  <div class="panel" style="--delay:200ms">
   <p class="panel-label">Equipment Mileage</p>
-  <div class="grid-2">
+  <div>
 
     {% if shoes %}
     <div style="background:var(--bg);padding:0 16px 16px 0;">
@@ -454,8 +515,10 @@
     {% endif %}
 
   </div>
+  </div>
+  {% endif %}
+
 </div>
-{% endif %}
 
 <script>
 function toggleZoneEdit(type) {

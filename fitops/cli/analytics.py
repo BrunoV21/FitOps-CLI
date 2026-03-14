@@ -10,7 +10,7 @@ from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.training_load import compute_training_load, _compute_overtraining_indicators
 from fitops.analytics.vo2max import estimate_vo2max
 from fitops.analytics.zones import compute_zones
-from fitops.analytics.zone_inference import infer_zones, save_inferred_zones
+from fitops.analytics.zone_inference import infer_zones, infer_lt1_pace, infer_lt2_pace, save_inferred_zones, vo2max_pace_from_vdot
 from fitops.analytics.trends import compute_trends
 from fitops.analytics.performance_metrics import compute_performance_metrics
 from fitops.analytics.power_curves import compute_power_curve
@@ -251,6 +251,24 @@ def zones(
         inference_result = asyncio.run(infer_zones(athlete_id=settings.athlete_id))
         save_inferred_zones(inference_result)
         athlete_settings.reload()
+        lt2_pace_s_inferred: Optional[float] = None
+        lt1_pace_s_inferred: Optional[float] = None
+        vo2max_pace_s_computed: Optional[float] = None
+        if athlete_settings.lthr:
+            lt2_pace_s_inferred = asyncio.run(infer_lt2_pace(athlete_id=settings.athlete_id, lthr=athlete_settings.lthr))
+            if lt2_pace_s_inferred is not None:
+                athlete_settings.set(threshold_pace_per_km_s=lt2_pace_s_inferred)
+            # LT1 pace from GAP at ±6 bpm of LT1
+            zone_for_infer = compute_zones(method="lthr", lthr=athlete_settings.lthr)
+            if zone_for_infer and zone_for_infer.lt1_bpm:
+                lt1_pace_s_inferred = asyncio.run(infer_lt1_pace(athlete_id=settings.athlete_id, lt1_bpm=zone_for_infer.lt1_bpm))
+                if lt1_pace_s_inferred is not None:
+                    athlete_settings.set(lt1_pace_s=lt1_pace_s_inferred)
+        # VO2Max pace derived from VDOT (mathematical — more reliable than sparse HR data)
+        vo2max_result_for_infer = asyncio.run(estimate_vo2max(athlete_id=settings.athlete_id))
+        if vo2max_result_for_infer and vo2max_result_for_infer.vdot:
+            vo2max_pace_s_computed = vo2max_pace_from_vdot(vo2max_result_for_infer.vdot)
+            athlete_settings.set(vo2max_pace_s=vo2max_pace_s_computed)
         infer_out = {
             "_meta": make_meta(),
             "zone_inference": {
@@ -262,6 +280,19 @@ def zones(
                 "method": inference_result.inference_method,
             },
         }
+
+        def _fmt(s: float) -> str:
+            return f"{int(s // 60)}:{int(s % 60):02d}/km"
+
+        if lt1_pace_s_inferred is not None:
+            infer_out["zone_inference"]["lt1_pace_inferred"] = _fmt(lt1_pace_s_inferred)
+            infer_out["zone_inference"]["lt1_pace_s"] = lt1_pace_s_inferred
+        if lt2_pace_s_inferred is not None:
+            infer_out["zone_inference"]["lt2_pace_inferred"] = _fmt(lt2_pace_s_inferred)
+            infer_out["zone_inference"]["lt2_pace_s"] = lt2_pace_s_inferred
+        if vo2max_pace_s_computed is not None:
+            infer_out["zone_inference"]["vo2max_pace_computed"] = _fmt(vo2max_pace_s_computed)
+            infer_out["zone_inference"]["vo2max_pace_s"] = vo2max_pace_s_computed
         if json_output:
             typer.echo(json.dumps(infer_out, indent=2))
         else:
@@ -280,6 +311,14 @@ def zones(
         return
 
     zones_out = {"_meta": make_meta(), "zones": zone_result.to_dict()}
+    # Inject GAP-based threshold paces if available
+    def _inject_pace(key_fmt: str, key_s: str, pace_s: Optional[float]) -> None:
+        if pace_s is not None:
+            zones_out["zones"]["thresholds"][key_fmt] = f"{int(pace_s // 60)}:{int(pace_s % 60):02d}/km"
+            zones_out["zones"]["thresholds"][key_s] = pace_s
+    _inject_pace("lt1_pace_fmt", "lt1_pace_s", athlete_settings.lt1_pace_s)
+    _inject_pace("lt2_pace_fmt", "lt2_pace_s", athlete_settings.threshold_pace_per_km_s)
+    _inject_pace("vo2max_pace_fmt", "vo2max_pace_s", athlete_settings.vo2max_pace_s)
     if json_output:
         typer.echo(json.dumps(zones_out, indent=2, default=str))
     else:

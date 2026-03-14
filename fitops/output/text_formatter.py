@@ -399,6 +399,8 @@ def print_analytics_zones(data: dict) -> None:
         console.print()
         console.print("[bold]Zone Inference[/bold]")
         console.print(f"  LTHR     {inference.get('lthr_inferred') or '-'} bpm")
+        if inference.get("lt2_pace_inferred"):
+            console.print(f"  LT2 pace {inference.get('lt2_pace_inferred')}  [dim](grade-adjusted)[/dim]")
         console.print(f"  Max HR   {inference.get('max_hr_inferred') or '-'} bpm")
         console.print(f"  Rest HR  {inference.get('resting_hr_inferred') or '-'} bpm")
         console.print(f"  Confidence  {inference.get('confidence') or '-'}  ({inference.get('activity_count')} activities)")
@@ -412,6 +414,13 @@ def print_analytics_zones(data: dict) -> None:
     console.print(f"[bold]HR Zones[/bold]  [dim]method: {method}[/dim]")
     if zones.get("lthr"):
         console.print(f"  LTHR {zones['lthr']} bpm  |  Max HR {zones.get('max_hr') or '-'} bpm")
+    thresholds = zones.get("thresholds") or {}
+    if thresholds.get("lt1_pace_fmt"):
+        console.print(f"  LT1 pace   {thresholds['lt1_pace_fmt']}  [dim](GAP)[/dim]")
+    if thresholds.get("lt2_pace_fmt"):
+        console.print(f"  LT2 pace   {thresholds['lt2_pace_fmt']}  [dim](GAP)[/dim]")
+    if thresholds.get("vo2max_pace_fmt"):
+        console.print(f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]")
     console.print()
     if zone_list:
         table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")

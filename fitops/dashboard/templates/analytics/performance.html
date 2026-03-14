@@ -73,6 +73,14 @@
 </div>
 {% endif %}
 
+{% if lt2_pace_fmt %}
+<div class="panel">
+  <p class="panel-label">LT2 Pace (GAP)</p>
+  <p class="panel-metric c-orange">{{ lt2_pace_fmt }}</p>
+  <p class="panel-sub">grade-adjusted threshold pace</p>
+</div>
+{% endif %}
+
 {% if history %}
 <!-- VO2max history chart -->
 <div class="panel" style="margin-top:1px;--delay:160ms">

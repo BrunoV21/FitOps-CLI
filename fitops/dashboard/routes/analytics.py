@@ -138,8 +138,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
         history = []
 
         if athlete_id:
-            best_vo2max = await estimate_vo2max(athlete_id, max_activities=20)
+            best_vo2max = await estimate_vo2max(athlete_id, max_activities=50)
             history = await get_vo2max_history(athlete_id, days=days)
+
+        from fitops.analytics.athlete_settings import get_athlete_settings
+        athlete_settings = get_athlete_settings()
+        lt2_pace_s = athlete_settings.threshold_pace_per_km_s
+        lt2_pace_fmt = None
+        if lt2_pace_s:
+            m_int = int(lt2_pace_s // 60)
+            s_int = int(lt2_pace_s % 60)
+            lt2_pace_fmt = f"{m_int}:{s_int:02d}/km"
 
         history_json = json.dumps(history)
 
@@ -151,6 +160,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "history": history,
                 "history_json": history_json,
                 "selected_days": days,
+                "lt2_pace_fmt": lt2_pace_fmt,
                 "active_page": "performance",
             },
         )

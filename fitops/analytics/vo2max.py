@@ -163,7 +163,7 @@ def _estimate_from_activity(activity: Activity) -> Optional[VO2MaxResult]:
     )
 
 
-async def estimate_vo2max(athlete_id: int, max_activities: int = 10) -> Optional[VO2MaxResult]:
+async def estimate_vo2max(athlete_id: int, max_activities: int = 50) -> Optional[VO2MaxResult]:
     lookback = datetime.now(timezone.utc) - timedelta(days=365)
     async with get_async_session() as session:
         stmt = (

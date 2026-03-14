@@ -536,7 +536,9 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
   // Compute which week columns are "in focus" for the selected period
   let focusStartWeek = 0;
   let focusEndWeek   = WEEKS - 1;
-  if (period === "month") {
+  if (period === "week") {
+    focusStartWeek = WEEKS - 1; // current week column only
+  } else if (period === "month") {
     const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     firstOfMonth.setHours(0, 0, 0, 0);
     focusStartWeek = Math.max(0, Math.floor((firstOfMonth - startDate) / (7 * 86400000)));

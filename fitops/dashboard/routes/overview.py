@@ -53,11 +53,13 @@ def _format_activity(a) -> dict:
     }
 
 
-_PERIOD_LABELS = {"month": "This Month", "year": "This Year", "all": "All Time"}
+_PERIOD_LABELS = {"week": "This Week", "month": "This Month", "year": "This Year", "all": "All Time"}
 
 
 def _period_since(period: str) -> datetime | None:
     now = datetime.now(timezone.utc)
+    if period == "week":
+        return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     if period == "month":
         return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     if period == "year":
@@ -67,9 +69,9 @@ def _period_since(period: str) -> datetime | None:
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
-    async def overview(request: Request, period: str = "month"):
+    async def overview(request: Request, period: str = "week"):
         if period not in _PERIOD_LABELS:
-            period = "month"
+            period = "week"
         since = _period_since(period)
 
         settings = get_settings()
