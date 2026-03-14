@@ -687,17 +687,113 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
 
 
 /**
- * Render VO2max estimate history as a line chart.
+ * Render VO2max estimate history.
+ * Shows individual activity estimates as scatter (qualifying = purple, easy = gray)
+ * and the rolling ratchet estimate as a solid line.
  * @param {string} canvasId
- * @param {{date: string, estimate: number, confidence_label: string}[]} data - oldest first
+ * @param {{date: string, estimate: number, rolling_vo2max?: number, is_qualifying?: boolean}[]} data - oldest first
  */
 function renderVo2maxChart(canvasId, data) {
   const ctx = document.getElementById(canvasId);
   if (!ctx) return;
 
   const labels = data.map((d) => d.date);
-  const estimates = data.map((d) => d.estimate);
-  const avg = estimates.reduce((a, b) => a + b, 0) / estimates.length;
+  const hasRolling = data.some((d) => d.rolling_vo2max != null);
+
+  // Individual estimates — color by qualifying status
+  const scatterColors = data.map((d) =>
+    d.is_qualifying ? "rgba(170,85,255,0.75)" : "rgba(120,120,120,0.35)"
+  );
+  const scatterBorder = data.map((d) =>
+    d.is_qualifying ? "#aa55ff" : "#555555"
+  );
+  const scatterRadius = data.map((d) => (d.is_qualifying ? 4 : 3));
+
+  const datasets = [
+    {
+      label: "Activity estimate",
+      data: data.map((d) => d.estimate),
+      type: "scatter",
+      backgroundColor: scatterColors,
+      borderColor: scatterBorder,
+      pointRadius: scatterRadius,
+      pointHoverRadius: 6,
+      showLine: false,
+      order: 2,
+    },
+  ];
+
+  if (hasRolling) {
+    datasets.unshift({
+      label: "Rolling VO₂max",
+      data: data.map((d) => d.rolling_vo2max ?? null),
+      borderColor: "#00ff87",
+      backgroundColor: "rgba(0,255,135,0.06)",
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.3,
+      fill: false,
+      order: 1,
+    });
+  }
+
+  new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          position: "top",
+          labels: { usePointStyle: true, padding: 16 },
+        },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const v = item.parsed.y;
+              if (v == null) return null;
+              const suffix = item.dataset.label === "Activity estimate"
+                ? (data[item.dataIndex]?.is_qualifying ? " ✓" : " (easy)")
+                : "";
+              return ` ${item.dataset.label}: ${v.toFixed(1)}${suffix}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: { maxTicksLimit: 10, maxRotation: 45, font: { size: 10, family: "ui-monospace, monospace" } },
+        },
+        y: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          title: { display: true, text: "ml/kg/min", color: "#888", font: { size: 10, family: "ui-monospace, monospace" } },
+          ticks: { callback: (v) => v.toFixed(0), font: { size: 10, family: "ui-monospace, monospace" } },
+          suggestedMin: 30,
+        },
+      },
+    },
+  });
+}
+
+
+/**
+ * Render LT1 / LT2 / vVO2max pace evolution as a line chart.
+ * @param {string} canvasId
+ * @param {{date: string, derived_lt1_pace_s?: number, derived_lt2_pace_s?: number, derived_vo2max_pace_s?: number}[]} data - oldest first
+ */
+function renderPaceEvolutionChart(canvasId, data) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+
+  const rows = data.filter(d => d.derived_lt1_pace_s || d.derived_lt2_pace_s || d.derived_vo2max_pace_s);
+  if (rows.length === 0) return;
+
+  const labels = rows.map(d => d.date);
+  const allPaces = rows.flatMap(d => [d.derived_lt1_pace_s, d.derived_lt2_pace_s, d.derived_vo2max_pace_s].filter(Boolean));
+  const paceMin = Math.min(...allPaces) * 0.96;
+  const paceMax = Math.max(...allPaces) * 1.04;
 
   new Chart(ctx, {
     type: "line",
@@ -705,23 +801,36 @@ function renderVo2maxChart(canvasId, data) {
       labels,
       datasets: [
         {
-          label: "VO₂max (ml/kg/min)",
-          data: estimates,
-          borderColor: "#aa55ff",
-          backgroundColor: "rgba(170,85,255,0.08)",
+          label: "LT1 (aerobic)",
+          data: rows.map(d => d.derived_lt1_pace_s || null),
+          borderColor: "#00ff87",
+          backgroundColor: "rgba(0,255,135,0.06)",
           borderWidth: 1.5,
           pointRadius: 3,
           pointHoverRadius: 5,
           tension: 0.3,
-          fill: true,
+          fill: false,
         },
         {
-          label: "Average",
-          data: labels.map(() => parseFloat(avg.toFixed(1))),
-          borderColor: "rgba(0,170,255,0.4)",
+          label: "LT2 (threshold)",
+          data: rows.map(d => d.derived_lt2_pace_s || null),
+          borderColor: "#ffaa00",
+          backgroundColor: "rgba(255,170,0,0.06)",
           borderWidth: 1.5,
-          borderDash: [5, 4],
-          pointRadius: 0,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: "vVO₂max",
+          data: rows.map(d => d.derived_vo2max_pace_s || null),
+          borderColor: "#ff3355",
+          backgroundColor: "rgba(255,51,85,0.06)",
+          borderWidth: 1.5,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          tension: 0.3,
           fill: false,
         },
       ],
@@ -736,7 +845,11 @@ function renderVo2maxChart(canvasId, data) {
         },
         tooltip: {
           callbacks: {
-            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}`,
+            label: (item) => {
+              const v = item.parsed.y;
+              if (v === null || v === undefined) return null;
+              return ` ${item.dataset.label}: ${_fmtMMSS(v)}/km`;
+            },
           },
         },
       },
@@ -746,10 +859,16 @@ function renderVo2maxChart(canvasId, data) {
           ticks: { maxTicksLimit: 10, maxRotation: 45, font: { size: 10, family: 'ui-monospace, monospace' } },
         },
         y: {
+          reverse: true,
+          min: paceMin,
+          max: paceMax,
           grid: { color: "rgba(255,255,255,0.04)" },
-          title: { display: true, text: "ml/kg/min", color: "#888", font: { size: 10, family: 'ui-monospace, monospace' } },
-          ticks: { callback: (v) => v.toFixed(0), font: { size: 10, family: 'ui-monospace, monospace' } },
-          suggestedMin: 30,
+          title: { display: true, text: "min/km", color: "#888", font: { size: 10, family: 'ui-monospace, monospace' } },
+          ticks: {
+            callback: (v) => _fmtMMSS(v),
+            maxTicksLimit: 6,
+            font: { size: 10, family: 'ui-monospace, monospace' },
+          },
         },
       },
     },

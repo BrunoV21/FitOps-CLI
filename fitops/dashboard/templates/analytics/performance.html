@@ -20,11 +20,16 @@
 
 {% if best_vo2max %}
 <!-- Best estimate panels -->
+{% set current_rolling = history[-1].rolling_vo2max if history and history[-1].rolling_vo2max else best_vo2max.estimate %}
 <div class="grid-3" style="margin-bottom:1px;">
   <div class="panel panel--accent-purple" style="--delay:0ms">
-    <p class="panel-label">Best VO₂max Estimate</p>
-    <p class="panel-metric c-purple">{{ best_vo2max.estimate }}</p>
-    <p class="panel-sub">ml/kg/min · {{ best_vo2max.confidence_label }} confidence</p>
+    <p class="panel-label">Current VO₂max</p>
+    <p class="panel-metric c-purple">{{ current_rolling }}</p>
+    <p class="panel-sub">ml/kg/min · rolling estimate
+      {% if current_rolling != best_vo2max.estimate %}
+      · peak {{ best_vo2max.estimate }}
+      {% endif %}
+    </p>
   </div>
   <div class="panel" style="--delay:40ms">
     <p class="panel-label">From Activity</p>
@@ -75,7 +80,20 @@
 
 {% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
 <div class="panel" style="margin-top:1px;--delay:120ms">
-  <p class="panel-label">Running Intensity Thresholds</p>
+  <p class="panel-label">Running Intensity Thresholds
+    {% if race_predictions and race_predictions.lt2_implied_vo2max %}
+    {% set implied = race_predictions.lt2_implied_vo2max %}
+    {% set diff = (implied - current_rolling) | abs %}
+    {% if diff > 3 %}
+    <span class="badge badge-amber" style="margin-left:8px;font-size:10px;vertical-align:middle;"
+          title="LT2 pace implies VO₂max {{ implied }} — differs from rolling estimate {{ current_rolling }}. Re-run --infer to recalibrate.">
+      LT2 implies {{ implied }} ml/kg/min
+    </span>
+    {% else %}
+    <span class="badge badge-green" style="margin-left:8px;font-size:10px;vertical-align:middle;">consistent with VO₂max</span>
+    {% endif %}
+    {% endif %}
+  </p>
   <div style="display:flex;gap:32px;margin-top:12px;flex-wrap:wrap;">
     {% if lt1_pace_fmt %}
     <div>
@@ -96,25 +114,54 @@
     </div>
     {% endif %}
   </div>
-  <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces &middot; run <code>fitops analytics zones --infer</code> to update</p>
+  <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces from HR streams &middot; run <code>fitops analytics zones --infer</code> to update</p>
 </div>
 {% endif %}
 
-{% if race_predictions and race_predictions.predictions %}
+{% if race_predictions %}
 <div class="panel" style="margin-top:1px;--delay:140ms">
-  <p class="panel-label">Race Time Predictions
-    <span class="badge badge-dim" style="margin-left:8px;font-size:10px;vertical-align:middle;">{{ race_predictions.method | upper }}</span>
-  </p>
-  <p class="panel-sub" style="margin-bottom:10px;">Based on {{ race_predictions.source_distance_km }} km effort at {{ race_predictions.source_pace }}/km</p>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-    {% for label, pred in race_predictions.predictions.items() %}
-    <div style="text-align:center;padding:12px 8px;background:var(--surface-2);border-radius:6px;">
-      <p class="panel-sub" style="margin-bottom:6px;">{{ label }}</p>
-      <p style="font-size:18px;font-weight:700;color:var(--accent-purple);">{{ pred.hms }}</p>
-      <p class="panel-sub">{{ pred.predicted_pace }}/km</p>
+  <p class="panel-label">Race Time Predictions</p>
+
+  {% if race_predictions.lt2_predictions %}
+  <!-- Primary: LT2-anchored -->
+  <div style="margin-bottom:16px;">
+    <p class="panel-sub" style="margin-bottom:8px;">
+      <span class="badge badge-green" style="font-size:10px;">LT2-anchored</span>
+      &nbsp;From your measured threshold pace {{ race_predictions.lt2_source_pace }}/km &middot; consistent regardless of daily training intensity
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      {% for label, pred in race_predictions.lt2_predictions.items() %}
+      <div style="text-align:center;padding:12px 8px;background:var(--surface-2);border-radius:6px;">
+        <p class="panel-sub" style="margin-bottom:6px;">{{ label }}</p>
+        <p style="font-size:18px;font-weight:700;color:var(--accent-green);">{{ pred.hms }}</p>
+        <p class="panel-sub">{{ pred.predicted_pace }}/km</p>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
+  {% endif %}
+
+  {% if race_predictions.riegel_predictions %}
+  <!-- Secondary: Riegel from best effort -->
+  <div>
+    <p class="panel-sub" style="margin-bottom:8px;">
+      <span class="badge badge-dim" style="font-size:10px;">Riegel</span>
+      &nbsp;From best recorded effort ({{ race_predictions.riegel_source_distance_km }} km @ {{ race_predictions.riegel_source_pace }}/km · {{ race_predictions.riegel_source_confidence }} confidence)
+      {% if race_predictions.riegel_source_confidence == 'Low' %}
+      &nbsp;<span style="color:var(--accent-amber);">&#9888; low-confidence source — treat as estimate only</span>
+      {% endif %}
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      {% for label, pred in race_predictions.riegel_predictions.items() %}
+      <div style="text-align:center;padding:10px 8px;background:var(--surface-2);border-radius:6px;opacity:0.65;">
+        <p class="panel-sub" style="margin-bottom:4px;">{{ label }}</p>
+        <p style="font-size:15px;font-weight:600;color:var(--text-muted);">{{ pred.hms }}</p>
+        <p class="panel-sub">{{ pred.predicted_pace }}/km</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -122,7 +169,19 @@
 <!-- VO2max history chart -->
 <div class="panel" style="margin-top:1px;--delay:160ms">
   <p class="panel-label">VO₂max Over Time</p>
-  <canvas id="vo2maxChart" height="60"></canvas>
+  <p class="panel-sub" style="margin-bottom:8px;">
+    <span style="color:var(--accent-green);">&#9644;</span> Rolling estimate &nbsp;&middot;&nbsp;
+    <span style="color:#aa55ff;">&#9679;</span> Qualifying effort (≥5 km) &nbsp;&middot;&nbsp;
+    <span style="color:#555;">&#9679;</span> Easy / short run (does not update estimate)
+  </p>
+  <canvas id="vo2maxChart" height="70"></canvas>
+</div>
+
+<!-- Pace threshold evolution chart -->
+<div class="panel" style="margin-top:1px;--delay:180ms">
+  <p class="panel-label">Pace Thresholds Over Time</p>
+  <p class="panel-sub" style="margin-bottom:8px;">LT1 · LT2 · vVO₂max — derived per activity from VDOT &middot; lower = faster</p>
+  <canvas id="paceEvolutionChart" height="60"></canvas>
 </div>
 
 <!-- Run history table -->
@@ -136,10 +195,11 @@
         <th>Date</th>
         <th>Activity</th>
         <th class="r">Distance</th>
-        <th class="r">VO₂max Est.</th>
+        <th class="r">Est.</th>
+        <th class="r">Rolling</th>
         <th class="r">VDOT</th>
         <th class="r">Cooper</th>
-        <th class="r">Confidence</th>
+        <th class="r">Signal</th>
       </tr>
     </thead>
     <tbody>
@@ -155,16 +215,16 @@
           </a>
         </td>
         <td class="r">{{ row.distance_km }} km</td>
-        <td class="r" style="color:var(--accent-purple);font-weight:600;">{{ row.estimate }}</td>
+        <td class="r" style="color:var(--text-muted);">{{ row.estimate }}</td>
+        <td class="r" style="color:var(--accent-green);font-weight:600;">{{ row.rolling_vo2max if row.rolling_vo2max else "—" }}</td>
         <td class="r">{{ row.vdot if row.vdot else "—" }}</td>
         <td class="r">{{ row.cooper if row.cooper else "—" }}</td>
         <td class="r">
-          <span class="badge
-            {% if row.confidence_label == 'High' %}badge-green
-            {% elif row.confidence_label == 'Moderate' %}badge-amber
-            {% else %}badge-dim{% endif %}">
-            {{ row.confidence_label }}
-          </span>
+          {% if row.is_qualifying %}
+          <span class="badge badge-green" title="Updates rolling VO₂max">qualifying</span>
+          {% else %}
+          <span class="badge badge-dim" title="Too short/easy to update estimate">easy</span>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -184,6 +244,7 @@
 const VO2MAX_HISTORY = {{ history_json | safe }};
 if (VO2MAX_HISTORY.length > 0) {
   renderVo2maxChart("vo2maxChart", VO2MAX_HISTORY);
+  renderPaceEvolutionChart("paceEvolutionChart", VO2MAX_HISTORY);
 }
 </script>
 {% endblock %}
