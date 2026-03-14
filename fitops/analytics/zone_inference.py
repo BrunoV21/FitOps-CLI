@@ -76,7 +76,7 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
         activities = result.scalars().all()
 
         all_hr: list[float] = []
-        all_rolling: list[float] = []
+        pending_rolling: list[list[float]] = []  # per-activity rolling windows, filtered later
         acts_with_hr = 0
         quality_scores: list[float] = []
 
@@ -111,7 +111,7 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
             if time_stream is not None:
                 td = time_stream.data
                 if len(td) == len(hr_data):
-                    all_rolling.extend(_rolling_averages_20min(hr_data, td))
+                    pending_rolling.append(_rolling_averages_20min(hr_data, td))
 
     if not all_hr:
         return ZoneInferenceResult(
@@ -121,6 +121,16 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
 
     max_hr_raw = _percentile(all_hr, MAX_HR_PERCENTILE)
     max_hr = min(MAX_HR_CAP, round(max_hr_raw)) if max_hr_raw else None
+
+    # Only include rolling windows from hard efforts (>=80% of max HR)
+    # so easy runs don't dilute the LTHR percentile estimate.
+    intensity_floor = (max_hr_raw * 0.80) if max_hr_raw else 155.0
+    all_rolling = [
+        avg
+        for windows in pending_rolling
+        for avg in windows
+        if avg >= intensity_floor
+    ]
 
     if all_rolling:
         inference_method = "rolling_window"
@@ -139,11 +149,145 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     return ZoneInferenceResult(
         lthr=lthr,
         max_hr=max_hr,
-        resting_hr=None,  # cannot be inferred from activities — must be set manually
+        resting_hr=None,
         confidence=_confidence_score(acts_with_hr, avg_quality, consistency_score),
         activity_count=acts_with_hr,
         inference_method=inference_method,
     )
+
+
+async def infer_lt2_pace(athlete_id: int, lthr: int, max_activities: int = 30) -> Optional[float]:
+    """
+    Estimate LT2 pace (sec/km) from grade_adjusted_speed stream at moments
+    where HR >= 97% of LTHR. Returns median GAP as sec/km, or None if insufficient data.
+    """
+    hr_floor = lthr * 0.97
+    gap_values: list[float] = []
+
+    async with get_async_session() as session:
+        stmt = (
+            select(Activity)
+            .where(
+                Activity.athlete_id == athlete_id,
+                Activity.streams_fetched == True,
+                Activity.sport_type.in_(["Run", "TrailRun", "VirtualRun"]),
+            )
+            .order_by(Activity.start_date.desc())
+            .limit(max_activities)
+        )
+        result = await session.execute(stmt)
+        activities = result.scalars().all()
+
+        for act in activities:
+            hr_res = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == act.id,
+                    ActivityStream.stream_type == "heartrate",
+                )
+            )
+            hr_stream = hr_res.scalar_one_or_none()
+            if hr_stream is None:
+                continue
+
+            gap_res = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == act.id,
+                    ActivityStream.stream_type == "grade_adjusted_speed",
+                )
+            )
+            gap_stream = gap_res.scalar_one_or_none()
+            if gap_stream is None:
+                continue
+
+            hr_data = hr_stream.data
+            gap_data = gap_stream.data
+            if len(hr_data) != len(gap_data):
+                continue
+
+            for hr, gap_ms in zip(hr_data, gap_data):
+                if hr is None or gap_ms is None:
+                    continue
+                if hr >= hr_floor and gap_ms > 0.5:  # >0.5 m/s = moving
+                    gap_values.append(1000.0 / gap_ms)  # convert m/s -> sec/km
+
+    if len(gap_values) < 20:
+        return None
+
+    gap_values.sort()
+    median_idx = len(gap_values) // 2
+    return round(gap_values[median_idx], 1)
+
+
+async def infer_lt1_pace(athlete_id: int, lt1_bpm: int, max_activities: int = 30) -> Optional[float]:
+    """
+    Estimate LT1 pace (sec/km) from grade_adjusted_speed at moments where HR is
+    within ±6 bpm of LT1 (aerobic threshold). Returns median GAP as sec/km, or None.
+    """
+    hr_lo = lt1_bpm - 6
+    hr_hi = lt1_bpm + 6
+    gap_values: list[float] = []
+
+    async with get_async_session() as session:
+        stmt = (
+            select(Activity)
+            .where(
+                Activity.athlete_id == athlete_id,
+                Activity.streams_fetched == True,
+                Activity.sport_type.in_(["Run", "TrailRun", "VirtualRun"]),
+            )
+            .order_by(Activity.start_date.desc())
+            .limit(max_activities)
+        )
+        result = await session.execute(stmt)
+        activities = result.scalars().all()
+
+        for act in activities:
+            hr_res = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == act.id,
+                    ActivityStream.stream_type == "heartrate",
+                )
+            )
+            hr_stream = hr_res.scalar_one_or_none()
+            if hr_stream is None:
+                continue
+
+            gap_res = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == act.id,
+                    ActivityStream.stream_type == "grade_adjusted_speed",
+                )
+            )
+            gap_stream = gap_res.scalar_one_or_none()
+            if gap_stream is None:
+                continue
+
+            hr_data = hr_stream.data
+            gap_data = gap_stream.data
+            if len(hr_data) != len(gap_data):
+                continue
+
+            for hr, gap_ms in zip(hr_data, gap_data):
+                if hr is None or gap_ms is None:
+                    continue
+                if hr_lo <= hr <= hr_hi and gap_ms > 0.5:
+                    gap_values.append(1000.0 / gap_ms)
+
+    if len(gap_values) < 20:
+        return None
+
+    gap_values.sort()
+    return round(gap_values[len(gap_values) // 2], 1)
+
+
+def vo2max_pace_from_vdot(vdot: float) -> float:
+    """
+    Derive vVO2max pace (sec/km) from Daniels VDOT using the VO2 demand formula.
+    Solves: vdot = -4.6 + 0.182258*v + 0.000104*v^2 for v in m/min.
+    """
+    a, b, c = 0.000104, 0.182258, -(vdot + 4.6)
+    v_mpm = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)  # m/min
+    return round(1000.0 / (v_mpm / 60), 1)  # sec/km
 
 
 def save_inferred_zones(result: ZoneInferenceResult) -> None:

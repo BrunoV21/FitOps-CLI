@@ -58,6 +58,14 @@ class AthleteSettings:
         return self._data.get("threshold_pace_per_km_s")
 
     @property
+    def lt1_pace_s(self) -> Optional[float]:
+        return self._data.get("lt1_pace_s")
+
+    @property
+    def vo2max_pace_s(self) -> Optional[float]:
+        return self._data.get("vo2max_pace_s")
+
+    @property
     def lt1_hr(self) -> Optional[int]:
         return self._data.get("lt1_hr")
 

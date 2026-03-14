@@ -17,7 +17,7 @@
     {% endif %}
   </div>
   <div class="period-tabs">
-    {% for p, lbl in [('month','This Month'),('year','This Year'),('all','All Time')] %}
+    {% for p, lbl in [('week','This Week'),('month','This Month'),('year','This Year'),('all','All Time')] %}
     <a href="/?period={{ p }}" class="period-tab {% if period == p %}active{% endif %}">{{ lbl }}</a>
     {% endfor %}
   </div>

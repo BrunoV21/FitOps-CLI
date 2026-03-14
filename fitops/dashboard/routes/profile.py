@@ -106,6 +106,41 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
         pz = compute_pace_zones(int(threshold_pace_s))
         pace_zones = pz.zones
 
+    def _fmt_s(s: Optional[float]) -> Optional[str]:
+        if s is None:
+            return None
+        si = int(s)
+        return f"{si // 60}:{si % 60:02d}/km"
+
+    lt1_pace_fmt = _fmt_s(athlete_settings_data.get("lt1_pace_s"))
+    lt2_pace_fmt = _fmt_s(athlete_settings_data.get("threshold_pace_per_km_s"))
+    vo2max_pace_fmt = _fmt_s(athlete_settings_data.get("vo2max_pace_s"))
+
+    # Race predictions from Daniels VDOT using fractional utilization per distance
+    race_predictions = None
+    if vo2max_result and vo2max_result.vdot:
+        vdot = vo2max_result.vdot
+
+        def _vdot_race(frac: float, dist_m: int) -> dict:
+            """Predict race pace and time for a given fractional utilization."""
+            demand = vdot * frac
+            a, b, c = 0.000104, 0.182258, -(demand + 4.6)
+            v_mpm = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)
+            pace_s = round(1000 / (v_mpm / 60))
+            total_s = round(dist_m / (v_mpm / 60))
+            h, rem = divmod(total_s, 3600)
+            m, s = divmod(rem, 60)
+            time_fmt = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+            return {"pace": f"{pace_s // 60}:{pace_s % 60:02d}/km", "time": time_fmt}
+
+        race_predictions = [
+            {"label": "5 K",        **_vdot_race(0.979, 5000)},
+            {"label": "10 K",       **_vdot_race(0.939, 10000)},
+            {"label": "12 K",       **_vdot_race(0.922, 12000)},
+            {"label": "Half (21K)", **_vdot_race(0.879, 21097)},
+            {"label": "Marathon",   **_vdot_race(0.838, 42195)},
+        ]
+
     # Custom pace zone overrides
     custom_pace_bounds = athlete_settings_data.get("custom_pace_zone_bounds")
     pace_zones_custom = bool(custom_pace_bounds and len(custom_pace_bounds) == 4)
@@ -144,6 +179,10 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
         "pace_zones": pace_zones,
         "pace_zones_custom": pace_zones_custom,
         "pace_edit_bounds": pace_edit_bounds,
+        "lt1_pace_fmt": lt1_pace_fmt,
+        "lt2_pace_fmt": lt2_pace_fmt,
+        "vo2max_pace_fmt": vo2max_pace_fmt,
+        "race_predictions": race_predictions,
         "vo2max": vo2max_result,
         "shoes": shoes,
         "bikes": bikes,
