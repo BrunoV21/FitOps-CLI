@@ -8,9 +8,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.training_load import _compute_overtraining_indicators
-from fitops.analytics.vo2max import estimate_vo2max
+from fitops.analytics.vo2max import estimate_vo2max, compute_vo2max_rolling
 from fitops.config.settings import get_settings
 from fitops.analytics.vo2max import compute_race_predictions
+from fitops.analytics.zone_inference import paces_from_vdot
 from fitops.dashboard.queries.analytics import (
     get_training_load_data,
     get_vo2max_history,
@@ -90,6 +91,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if athlete_id:
             best_vo2max = await estimate_vo2max(athlete_id, max_activities=50)
             history = await get_vo2max_history(athlete_id, days=days)
+            # Anchor rolling model at the known best estimate so the starting
+            # point isn't dragged down by the first easy run in the window.
+            compute_vo2max_rolling(
+                history, initial=best_vo2max.estimate if best_vo2max else None
+            )
 
         from fitops.analytics.athlete_settings import get_athlete_settings
         athlete_settings = get_athlete_settings()
@@ -105,6 +111,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
         race_predictions = None
         if best_vo2max:
             race_predictions = compute_race_predictions(best_vo2max, lt2_pace_s=lt2_pace_s)
+
+        # Enrich each history row with derived pace thresholds from VDOT
+        for row in history:
+            vdot = row.get("vdot")
+            if vdot:
+                lt1_s, lt2_s, vo2s = paces_from_vdot(vdot)
+                row["derived_lt1_pace_s"] = lt1_s
+                row["derived_lt2_pace_s"] = lt2_s
+                row["derived_vo2max_pace_s"] = vo2s
 
         history_json = json.dumps(history)
 

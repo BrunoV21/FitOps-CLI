@@ -290,6 +290,20 @@ def vo2max_pace_from_vdot(vdot: float) -> float:
     return round(1000.0 / (v_mpm / 60), 1)  # sec/km
 
 
+def paces_from_vdot(vdot: float) -> tuple[float, float, float]:
+    """
+    Derive LT1, LT2, and vVO2max paces (sec/km) from Daniels VDOT.
+    LT1 ≈ 75% VO2max, LT2 ≈ 88% VO2max, vVO2max = 100% VO2max.
+    Returns (lt1_pace_s, lt2_pace_s, vo2max_pace_s).
+    """
+    def _solve(vo2: float) -> float:
+        a, b, c = 0.000104, 0.182258, -(vo2 + 4.6)
+        v_mpm = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)
+        return round(1000.0 / (v_mpm / 60), 1)
+
+    return _solve(0.75 * vdot), _solve(0.88 * vdot), _solve(vdot)
+
+
 def save_inferred_zones(result: ZoneInferenceResult) -> None:
     settings = get_athlete_settings()
     updates: dict = {"inference_confidence": result.confidence}

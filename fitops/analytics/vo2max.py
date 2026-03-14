@@ -227,36 +227,191 @@ def _fmt_pace_from_s(time_s: float, dist_m: float) -> str:
     return f"{int(pace_s // 60)}:{int(pace_s % 60):02d}"
 
 
+# ---------------------------------------------------------------------------
+# Rolling VO2max — ratchet model
+# ---------------------------------------------------------------------------
+
+# Minimum confidence for an activity to *update* the rolling estimate.
+# confidence ≥ 0.6 requires distance ≥ 5 km plus consistent VDOT/Cooper agreement.
+_QUALIFY_CONFIDENCE = 0.6
+
+# After GRACE_DAYS of no qualifying effort, VO2max starts to decay.
+_DECAY_GRACE_DAYS = 14
+
+# Exponential decay rate per week beyond the grace period (~0.5%/week; full
+# detraining is ~1-2%/week, regular easy training halves that).
+_DECAY_RATE_PER_WEEK = 0.005
+
+# How much of a qualifying activity's downward signal to absorb (0.2 = damped).
+# Upward signals are absorbed fully.
+_DECREASE_DAMPING = 0.2
+
+
+def compute_vo2max_rolling(history: list[dict], initial: Optional[float] = None) -> list[dict]:
+    """
+    Apply a ratchet model to the per-activity VO2max history (oldest first).
+
+    Rules:
+    - Only "qualifying" activities (confidence ≥ 0.6, i.e. ≥5 km good-effort runs)
+      can move the rolling estimate.
+    - A qualifying activity raises the rolling value immediately and fully.
+    - A qualifying activity that is lower than the current value only damps it down
+      by DECREASE_DAMPING (20%) of the gap — a single easy 5km doesn't wipe fitness.
+    - Non-qualifying activities (short, slow, easy) leave the rolling value unchanged.
+    - After DECAY_GRACE_DAYS with no qualifying effort, the estimate decays at
+      DECAY_RATE_PER_WEEK — modelling real detraining.
+
+    Adds ``rolling_vo2max`` and ``is_qualifying`` to each entry in-place.
+    Returns the same list.
+
+    ``initial`` should be the athlete's known best VO2max estimate (e.g. from the
+    all-time best qualifying effort).  This anchors the rolling value so it starts
+    from peak fitness rather than from whichever easy run happens to be first in the
+    selected time window.  When None the first qualifying activity bootstraps the value.
+    """
+    if not history:
+        return history
+
+    from datetime import date as _date
+
+    def _parse(d: str) -> _date:
+        try:
+            return _date.fromisoformat(d)
+        except ValueError:
+            return _date.today()
+
+    rolling: Optional[float] = initial
+    last_qualifying_date: Optional[_date] = None
+
+    for row in history:
+        activity_date = _parse(row["date"])
+        estimate = row.get("estimate", 0.0)
+        confidence = row.get("confidence", 0.0)
+        is_qualifying = confidence >= _QUALIFY_CONFIDENCE
+
+        # Apply decay if we have an established estimate and qualifying activity is overdue
+        if rolling is not None and last_qualifying_date is not None:
+            days_gap = (activity_date - last_qualifying_date).days
+            if days_gap > _DECAY_GRACE_DAYS:
+                extra_weeks = (days_gap - _DECAY_GRACE_DAYS) / 7.0
+                rolling = rolling * (1 - _DECAY_RATE_PER_WEEK) ** extra_weeks
+
+        if rolling is None:
+            # No initial given: bootstrap from first qualifying activity only
+            if is_qualifying:
+                rolling = estimate
+                last_qualifying_date = activity_date
+        elif is_qualifying:
+            if estimate >= rolling:
+                rolling = estimate  # full increase
+            else:
+                rolling = rolling + _DECREASE_DAMPING * (estimate - rolling)  # damped decrease
+            last_qualifying_date = activity_date
+        # else: non-qualifying — rolling stays as is (possibly already decayed above)
+
+        row["rolling_vo2max"] = round(rolling, 1)
+        row["is_qualifying"] = is_qualifying
+
+    return history
+
+
+# ---------------------------------------------------------------------------
+# Race Predictions
+# ---------------------------------------------------------------------------
+#
+# Industry standard (Jack Daniels VDOT system, Pfitzinger):
+#   Everything derives from ONE consistent effort.  When a measured LT2 pace
+#   is available it is the most reliable anchor because it reflects how the
+#   individual athlete's aerobic system actually performs, not a theoretical
+#   estimate from a training run.
+#
+# LT2 → race pace ratios from Daniels VDOT tables (averaged VDOT 40–65):
+#   5K ≈ 7.6% faster than LT2 pace/km
+#   10K ≈ 3.8% faster
+#   Half ≈ 2.0% slower
+#   Marathon ≈ 7.0% slower
+#
+# Riegel (T2 = T1 × (D2/D1)^1.06) is shown alongside for reference but is
+# only reliable when the source effort was near-maximal (race or time-trial).
+# It is NOT reliable from easy or moderate training runs.
+
+_LT2_RACE_PACE_RATIOS: dict[str, float] = {
+    "5K":       0.924,
+    "10K":      0.962,
+    "Half":     1.020,
+    "Marathon": 1.070,
+}
+
+
+def vo2max_from_lt2_pace(lt2_pace_s: float) -> float:
+    """
+    Back-calculate VO2max from a measured LT2 pace (sec/km).
+
+    LT2 is assumed to occur at 88% of VO2max (Daniels standard).
+    Uses the same VO2-demand quadratic as _daniels_vdot, solved at LT2 speed.
+    """
+    v_mpm = (1000.0 / lt2_pace_s) * 60.0  # m/min
+    vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm ** 2
+    return round(max(28.0, min(90.0, vo2_demand / 0.88)), 1)
+
+
+def _pred_entry(pred_s: float, d2_m: float) -> dict:
+    return {
+        "distance_km": round(d2_m / 1000, 4),
+        "predicted_time_s": round(pred_s),
+        "predicted_pace": _fmt_pace_from_s(pred_s, d2_m),
+        "hms": _fmt_hms(pred_s),
+    }
+
+
 def compute_race_predictions(
     vo2_result: "VO2MaxResult",
     lt2_pace_s: Optional[float] = None,
 ) -> dict:
-    """Predict race times using Riegel's formula from the best observed effort."""
+    """
+    Predict race times using two complementary methods.
+
+    LT2-anchored (primary when lt2_pace_s is set):
+        Derives race paces from the measured threshold pace via Daniels VDOT
+        table ratios.  This is internally consistent — if your LT2 pace hasn't
+        changed, your race predictions won't change either, regardless of what
+        any individual training run suggests about your VO2max.
+
+    Riegel (always computed as secondary / reference):
+        T2 = T1 × (D2/D1)^1.06 from the best recorded effort.
+        Only accurate when the source effort was near-maximal.  Shown dimmed
+        in the UI so the user can compare.
+    """
+    out: dict = {}
+
+    # --- LT2-anchored predictions ---
+    if lt2_pace_s is not None:
+        lt2_preds = {}
+        for label, d2_m in RACE_DISTANCES.items():
+            pace_s = lt2_pace_s * _LT2_RACE_PACE_RATIOS[label]
+            lt2_preds[label] = _pred_entry(pace_s * (d2_m / 1000), d2_m)
+        out["lt2_predictions"] = lt2_preds
+        out["lt2_source_pace"] = f"{int(lt2_pace_s // 60)}:{int(lt2_pace_s % 60):02d}"
+        out["lt2_implied_vo2max"] = vo2max_from_lt2_pace(lt2_pace_s)
+
+    # --- Riegel predictions ---
     d1_m = vo2_result.distance_km * 1000
     t1_s = vo2_result.best_time_s
-    if t1_s <= 0 or d1_m <= 0:
-        return {}
+    if t1_s > 0 and d1_m > 0:
+        riegel_preds = {}
+        for label, d2_m in RACE_DISTANCES.items():
+            riegel_preds[label] = _pred_entry(_riegel(d1_m, t1_s, d2_m), d2_m)
+        out["riegel_predictions"] = riegel_preds
+        out["riegel_source_distance_km"] = vo2_result.distance_km
+        out["riegel_source_pace"] = vo2_result.pace_per_km
+        out["riegel_source_confidence"] = vo2_result.confidence_label
 
-    predictions = {}
-    for label, d2_m in RACE_DISTANCES.items():
-        pred_s = _riegel(d1_m, t1_s, d2_m)
-        # Marathon: if LT2 pace is known and source effort is shorter than a half-marathon,
-        # use the slower of Riegel or LT2-based estimate (Riegel over-predicts on short sources)
-        if label == "Marathon" and lt2_pace_s is not None and d1_m < 21097.5:
-            lt2_marathon_s = lt2_pace_s * 42.195 * 1.03
-            pred_s = max(pred_s, lt2_marathon_s)
-        predictions[label] = {
-            "distance_km": round(d2_m / 1000, 4),
-            "predicted_time_s": round(pred_s),
-            "predicted_pace": _fmt_pace_from_s(pred_s, d2_m),
-            "hms": _fmt_hms(pred_s),
-        }
+    # Back-compat: expose ``predictions`` pointing at the most reliable method
+    if "lt2_predictions" in out:
+        out["predictions"] = out["lt2_predictions"]
+        out["method"] = "lt2"
+    elif "riegel_predictions" in out:
+        out["predictions"] = out["riegel_predictions"]
+        out["method"] = "riegel"
 
-    method = "riegel+lt2" if lt2_pace_s is not None else "riegel"
-    return {
-        "source_distance_km": vo2_result.distance_km,
-        "source_time_s": round(t1_s),
-        "source_pace": vo2_result.pace_per_km,
-        "method": method,
-        "predictions": predictions,
-    }
+    return out
