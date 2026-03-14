@@ -10,12 +10,11 @@ from fastapi.templating import Jinja2Templates
 from fitops.analytics.training_load import _compute_overtraining_indicators
 from fitops.analytics.vo2max import estimate_vo2max
 from fitops.config.settings import get_settings
+from fitops.analytics.vo2max import compute_race_predictions
 from fitops.dashboard.queries.analytics import (
-    RIDING_SPORTS,
-    RUNNING_SPORTS,
     get_training_load_data,
-    get_trends_data,
     get_vo2max_history,
+    get_volume_summary,
     get_weekly_volume,
 )
 
@@ -32,9 +31,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
         chart_data = []
         current_load = None
         overtraining = {}
+        volume_summary = None
+
+        weeks = min(52, max(12, days // 7))
+        weekly: list = []
 
         if athlete_id:
             tl = await get_training_load_data(athlete_id, days=days, sport=sport)
+            volume_summary = await get_volume_summary(athlete_id, sport=sport)
+            weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport=sport)
 
         if tl:
             chart_data = [
@@ -64,68 +69,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
             {
                 "request": request,
                 "chart_data_json": json.dumps(chart_data),
+                "weekly_json": json.dumps(weekly),
                 "current_load": current_load,
                 "overtraining": overtraining,
+                "volume_summary": volume_summary,
                 "selected_days": days,
                 "selected_sport": sport,
                 "active_page": "analytics",
-            },
-        )
-
-    @router.get("/analytics/trends", response_class=HTMLResponse)
-    async def trends(
-        request: Request,
-        days: int = 180,
-        sport: Optional[str] = None,
-        metric: str = "distance",
-        sport_group: str = "all",
-    ):
-        settings = get_settings()
-        athlete_id = settings.athlete_id
-
-        trends_data = None
-        weekly: list = []
-        weekly_run: list = []
-        weekly_ride: list = []
-
-        weeks = min(52, max(12, days // 7))
-
-        if athlete_id:
-            if sport_group == "run":
-                sport_types = RUNNING_SPORTS
-            elif sport_group == "ride":
-                sport_types = RIDING_SPORTS
-            else:
-                sport_types = None
-
-            trends_data = await get_trends_data(
-                athlete_id, days=days, sport=sport, sport_types=sport_types
-            )
-
-            if sport_group == "split":
-                weekly = await get_weekly_volume(athlete_id, weeks=weeks)
-                weekly_run = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS)
-                weekly_ride = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS)
-            elif sport_group == "run":
-                weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS)
-            elif sport_group == "ride":
-                weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS)
-            else:
-                weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport=sport)
-
-        return templates.TemplateResponse(
-            "analytics/trends.html",
-            {
-                "request": request,
-                "trends": trends_data,
-                "weekly_json": json.dumps(weekly),
-                "weekly_run_json": json.dumps(weekly_run),
-                "weekly_ride_json": json.dumps(weekly_ride),
-                "selected_days": days,
-                "selected_sport": sport,
-                "selected_metric": metric,
-                "selected_sport_group": sport_group,
-                "active_page": "trends",
             },
         )
 
@@ -144,11 +94,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
         from fitops.analytics.athlete_settings import get_athlete_settings
         athlete_settings = get_athlete_settings()
         lt2_pace_s = athlete_settings.threshold_pace_per_km_s
-        lt2_pace_fmt = None
-        if lt2_pace_s:
-            m_int = int(lt2_pace_s // 60)
-            s_int = int(lt2_pace_s % 60)
-            lt2_pace_fmt = f"{m_int}:{s_int:02d}/km"
+        lt1_pace_s = athlete_settings.lt1_pace_s
+        vo2max_pace_s = athlete_settings.vo2max_pace_s
+
+        def _fmt_pace(pace_s: Optional[float]) -> Optional[str]:
+            if not pace_s:
+                return None
+            return f"{int(pace_s // 60)}:{int(pace_s % 60):02d}/km"
+
+        race_predictions = None
+        if best_vo2max:
+            race_predictions = compute_race_predictions(best_vo2max, lt2_pace_s=lt2_pace_s)
 
         history_json = json.dumps(history)
 
@@ -160,7 +116,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "history": history,
                 "history_json": history_json,
                 "selected_days": days,
-                "lt2_pace_fmt": lt2_pace_fmt,
+                "lt1_pace_fmt": _fmt_pace(lt1_pace_s),
+                "lt2_pace_fmt": _fmt_pace(lt2_pace_s),
+                "vo2max_pace_fmt": _fmt_pace(vo2max_pace_s),
+                "race_predictions": race_predictions,
                 "active_page": "performance",
             },
         )

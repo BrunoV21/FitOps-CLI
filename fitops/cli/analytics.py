@@ -8,7 +8,8 @@ import typer
 
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.training_load import compute_training_load, _compute_overtraining_indicators
-from fitops.analytics.vo2max import estimate_vo2max
+from fitops.analytics.vo2max import estimate_vo2max, compute_race_predictions
+from fitops.dashboard.queries.analytics import get_volume_summary
 from fitops.analytics.zones import compute_zones
 from fitops.analytics.zone_inference import infer_zones, infer_lt1_pace, infer_lt2_pace, save_inferred_zones, vo2max_pace_from_vdot
 from fitops.analytics.trends import compute_trends
@@ -58,6 +59,7 @@ def training_load(
     ramp = result.ramp_rate_pct
 
     overtraining = _compute_overtraining_indicators(result.history)
+    volume_summary = asyncio.run(get_volume_summary(athlete_id=settings.athlete_id, sport=sport))
 
     if today:
         output = {
@@ -73,6 +75,7 @@ def training_load(
                     "ramp_label": result.ramp_label(ramp) if ramp is not None else None,
                 },
                 "overtraining_indicators": overtraining,
+                "volume_summary": volume_summary,
             },
         }
     else:
@@ -88,6 +91,7 @@ def training_load(
                     "ramp_label": result.ramp_label(ramp) if ramp is not None else None,
                 },
                 "overtraining_indicators": overtraining,
+                "volume_summary": volume_summary,
                 "history": [
                     {"date": str(d.date), "ctl": d.ctl, "atl": d.atl, "tsb": d.tsb, "daily_tss": d.daily_tss}
                     for d in result.history
@@ -166,6 +170,10 @@ def vo2max(
 
     if athlete_settings.vo2max_override:
         vo2max_block["manual_override"] = athlete_settings.vo2max_override
+
+    race_preds = compute_race_predictions(result, lt2_pace_s=athlete_settings.threshold_pace_per_km_s)
+    if race_preds:
+        vo2max_block["race_predictions"] = race_preds
 
     if age_adjusted:
         from fitops.analytics.vo2max import apply_age_adjustment
@@ -524,8 +532,16 @@ def snapshot(
                 atl=current.atl if current else None,
                 tsb=current.tsb if current else None,
                 vo2max_estimate=vo2.estimate if vo2 else None,
-                lt1_hr=int(athlete_settings.lthr * 0.92) if athlete_settings.lthr else None,
-                lt2_hr=athlete_settings.lthr,
+                lt1_hr=(
+                    athlete_settings.lt1_hr
+                    if athlete_settings.lt1_hr is not None
+                    else (int(athlete_settings.lthr * 0.92) if athlete_settings.lthr else None)
+                ),
+                lt2_hr=(
+                    athlete_settings.lt2_hr
+                    if athlete_settings.lt2_hr is not None
+                    else athlete_settings.lthr
+                ),
                 computed_at=datetime.now(timezone.utc),
             )
             if existing:

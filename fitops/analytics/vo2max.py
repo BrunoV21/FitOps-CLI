@@ -105,6 +105,7 @@ class VO2MaxResult:
     activity_date: str
     distance_km: float
     pace_per_km: str
+    best_time_s: float = 0.0
 
     @property
     def confidence_label(self) -> str:
@@ -160,6 +161,7 @@ def _estimate_from_activity(activity: Activity) -> Optional[VO2MaxResult]:
         activity_date=activity.start_date.date().isoformat() if activity.start_date else "unknown",
         distance_km=round(dist / 1000, 2),
         pace_per_km=_fmt_pace(activity.average_speed_ms) if activity.average_speed_ms else "N/A",
+        best_time_s=float(time_s),
     )
 
 
@@ -194,3 +196,67 @@ async def estimate_vo2max(athlete_id: int, max_activities: int = 50) -> Optional
         ):
             best = est
     return best
+
+
+# ---------------------------------------------------------------------------
+# Race Predictions
+# ---------------------------------------------------------------------------
+
+RIEGEL_EXP = 1.06
+RACE_DISTANCES = {
+    "5K": 5000.0,
+    "10K": 10000.0,
+    "Half": 21097.5,
+    "Marathon": 42195.0,
+}
+
+
+def _riegel(d1_m: float, t1_s: float, d2_m: float) -> float:
+    return t1_s * (d2_m / d1_m) ** RIEGEL_EXP
+
+
+def _fmt_hms(total_s: float) -> str:
+    h = int(total_s // 3600)
+    m = int((total_s % 3600) // 60)
+    s = int(total_s % 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _fmt_pace_from_s(time_s: float, dist_m: float) -> str:
+    pace_s = time_s / (dist_m / 1000)
+    return f"{int(pace_s // 60)}:{int(pace_s % 60):02d}"
+
+
+def compute_race_predictions(
+    vo2_result: "VO2MaxResult",
+    lt2_pace_s: Optional[float] = None,
+) -> dict:
+    """Predict race times using Riegel's formula from the best observed effort."""
+    d1_m = vo2_result.distance_km * 1000
+    t1_s = vo2_result.best_time_s
+    if t1_s <= 0 or d1_m <= 0:
+        return {}
+
+    predictions = {}
+    for label, d2_m in RACE_DISTANCES.items():
+        pred_s = _riegel(d1_m, t1_s, d2_m)
+        # Marathon: if LT2 pace is known and source effort is shorter than a half-marathon,
+        # use the slower of Riegel or LT2-based estimate (Riegel over-predicts on short sources)
+        if label == "Marathon" and lt2_pace_s is not None and d1_m < 21097.5:
+            lt2_marathon_s = lt2_pace_s * 42.195 * 1.03
+            pred_s = max(pred_s, lt2_marathon_s)
+        predictions[label] = {
+            "distance_km": round(d2_m / 1000, 4),
+            "predicted_time_s": round(pred_s),
+            "predicted_pace": _fmt_pace_from_s(pred_s, d2_m),
+            "hms": _fmt_hms(pred_s),
+        }
+
+    method = "riegel+lt2" if lt2_pace_s is not None else "riegel"
+    return {
+        "source_distance_km": vo2_result.distance_km,
+        "source_time_s": round(t1_s),
+        "source_pace": vo2_result.pace_per_km,
+        "method": method,
+        "predictions": predictions,
+    }
