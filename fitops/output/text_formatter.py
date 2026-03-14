@@ -344,6 +344,23 @@ def print_training_load(data: dict, today_only: bool) -> None:
     if ot.get("risk_label"):
         console.print(f"  Overtraining    {ot['risk_label']}")
 
+    vol = tl.get("volume_summary") or {}
+    if vol:
+        console.print()
+        console.print("  [bold]Volume[/bold]")
+        tw = vol.get("this_week") or {}
+        lw = vol.get("last_week") or {}
+        tm = vol.get("this_month") or {}
+        lm = vol.get("last_month") or {}
+        wpct = (vol.get("pct_change_week") or {}).get("distance")
+        mpct = (vol.get("pct_change_month") or {}).get("distance")
+        wpct_str = f"  ({'+' if wpct > 0 else ''}{wpct:.0f}% WoW)" if wpct is not None else ""
+        mpct_str = f"  ({'+' if mpct > 0 else ''}{mpct:.0f}% vs same period last month)" if mpct is not None else ""
+        console.print(f"  This week       {tw.get('distance_km', 0):.1f} km  /  {tw.get('duration_h', 0):.1f} h{wpct_str}")
+        console.print(f"  Last week       {lw.get('distance_km', 0):.1f} km  /  {lw.get('duration_h', 0):.1f} h")
+        console.print(f"  This month      {tm.get('distance_km', 0):.0f} km  /  {tm.get('duration_h', 0):.1f} h{mpct_str}")
+        console.print(f"  Last month      {lm.get('distance_km', 0):.0f} km  /  {lm.get('duration_h', 0):.1f} h")
+
     if not today_only:
         history = tl.get("history") or []
         if history:
@@ -390,6 +407,13 @@ def print_vo2max(data: dict) -> None:
     age_adj = v.get("age_adjusted") or {}
     if age_adj.get("adjusted_estimate"):
         console.print(f"  Age-adjusted    {age_adj['adjusted_estimate']:.1f} ml/kg/min  (age {age_adj.get('age')})")
+    race = v.get("race_predictions") or {}
+    preds = race.get("predictions") or {}
+    if preds:
+        console.print()
+        console.print(f"  [bold]Race Predictions[/bold]  [dim]{race.get('method', 'riegel').upper()} · from {race.get('source_distance_km', '?')} km @ {race.get('source_pace', '?')}/km[/dim]")
+        for label, pred in preds.items():
+            console.print(f"  {label:<12} {pred.get('hms', '-'):<10}  {pred.get('predicted_pace', '-')}/km")
     console.print()
 
 

@@ -73,11 +73,48 @@
 </div>
 {% endif %}
 
-{% if lt2_pace_fmt %}
-<div class="panel">
-  <p class="panel-label">LT2 Pace (GAP)</p>
-  <p class="panel-metric c-orange">{{ lt2_pace_fmt }}</p>
-  <p class="panel-sub">grade-adjusted threshold pace</p>
+{% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
+<div class="panel" style="margin-top:1px;--delay:120ms">
+  <p class="panel-label">Running Intensity Thresholds</p>
+  <div style="display:flex;gap:32px;margin-top:12px;flex-wrap:wrap;">
+    {% if lt1_pace_fmt %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">LT1 &mdash; Aerobic Threshold</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-green);">{{ lt1_pace_fmt }}</p>
+    </div>
+    {% endif %}
+    {% if lt2_pace_fmt %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">LT2 &mdash; Lactate Threshold</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-amber);">{{ lt2_pace_fmt }}</p>
+    </div>
+    {% endif %}
+    {% if vo2max_pace_fmt %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">vVO&#8322;max &mdash; Speed Reserve</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-red);">{{ vo2max_pace_fmt }}</p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces &middot; run <code>fitops analytics zones --infer</code> to update</p>
+</div>
+{% endif %}
+
+{% if race_predictions and race_predictions.predictions %}
+<div class="panel" style="margin-top:1px;--delay:140ms">
+  <p class="panel-label">Race Time Predictions
+    <span class="badge badge-dim" style="margin-left:8px;font-size:10px;vertical-align:middle;">{{ race_predictions.method | upper }}</span>
+  </p>
+  <p class="panel-sub" style="margin-bottom:10px;">Based on {{ race_predictions.source_distance_km }} km effort at {{ race_predictions.source_pace }}/km</p>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+    {% for label, pred in race_predictions.predictions.items() %}
+    <div style="text-align:center;padding:12px 8px;background:var(--surface-2);border-radius:6px;">
+      <p class="panel-sub" style="margin-bottom:6px;">{{ label }}</p>
+      <p style="font-size:18px;font-weight:700;color:var(--accent-purple);">{{ pred.hms }}</p>
+      <p class="panel-sub">{{ pred.predicted_pace }}/km</p>
+    </div>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 

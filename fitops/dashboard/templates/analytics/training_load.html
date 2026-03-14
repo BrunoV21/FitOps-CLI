@@ -72,9 +72,58 @@
 {% endif %}
 {% endif %}
 
-<!-- Chart -->
+<!-- Volume W-o-W / M-o-M -->
+{% if volume_summary %}
+<div class="grid-4" style="margin-top:1px;">
+
+  <div class="panel" style="--delay:140ms">
+    <p class="panel-label">This Week</p>
+    <p class="panel-metric">{{ "%.1f" | format(volume_summary.this_week.distance_km) }} km</p>
+    {% set wpct = volume_summary.pct_change_week.distance %}
+    {% if wpct is not none %}
+    <p class="panel-sub {% if wpct > 0 %}c-green{% elif wpct < 0 %}c-red{% endif %}">
+      {% if wpct > 0 %}+{% endif %}{{ "%.0f%%" | format(wpct) }} vs last week
+    </p>
+    {% endif %}
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.this_week.duration_h) }} h &middot; {{ volume_summary.this_week.activity_count }} activities</p>
+  </div>
+
+  <div class="panel" style="--delay:180ms">
+    <p class="panel-label">Last Week</p>
+    <p class="panel-metric c-muted">{{ "%.1f" | format(volume_summary.last_week.distance_km) }} km</p>
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.last_week.duration_h) }} h &middot; {{ volume_summary.last_week.activity_count }} activities</p>
+  </div>
+
+  <div class="panel" style="--delay:220ms">
+    <p class="panel-label">This Month</p>
+    <p class="panel-metric">{{ "%.0f" | format(volume_summary.this_month.distance_km) }} km</p>
+    {% set mpct = volume_summary.pct_change_month.distance %}
+    {% if mpct is not none %}
+    <p class="panel-sub {% if mpct > 0 %}c-green{% elif mpct < 0 %}c-red{% endif %}">
+      {% if mpct > 0 %}+{% endif %}{{ "%.0f%%" | format(mpct) }} vs same period last month
+    </p>
+    {% endif %}
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.this_month.duration_h) }} h &middot; {{ volume_summary.this_month.activity_count }} activities</p>
+  </div>
+
+  <div class="panel" style="--delay:260ms">
+    <p class="panel-label">Last Month</p>
+    <p class="panel-metric c-muted">{{ "%.0f" | format(volume_summary.last_month.distance_km) }} km</p>
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.last_month.duration_h) }} h &middot; {{ volume_summary.last_month.activity_count }} activities</p>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- Training Load Chart -->
 <div class="panel" style="margin-top:1px;--delay:160ms">
   <canvas id="trainingLoadChart" height="80"></canvas>
+</div>
+
+<!-- Weekly Volume Chart -->
+<div class="panel" style="margin-top:1px;--delay:200ms">
+  <p class="panel-label">Weekly Volume (km)</p>
+  <canvas id="weeklyVolumeChart" height="60"></canvas>
 </div>
 
 {% else %}
@@ -93,6 +142,10 @@ if (CHART_DATA.length > 0) {
     atl: CHART_DATA.map(d => d.atl),
     tsb: CHART_DATA.map(d => d.tsb),
   });
+}
+const WEEKLY_DATA = {{ weekly_json | default('[]') | safe }};
+if (WEEKLY_DATA.length > 0) {
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, { metric: "distance" });
 }
 </script>
 {% endblock %}
