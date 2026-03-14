@@ -102,11 +102,28 @@ def training_load(
 
 @app.command("vo2max")
 def vo2max(
-    activities: int = typer.Option(10, "--activities", help="Number of recent qualifying activities to consider."),
+    activities: int = typer.Option(50, "--activities", help="Number of recent qualifying activities to consider."),
     age_adjusted: bool = typer.Option(False, "--age-adjusted", help="Apply age-based adjustment to VO2max estimate."),
+    method: Optional[str] = typer.Option(None, "--method", help="Method to use as estimate: daniels, cooper, composite."),
+    save: bool = typer.Option(False, "--save", help="Save the selected method's result as a manual override."),
+    set_override: Optional[float] = typer.Option(None, "--set-override", help="Directly set VO2max override value (ml/kg/min)."),
+    clear_override: bool = typer.Option(False, "--clear-override", help="Clear manual VO2max override."),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Estimate VO2max from recent run activities."""
+    athlete_settings = get_athlete_settings()
+
+    if clear_override:
+        athlete_settings.clear("vo2max_override")
+        typer.echo("VO2max override cleared.")
+        if not set_override and not save:
+            return
+
+    if set_override is not None:
+        athlete_settings.set(vo2max_override=round(set_override, 1))
+        typer.echo(f"VO2max override set: {set_override} ml/kg/min")
+        return
+
     settings = get_settings()
     try:
         settings.require_auth()
@@ -121,15 +138,34 @@ def vo2max(
         typer.echo("No qualifying run activities found. Need at least 1500m run.", err=True)
         return
 
+    # Pick estimate for the selected method
+    method_value: Optional[float] = None
+    if method == "daniels":
+        method_value = result.vdot
+    elif method == "cooper":
+        method_value = result.cooper
+    elif method in (None, "composite"):
+        method_value = result.estimate
+
+    if save and method_value is not None:
+        athlete_settings.set(vo2max_override=round(float(method_value), 1))
+        typer.echo(f"VO2max override saved ({method or 'composite'}): {method_value} ml/kg/min")
+
     vo2max_block: dict = {
-        "estimate": result.estimate, "unit": "ml/kg/min",
+        "estimate": method_value if method else result.estimate,
+        "unit": "ml/kg/min",
         "confidence": result.confidence, "confidence_label": result.confidence_label,
         "method_estimates": {"daniels_vdot": result.vdot, "cooper": result.cooper},
+        "selected_method": method or "composite",
+        "override_saved": save and method_value is not None,
         "based_on_activity": {
             "strava_id": result.activity_strava_id, "name": result.activity_name,
             "distance_km": result.distance_km, "pace_per_km": result.pace_per_km, "date": result.activity_date,
         },
     }
+
+    if athlete_settings.vo2max_override:
+        vo2max_block["manual_override"] = athlete_settings.vo2max_override
 
     if age_adjusted:
         from fitops.analytics.vo2max import apply_age_adjustment
@@ -169,11 +205,25 @@ def zones(
     set_lthr: Optional[int] = typer.Option(None, "--set-lthr", help="Set lactate threshold HR (BPM)."),
     set_max_hr: Optional[int] = typer.Option(None, "--set-max-hr", help="Set maximum HR (BPM)."),
     set_resting_hr: Optional[int] = typer.Option(None, "--set-resting-hr", help="Set resting HR (BPM)."),
+    set_lt1: Optional[int] = typer.Option(None, "--set-lt1", help="Override LT1 aerobic threshold display (BPM)."),
+    set_lt2: Optional[int] = typer.Option(None, "--set-lt2", help="Override LT2 lactate threshold display (BPM)."),
+    clear_lt1: bool = typer.Option(False, "--clear-lt1", help="Clear LT1 override."),
+    clear_lt2: bool = typer.Option(False, "--clear-lt2", help="Clear LT2 override."),
     infer: bool = typer.Option(False, "--infer", help="Infer zones from cached activity streams."),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Calculate heart rate training zones."""
     athlete_settings = get_athlete_settings()
+
+    # Handle clears first
+    clear_keys = []
+    if clear_lt1:
+        clear_keys.append("lt1_hr")
+    if clear_lt2:
+        clear_keys.append("lt2_hr")
+    if clear_keys:
+        athlete_settings.clear(*clear_keys)
+        typer.echo(f"Cleared: {', '.join(clear_keys)}")
 
     updates = {}
     if set_lthr is not None:
@@ -182,6 +232,10 @@ def zones(
         updates["max_hr"] = set_max_hr
     if set_resting_hr is not None:
         updates["resting_hr"] = set_resting_hr
+    if set_lt1 is not None:
+        updates["lt1_hr"] = set_lt1
+    if set_lt2 is not None:
+        updates["lt2_hr"] = set_lt2
     if updates:
         athlete_settings.set(**updates)
         typer.echo(f"Settings saved: {updates}")

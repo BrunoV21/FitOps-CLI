@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Overview — FitOps{% endblock %}
+{% block page_name %}Overview{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<!-- Page header -->
+<div class="page-header">
   <div>
-    <h1 class="text-2xl font-bold text-white">Overview</h1>
+    <p class="page-title">Overview</p>
     {% if athlete %}
-    <p class="text-gray-400 text-sm mt-1">
+    <p class="page-subtitle">
       {{ athlete.firstname }} {{ athlete.lastname }}
       {% if athlete.city %} · {{ athlete.city }}{% endif %}
       {% if athlete.country %} · {{ athlete.country }}{% endif %}
@@ -14,93 +16,50 @@
     </p>
     {% endif %}
   </div>
-  <!-- Period filter tabs -->
-  <div class="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
-    {% for p, label in [('month', 'This Month'), ('year', 'This Year'), ('all', 'All Time')] %}
-    <a href="/?period={{ p }}"
-       class="px-4 py-2 transition-colors
-              {% if period == p %}bg-brand-500 text-white{% else %}bg-gray-800 text-gray-400 hover:text-white{% endif %}">
-      {{ label }}
-    </a>
+  <div class="period-tabs">
+    {% for p, lbl in [('month','This Month'),('year','This Year'),('all','All Time')] %}
+    <a href="/?period={{ p }}" class="period-tab {% if period == p %}active{% endif %}">{{ lbl }}</a>
     {% endfor %}
   </div>
 </div>
 
-<!-- Stats row -->
-<div class="grid grid-cols-3 gap-4 mb-6">
-  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-    <p class="text-gray-400 text-xs uppercase tracking-wider mb-1">Activities — {{ period_label }}</p>
-    <p class="text-3xl font-bold text-white">{{ stats.total_count | default(0) }}</p>
+<!-- Row 1: 3 stat panels -->
+<div class="grid-3 mb-6" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:0ms">
+    <p class="panel-label">Activities — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_count | default(0) }}</p>
   </div>
-  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-    <p class="text-gray-400 text-xs uppercase tracking-wider mb-1">Distance — {{ period_label }}</p>
-    <p class="text-3xl font-bold text-white">{{ stats.total_distance_km | default(0) }} <span class="text-lg font-normal text-gray-400">km</span></p>
+  <div class="panel panel--accent" style="--delay:40ms">
+    <p class="panel-label">Distance — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_distance_km | default(0) }}<span class="panel-unit">km</span></p>
   </div>
-  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-    <p class="text-gray-400 text-xs uppercase tracking-wider mb-1">Elevation — {{ period_label }}</p>
-    <p class="text-3xl font-bold text-white">{{ stats.total_elevation_m | default(0) }} <span class="text-lg font-normal text-gray-400">m</span></p>
+  <div class="panel panel--accent-amber" style="--delay:80ms">
+    <p class="panel-label">Elevation — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_elevation_m | default(0) }}<span class="panel-unit">m</span></p>
   </div>
 </div>
 
-<!-- Training status + recent activities -->
-<div class="grid grid-cols-3 gap-6">
+<!-- Row 2: Recent activities + Training status -->
+<div class="grid-12" style="margin-bottom:1px;">
 
-  <!-- Training Load card -->
-  <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Training Status</h2>
-      <a href="/analytics/training-load" class="text-xs text-brand-500 hover:underline">Full chart →</a>
-    </div>
-    {% if current_load %}
-    <div class="space-y-3">
-      <div class="flex justify-between items-center">
-        <span class="text-gray-400 text-sm">Fitness (CTL)</span>
-        <span class="text-white font-semibold">{{ current_load.ctl }}</span>
-      </div>
-      <div class="flex justify-between items-center">
-        <span class="text-gray-400 text-sm">Fatigue (ATL)</span>
-        <span class="text-white font-semibold">{{ current_load.atl }}</span>
-      </div>
-      <div class="flex justify-between items-center">
-        <span class="text-gray-400 text-sm">Form (TSB)</span>
-        <span class="font-semibold {% if current_load.tsb > 5 %}text-green-400{% elif current_load.tsb < -10 %}text-red-400{% else %}text-yellow-400{% endif %}">
-          {{ current_load.tsb }}
-        </span>
-      </div>
-      <div class="pt-2 border-t border-gray-800">
-        <span class="inline-block px-2 py-1 rounded text-xs font-medium
-          {% if 'Fresh' in current_load.form_label %}bg-green-900 text-green-300
-          {% elif 'Productive' in current_load.form_label %}bg-blue-900 text-blue-300
-          {% elif 'Overreaching' in current_load.form_label or 'risk' in current_load.form_label %}bg-red-900 text-red-300
-          {% else %}bg-gray-800 text-gray-300{% endif %}">
-          {{ current_load.form_label }}
-        </span>
-      </div>
-    </div>
-    {% else %}
-    <p class="text-gray-500 text-sm">No training data yet.<br>Run <code class="text-gray-400">fitops sync run</code> first.</p>
-    {% endif %}
-  </div>
-
-  <!-- Recent activities -->
-  <div class="col-span-2 bg-gray-900 rounded-xl p-5 border border-gray-800">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Recent Activities — {{ period_label }}</h2>
-      <a href="/activities" class="text-xs text-brand-500 hover:underline">All activities →</a>
+  <!-- Recent Activities (col 1-8) -->
+  <div class="panel col-8" style="--delay:120ms">
+    <div class="panel-header">
+      <span class="panel-label">Recent Activities — {{ period_label }}</span>
+      <a href="/activities" class="panel-link">All activities →</a>
     </div>
     {% if recent_activities %}
-    <div class="space-y-2">
+    <div class="activity-list">
       {% for a in recent_activities %}
-      <a href="/activities/{{ a.strava_id }}"
-         class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-800 transition-colors group">
-        <div class="flex items-center gap-3 min-w-0">
-          <span class="text-lg">{{ sport_icon(a.sport_type) }}</span>
-          <div class="min-w-0">
-            <p class="text-white text-sm font-medium truncate group-hover:text-brand-500">{{ a.name }}</p>
-            <p class="text-gray-500 text-xs">{{ a.date }}</p>
+      <a href="/activities/{{ a.strava_id }}" class="activity-row">
+        <div class="activity-row-left">
+          <span class="activity-row-icon">{{ sport_icon(a.sport_type) }}</span>
+          <div>
+            <p class="activity-row-name">{{ a.name }}</p>
+            <p class="activity-row-date">{{ a.date }}</p>
           </div>
         </div>
-        <div class="flex items-center gap-4 text-xs text-gray-400 shrink-0 ml-4">
+        <div class="activity-row-stats">
           {% if a.distance_km %}<span>{{ a.distance_km }} km</span>{% endif %}
           <span>{{ a.duration }}</span>
           {% if a.avg_hr %}<span>{{ a.avg_hr }} bpm</span>{% endif %}
@@ -109,34 +68,74 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="text-gray-500 text-sm">No activities synced yet.<br>Run <code class="text-gray-400">fitops sync run</code> first.</p>
+    <p style="color:var(--text-dim);font-size:12px;">No activities synced yet. Run <code>fitops sync run</code> first.</p>
+    {% endif %}
+  </div>
+
+  <!-- Training Status (col 9-12) -->
+  <div class="panel col-4 panel--accent-purple" style="--delay:160ms">
+    <div class="panel-header">
+      <span class="panel-label">Training Status</span>
+      <a href="/analytics/training-load" class="panel-link">Chart →</a>
+    </div>
+    {% if current_load %}
+    <div>
+      <p class="panel-label" style="margin-bottom:4px;">Fitness (CTL)</p>
+      <p class="panel-metric--md c-blue">{{ current_load.ctl }}</p>
+      <div class="divider"></div>
+
+      <p class="panel-label" style="margin-bottom:4px;">Fatigue (ATL)</p>
+      <p class="panel-metric--sm c-amber">{{ current_load.atl }}</p>
+      <div class="divider"></div>
+
+      <p class="panel-label" style="margin-bottom:4px;">Form (TSB)</p>
+      <p class="panel-metric--sm
+        {% if current_load.tsb > 5 %}c-green
+        {% elif current_load.tsb < -10 %}c-red
+        {% else %}c-amber{% endif %}">
+        {{ current_load.tsb }}
+      </p>
+      <div class="divider"></div>
+
+      <span class="badge
+        {% if 'Fresh' in current_load.form_label %}badge-green
+        {% elif 'Productive' in current_load.form_label %}badge-blue
+        {% elif 'Overreaching' in current_load.form_label or 'risk' in current_load.form_label %}badge-red
+        {% else %}badge-dim{% endif %}">
+        {{ current_load.form_label }}
+      </span>
+    </div>
+    {% else %}
+    <p style="color:var(--text-dim);font-size:12px;">No training data.<br>Run <code>fitops sync run</code> first.</p>
     {% endif %}
   </div>
 
 </div>
 
-<!-- Activity heatmap -->
-<div class="bg-gray-900 rounded-xl p-5 border border-gray-800 mt-6">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Activity History</h2>
-    <div class="flex items-center gap-1.5 text-xs text-gray-600">
-      Less
-      <span class="w-3 h-3 rounded-sm bg-gray-800 inline-block"></span>
-      <span class="w-3 h-3 rounded-sm inline-block" style="background:#7c2d12"></span>
-      <span class="w-3 h-3 rounded-sm inline-block" style="background:#c2410c"></span>
-      <span class="w-3 h-3 rounded-sm inline-block" style="background:#ea580c"></span>
-      <span class="w-3 h-3 rounded-sm inline-block" style="background:#f97316"></span>
-      More
+<!-- Row 3: Activity Heatmap -->
+<div class="panel col-12" style="--delay:200ms">
+  <div class="panel-header">
+    <span class="panel-label">Activity History</span>
+    <div class="heatmap-legend">
+      Shorter
+      <span class="heatmap-swatch" style="background:#1a1a1a;"></span>
+      <span class="heatmap-swatch" style="background:rgba(0,255,135,0.15);"></span>
+      <span class="heatmap-swatch" style="background:rgba(0,255,135,0.4);"></span>
+      <span class="heatmap-swatch" style="background:rgba(0,255,135,0.7);"></span>
+      <span class="heatmap-swatch" style="background:#00ff87;"></span>
+      Longer
     </div>
   </div>
-  <div id="activity-heatmap" class="overflow-x-auto pb-1"></div>
-  <p id="heatmap-tooltip" class="text-xs text-gray-500 mt-2 h-4"></p>
+  <div id="activity-heatmap" style="width:100%;padding-bottom:4px;"></div>
+  <p id="heatmap-tooltip" style="font-size:11px;color:var(--text-dim);margin-top:8px;min-height:16px;"></p>
+  <div id="heatmap-day-detail"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const HEATMAP_DATA = {{ heatmap_json | safe }};
-renderActivityHeatmap("activity-heatmap", HEATMAP_DATA, "heatmap-tooltip");
+const HEATMAP_PERIOD = "{{ period }}";
+renderActivityHeatmap("activity-heatmap", HEATMAP_DATA, HEATMAP_PERIOD, "heatmap-tooltip", "heatmap-day-detail");
 </script>
 {% endblock %}

@@ -94,3 +94,81 @@ fitops workouts list                     # All workouts with status
 fitops workouts compliance WORKOUT       # Compliance score breakdown
 fitops equipment list                    # Equipment with cumulative mileage
 ```
+
+---
+
+## Phase 4 — Multi-Provider Data Ingestion 🔜
+
+**Goal:** Break the Strava dependency. Pull activity data directly from wearable platforms so athletes can use FitOps regardless of which ecosystem they live in.
+
+### Target providers
+
+| Provider | API / mechanism | Data available |
+|----------|----------------|----------------|
+| **Garmin Connect** | Garmin Health API (OAuth 2.0) | Activities, HR, GPS, sleep, daily summaries |
+| **Coros** | COROS Open API | Activities, training metrics, HR, GPS |
+| **Samsung Health** | Samsung Health Platform API | Activities, HR, sleep, steps |
+| **Apple Health** | HealthKit export (XML) or Apple Health REST (future) | Workouts, HR, HRV, sleep, body metrics |
+| **Huawei Health** | HUAWEI Health Kit API | Activities, HR, sleep, stress |
+
+### Architecture
+
+Each provider is a separate sync adapter implementing a common `ProviderAdapter` interface:
+
+```python
+class ProviderAdapter(Protocol):
+    async def authenticate(self) -> None: ...
+    async def fetch_activities(self, since: datetime) -> list[RawActivity]: ...
+    async def fetch_streams(self, activity_id: str) -> RawStreams: ...
+```
+
+Activities from all providers are normalised into the same `activities` table. A `provider` column distinguishes the source. The analytics layer (CTL/ATL, VO2max, zones) operates on the normalised data regardless of origin.
+
+### New commands (Phase 4)
+
+```bash
+fitops providers list                    # Show configured providers
+fitops providers add garmin              # Authenticate with Garmin Connect
+fitops providers add coros               # Authenticate with COROS
+fitops providers add samsung             # Authenticate with Samsung Health
+fitops providers add apple               # Import Apple Health export (.xml)
+fitops providers add huawei              # Authenticate with Huawei Health Kit
+fitops providers remove PROVIDER         # Revoke and remove a provider
+fitops sync run --provider garmin        # Sync from a specific provider only
+```
+
+---
+
+## Phase 5 — Cloud Backup 🔜
+
+**Goal:** Let athletes back up their local FitOps database to the cloud storage provider of their choice, on demand or on a schedule.
+
+### Target providers
+
+| Provider | Notes |
+|----------|-------|
+| **Google Drive** | OAuth 2.0, Drive API v3 |
+| **OneDrive** | OAuth 2.0, Microsoft Graph API |
+| **Dropbox** | OAuth 2.0, Dropbox API v2 |
+| **Mega** | mega.py / MEGAcmd |
+
+### What gets backed up
+
+- `fitops.db` — the full SQLite database
+- `config.json` — settings (tokens stripped before upload)
+- `sync_state.json` — sync history
+
+Backups are versioned with a timestamp suffix: `fitops_2026-03-13T0800.db.gz`. Retention policy (number of backups to keep) is configurable.
+
+### New commands (Phase 5)
+
+```bash
+fitops backup configure gdrive           # Authenticate + set destination folder
+fitops backup configure onedrive
+fitops backup configure dropbox
+fitops backup configure mega
+fitops backup run                        # Upload snapshot now
+fitops backup schedule --cron "0 3 * * *"  # Schedule nightly backup
+fitops backup restore --date 2026-03-10  # Restore from a backup snapshot
+fitops backup list                       # Show available remote snapshots
+```

@@ -182,13 +182,15 @@ async def estimate_vo2max(athlete_id: int, max_activities: int = 10) -> Optional
         activities = result.scalars().all()
 
     best: Optional[VO2MaxResult] = None
-    best_score = -1.0
     for activity in activities:
         est = _estimate_from_activity(activity)
         if est is None:
             continue
-        score = est.confidence * (est.distance_km ** 0.3)
-        if score > best_score:
-            best_score = score
+        # Pick the activity with the highest VO2max estimate — that's the hardest effort
+        # and the best signal for true aerobic ceiling. Confidence acts as a tiebreaker
+        # only when estimates are within 1 ml/kg/min of each other.
+        if best is None or est.estimate > best.estimate + 1.0 or (
+            abs(est.estimate - best.estimate) <= 1.0 and est.confidence > best.confidence
+        ):
             best = est
     return best

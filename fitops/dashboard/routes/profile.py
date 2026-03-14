@@ -58,11 +58,73 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
             lt1_bpm = zone_result.lt1_bpm
             lt2_bpm = zone_result.lt2_bpm
 
+    # Apply LT1/LT2 overrides (take precedence over computed values)
+    lt1_is_override = False
+    lt2_is_override = False
+    if athlete_settings_data.get("lt1_hr"):
+        lt1_bpm = athlete_settings_data["lt1_hr"]
+        lt1_is_override = True
+    if athlete_settings_data.get("lt2_hr"):
+        lt2_bpm = athlete_settings_data["lt2_hr"]
+        lt2_is_override = True
+
+    # Custom HR zone overrides
+    custom_hr_bounds = athlete_settings_data.get("custom_hr_zone_bounds")
+    hr_zones_custom = bool(custom_hr_bounds and len(custom_hr_bounds) == 4)
+    if hr_zones_custom:
+        _names = ["Recovery", "Aerobic", "Tempo", "Threshold", "VO2max"]
+        _descs = [
+            "Active recovery — below aerobic threshold",
+            "Aerobic base — low intensity endurance",
+            "Tempo — comfortably hard aerobic work",
+            "Threshold — lactate threshold effort",
+            "VO2max — above threshold high intensity",
+        ]
+        _mins = [0] + list(custom_hr_bounds)
+        _maxs = list(custom_hr_bounds) + [999]
+        hr_zones = [
+            {
+                "zone": i + 1,
+                "name": _names[i],
+                "min_bpm": _mins[i],
+                "max_bpm": _maxs[i] if _maxs[i] < 999 else None,
+                "description": _descs[i],
+            }
+            for i in range(5)
+        ]
+    # Bounds for edit form pre-population
+    if custom_hr_bounds and len(custom_hr_bounds) == 4:
+        hr_edit_bounds = list(custom_hr_bounds)
+    elif hr_zones:
+        hr_edit_bounds = [z["max_bpm"] for z in hr_zones[:4]]
+    else:
+        hr_edit_bounds = [None, None, None, None]
+
     threshold_pace_s = athlete_settings_data.get("threshold_pace_per_km_s")
     pace_zones = None
     if threshold_pace_s:
         pz = compute_pace_zones(int(threshold_pace_s))
         pace_zones = pz.zones
+
+    # Custom pace zone overrides
+    custom_pace_bounds = athlete_settings_data.get("custom_pace_zone_bounds")
+    pace_zones_custom = bool(custom_pace_bounds and len(custom_pace_bounds) == 4)
+    if pace_zones_custom:
+        b = list(custom_pace_bounds)  # [b1, b2, b3, b4] slowest→fastest (desc seconds)
+        pace_zones = [
+            {"zone": 1, "name": "Easy",      "min_s_per_km": b[0], "max_s_per_km": None, "min_pace_fmt": _fmt_pace(b[0]), "max_pace_fmt": None},
+            {"zone": 2, "name": "Aerobic",   "min_s_per_km": b[1], "max_s_per_km": b[0], "min_pace_fmt": _fmt_pace(b[1]), "max_pace_fmt": _fmt_pace(b[0])},
+            {"zone": 3, "name": "Tempo",     "min_s_per_km": b[2], "max_s_per_km": b[1], "min_pace_fmt": _fmt_pace(b[2]), "max_pace_fmt": _fmt_pace(b[1])},
+            {"zone": 4, "name": "Threshold", "min_s_per_km": b[3], "max_s_per_km": b[2], "min_pace_fmt": _fmt_pace(b[3]), "max_pace_fmt": _fmt_pace(b[2])},
+            {"zone": 5, "name": "VO2max",    "min_s_per_km": None, "max_s_per_km": b[3], "min_pace_fmt": None,            "max_pace_fmt": _fmt_pace(b[3])},
+        ]
+    # Bounds for pace edit form pre-population
+    if custom_pace_bounds and len(custom_pace_bounds) == 4:
+        pace_edit_bounds = [_fmt_pace(b) for b in custom_pace_bounds]
+    elif pace_zones:
+        pace_edit_bounds = [z["min_pace_fmt"] for z in pace_zones[:4]]
+    else:
+        pace_edit_bounds = [None, None, None, None]
 
     shoes = [e for e in equipment if e["type"] == "shoes"]
     bikes = [e for e in equipment if e["type"] == "bike"]
@@ -72,10 +134,16 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
         "settings": athlete_settings_data,
         "threshold_pace_fmt": _fmt_pace(threshold_pace_s),
         "hr_zones": hr_zones,
+        "hr_zones_custom": hr_zones_custom,
+        "hr_edit_bounds": hr_edit_bounds,
         "lt1_bpm": lt1_bpm,
         "lt2_bpm": lt2_bpm,
+        "lt1_is_override": lt1_is_override,
+        "lt2_is_override": lt2_is_override,
         "zone_method": method,
         "pace_zones": pace_zones,
+        "pace_zones_custom": pace_zones_custom,
+        "pace_edit_bounds": pace_edit_bounds,
         "vo2max": vo2max_result,
         "shoes": shoes,
         "bikes": bikes,
@@ -103,6 +171,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "active_page": "profile",
                 "saved": saved,
                 "error": error,
+                "vo2max_override_val": s.vo2max_override,
+                "vo2max_computed": vo2max_result,
             }
         )
         return templates.TemplateResponse("profile.html", ctx)
@@ -173,12 +243,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
         # Mirror weight/birthday to the DB athlete record
         cfg = get_settings()
         if cfg.athlete_id and ("weight_kg" in updates or "birthday" in updates):
-            from fitops.db.migrations import init_db
+            from fitops.db.migrations import create_all_tables
             from fitops.db.models.athlete import Athlete
             from fitops.db.session import get_async_session
             from sqlalchemy import select
 
-            init_db()
+            await create_all_tables()
             async with get_async_session() as session:
                 result = await session.execute(
                     select(Athlete).where(Athlete.strava_id == cfg.athlete_id)
@@ -190,6 +260,140 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     if "birthday" in updates:
                         db_athlete.birthday = updates["birthday"]
 
+        return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/hr-zones")
+    async def save_hr_zones(
+        request: Request,
+        z1_max: Optional[str] = Form(default=None),
+        z2_max: Optional[str] = Form(default=None),
+        z3_max: Optional[str] = Form(default=None),
+        z4_max: Optional[str] = Form(default=None),
+        reset: Optional[str] = Form(default=None),
+    ):
+        s = get_athlete_settings()
+        if reset:
+            s.clear("custom_hr_zone_bounds")
+            return RedirectResponse("/profile?saved=1", status_code=303)
+
+        def _bpm(v: Optional[str]) -> Optional[int]:
+            try:
+                return int(v) if v and v.strip() else None
+            except ValueError:
+                return None
+
+        bounds = [_bpm(z1_max), _bpm(z2_max), _bpm(z3_max), _bpm(z4_max)]
+        if not all(b is not None for b in bounds) or bounds != sorted(bounds):
+            return RedirectResponse("/profile?error=invalid_zones", status_code=303)
+
+        s.set(custom_hr_zone_bounds=bounds)
+        return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/estimates")
+    async def save_estimates(
+        request: Request,
+        lt1_hr: Optional[str] = Form(default=None),
+        lt2_hr: Optional[str] = Form(default=None),
+        vo2max_override: Optional[str] = Form(default=None),
+        clear_lt1: Optional[str] = Form(default=None),
+        clear_lt2: Optional[str] = Form(default=None),
+        clear_vo2max: Optional[str] = Form(default=None),
+    ):
+        s = get_athlete_settings()
+
+        def _int(v: Optional[str]) -> Optional[int]:
+            try:
+                return int(v) if v and v.strip() else None
+            except ValueError:
+                return None
+
+        def _float(v: Optional[str]) -> Optional[float]:
+            try:
+                return float(v) if v and v.strip() else None
+            except ValueError:
+                return None
+
+        clear_keys = []
+        if clear_lt1:
+            clear_keys.append("lt1_hr")
+        if clear_lt2:
+            clear_keys.append("lt2_hr")
+        if clear_vo2max:
+            clear_keys.append("vo2max_override")
+        if clear_keys:
+            s.clear(*clear_keys)
+
+        updates: dict = {}
+        if (v := _int(lt1_hr)) is not None:
+            updates["lt1_hr"] = v
+        if (v := _int(lt2_hr)) is not None:
+            updates["lt2_hr"] = v
+        if (v := _float(vo2max_override)) is not None:
+            updates["vo2max_override"] = round(v, 1)
+        if updates:
+            s.set(**updates)
+
+        if not updates and not clear_keys:
+            return RedirectResponse("/profile?error=no_changes", status_code=303)
+        return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/recalculate-vo2max")
+    async def recalculate_vo2max(
+        request: Request,
+        method: str = Form(default="composite"),
+    ):
+        cfg = get_settings()
+        if not cfg.athlete_id:
+            return RedirectResponse("/profile?error=no_auth", status_code=303)
+
+        result = await estimate_vo2max(cfg.athlete_id)
+        if result is None:
+            return RedirectResponse("/profile?error=no_runs", status_code=303)
+
+        if method == "daniels":
+            value = result.vdot
+        elif method == "cooper":
+            value = result.cooper
+        else:
+            value = result.estimate
+
+        if value is None:
+            return RedirectResponse("/profile?error=no_estimate", status_code=303)
+
+        s = get_athlete_settings()
+        s.set(vo2max_override=round(float(value), 1))
+        return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/pace-zones")
+    async def save_pace_zones(
+        request: Request,
+        b1: Optional[str] = Form(default=None),
+        b2: Optional[str] = Form(default=None),
+        b3: Optional[str] = Form(default=None),
+        b4: Optional[str] = Form(default=None),
+        reset: Optional[str] = Form(default=None),
+    ):
+        s = get_athlete_settings()
+        if reset:
+            s.clear("custom_pace_zone_bounds")
+            return RedirectResponse("/profile?saved=1", status_code=303)
+
+        def _pace_s(v: Optional[str]) -> Optional[int]:
+            if not v or not v.strip():
+                return None
+            parts = v.strip().split(":")
+            if len(parts) == 2:
+                try:
+                    return int(parts[0]) * 60 + int(parts[1])
+                except ValueError:
+                    pass
+            return None
+
+        bounds = [_pace_s(b1), _pace_s(b2), _pace_s(b3), _pace_s(b4)]
+        if not all(b is not None for b in bounds) or bounds != sorted(bounds, reverse=True):
+            return RedirectResponse("/profile?error=invalid_zones", status_code=303)
+
+        s.set(custom_pace_zone_bounds=bounds)
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     return router

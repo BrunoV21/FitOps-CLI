@@ -79,7 +79,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         recent = await get_recent_activities(athlete_id, limit=10, since=since) if athlete_id else []
         stats = await get_activity_stats(athlete_id, since=since) if athlete_id else {}
         tl = await get_training_load_data(athlete_id, days=1) if athlete_id else None
-        heatmap_data = await get_activity_heatmap_data(athlete_id) if athlete_id else []
+        heatmap_data = await get_activity_heatmap_data(athlete_id, since=None) if athlete_id else []
 
         current_load = None
         if tl and tl.current:

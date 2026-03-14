@@ -11,6 +11,8 @@ from fitops.analytics.training_load import _compute_overtraining_indicators
 from fitops.analytics.vo2max import estimate_vo2max
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.analytics import (
+    RIDING_SPORTS,
+    RUNNING_SPORTS,
     get_training_load_data,
     get_trends_data,
     get_vo2max_history,
@@ -71,27 +73,58 @@ def register(templates: Jinja2Templates) -> APIRouter:
         )
 
     @router.get("/analytics/trends", response_class=HTMLResponse)
-    async def trends(request: Request, days: int = 180, sport: Optional[str] = None):
+    async def trends(
+        request: Request,
+        days: int = 180,
+        sport: Optional[str] = None,
+        metric: str = "distance",
+        sport_group: str = "all",
+    ):
         settings = get_settings()
         athlete_id = settings.athlete_id
 
         trends_data = None
-        weekly = []
+        weekly: list = []
+        weekly_run: list = []
+        weekly_ride: list = []
+
+        weeks = min(52, max(12, days // 7))
 
         if athlete_id:
-            trends_data = await get_trends_data(athlete_id, days=days, sport=sport)
-            weekly = await get_weekly_volume(athlete_id, weeks=24, sport=sport)
+            if sport_group == "run":
+                sport_types = RUNNING_SPORTS
+            elif sport_group == "ride":
+                sport_types = RIDING_SPORTS
+            else:
+                sport_types = None
 
-        weekly_json = json.dumps(weekly)
+            trends_data = await get_trends_data(
+                athlete_id, days=days, sport=sport, sport_types=sport_types
+            )
+
+            if sport_group == "split":
+                weekly = await get_weekly_volume(athlete_id, weeks=weeks)
+                weekly_run = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS)
+                weekly_ride = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS)
+            elif sport_group == "run":
+                weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS)
+            elif sport_group == "ride":
+                weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS)
+            else:
+                weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport=sport)
 
         return templates.TemplateResponse(
             "analytics/trends.html",
             {
                 "request": request,
                 "trends": trends_data,
-                "weekly_json": weekly_json,
+                "weekly_json": json.dumps(weekly),
+                "weekly_run_json": json.dumps(weekly_run),
+                "weekly_ride_json": json.dumps(weekly_ride),
                 "selected_days": days,
                 "selected_sport": sport,
+                "selected_metric": metric,
+                "selected_sport_group": sport_group,
                 "active_page": "trends",
             },
         )

@@ -82,6 +82,7 @@ async def compute_trends(
     athlete_id: int,
     days: int = 180,
     sport_filter: Optional[str] = None,
+    sport_types: Optional[frozenset] = None,
 ) -> Optional[TrendResult]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -92,6 +93,8 @@ async def compute_trends(
         )
         if sport_filter:
             stmt = stmt.where(Activity.sport_type == sport_filter)
+        elif sport_types:
+            stmt = stmt.where(Activity.sport_type.in_(list(sport_types)))
         stmt = stmt.order_by(Activity.start_date)
         result = await session.execute(stmt)
         activities = result.scalars().all()

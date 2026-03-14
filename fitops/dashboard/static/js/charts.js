@@ -52,20 +52,20 @@ function renderActivityMap(containerId, latlng) {
     maxZoom: 19,
   }).addTo(map);
 
-  const polyline = L.polyline(latlng, { color: '#f97316', weight: 3, opacity: 0.9 }).addTo(map);
+  const polyline = L.polyline(latlng, { color: '#00ff87', weight: 2, opacity: 0.9 }).addTo(map);
   map.fitBounds(polyline.getBounds(), { padding: [16, 16] });
 
   L.circleMarker(latlng[0], {
-    radius: 7, color: '#22c55e', fillColor: '#22c55e', fillOpacity: 1, weight: 2,
+    radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2,
   }).addTo(map).bindTooltip('Start');
 
   L.circleMarker(latlng[latlng.length - 1], {
-    radius: 7, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 1, weight: 2,
+    radius: 5, color: '#ff3355', fillColor: '#ff3355', fillOpacity: 1, weight: 2,
   }).addTo(map).bindTooltip('End');
 
-  // Hover marker (orange dot, hidden until mousemove)
+  // Hover marker (accent dot, hidden until mousemove)
   _activitySync.hoverMarker = L.circleMarker([0, 0], {
-    radius: 6, color: '#f97316', fillColor: '#f97316', fillOpacity: 1, weight: 2, opacity: 0,
+    radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2, opacity: 0,
   }).addTo(map);
 
   // Invisible thick polyline for reliable mouse hit detection
@@ -122,8 +122,8 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   const datasets = [];
   const scales = {
     x: {
-      grid: { color: '#1f2937' },
-      ticks: { maxTicksLimit: 10, color: '#6b7280', font: { size: 11 } },
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { maxTicksLimit: 10, color: '#888888', font: { size: 10, family: 'ui-monospace, monospace' } },
     },
   };
 
@@ -132,8 +132,8 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     datasets.push({
       label: 'Altitude',
       data: streams.altitude,
-      borderColor: '#66bb6a',
-      backgroundColor: 'rgba(102,187,106,0.12)',
+      borderColor: '#00ff87',
+      backgroundColor: 'rgba(0,255,135,0.06)',
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.2,
@@ -156,8 +156,8 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     datasets.push({
       label: 'Heart Rate',
       data: streams.heartrate,
-      borderColor: '#ef5350',
-      backgroundColor: 'rgba(239,83,80,0.08)',
+      borderColor: '#ff3355',
+      backgroundColor: 'rgba(255,51,85,0.06)',
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.2,
@@ -167,11 +167,11 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     });
     scales.yHR = {
       position: 'left',
-      title: { display: true, text: 'bpm', color: '#9ca3af', font: { size: 11 } },
-      grid: { color: '#1f2937' },
+      title: { display: true, text: 'bpm', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
+      grid: { color: 'rgba(255,255,255,0.04)' },
       min: Math.floor(Math.min(...hrVals) * 0.88),
       suggestedMax: Math.max(...hrVals) * 1.02,
-      ticks: { color: '#ef5350', font: { size: 11 } },
+      ticks: { color: '#ff3355', font: { size: 10, family: 'ui-monospace, monospace' } },
     };
 
     // LT2 threshold line (dashed red)
@@ -179,7 +179,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       datasets.push({
         label: 'LT2',
         data: Array(xLabels.length).fill(thresholds.lt2),
-        borderColor: 'rgba(239,83,80,0.55)',
+        borderColor: 'rgba(255,51,85,0.5)',
         borderWidth: 1,
         borderDash: [6, 4],
         pointRadius: 0,
@@ -188,12 +188,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
         _isThreshold: true,
       });
     }
-    // LT1 threshold line (dashed orange)
+    // LT1 threshold line (dashed amber)
     if (thresholds.lt1) {
       datasets.push({
         label: 'LT1',
         data: Array(xLabels.length).fill(thresholds.lt1),
-        borderColor: 'rgba(251,146,60,0.55)',
+        borderColor: 'rgba(255,170,0,0.5)',
         borderWidth: 1,
         borderDash: [6, 4],
         pointRadius: 0,
@@ -211,8 +211,8 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     datasets.push({
       label: 'Pace',
       data: paceData,
-      borderColor: '#42a5f5',
-      backgroundColor: 'rgba(66,165,245,0.08)',
+      borderColor: '#00aaff',
+      backgroundColor: 'rgba(0,170,255,0.06)',
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.2,
@@ -224,13 +224,13 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     scales.yPace = {
       position: 'right',
       reverse: true,
-      title: { display: true, text: 'min/km', color: '#9ca3af', font: { size: 11 } },
+      title: { display: true, text: 'min/km', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
       grid: { drawOnChartArea: false },
       min: 0,
       max: p95 * 1.05,
       ticks: {
-        color: '#42a5f5',
-        font: { size: 11 },
+        color: '#00aaff',
+        font: { size: 10, family: 'ui-monospace, monospace' },
         callback: v => _fmtMMSS(v),
         maxTicksLimit: 6,
       },
@@ -253,7 +253,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       datasets.push({
         label: 'GAP',
         data: gapData,
-        borderColor: '#38bdf8',
+        borderColor: '#00ccff',
         borderWidth: 1.5,
         borderDash: [5, 3],
         pointRadius: 0,
@@ -272,7 +272,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     datasets.push({
       label: 'Cadence',
       data: cadData,
-      borderColor: '#ffa726',
+      borderColor: '#ffaa00',
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.2,
@@ -295,7 +295,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     datasets.push({
       label: 'Power',
       data: streams.watts,
-      borderColor: '#ab47bc',
+      borderColor: '#aa55ff',
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0.2,
@@ -313,9 +313,28 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     };
   }
 
+  const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(ch) {
+      const active = ch.tooltip._active;
+      if (!active || !active.length) return;
+      const { ctx, chartArea: { top, bottom }, scales: { x } } = ch;
+      const xPos = x.getPixelForValue(active[0].index);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(xPos, top);
+      ctx.lineTo(xPos, bottom);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.stroke();
+      ctx.restore();
+    },
+  };
+
   const chart = new Chart(ctx, {
     type: 'line',
     data: { labels: xLabels, datasets },
+    plugins: [crosshairPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -351,14 +370,6 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
               if (ds.label === 'Power')       return ` Power: ${Math.round(v)} W`;
               return ` ${ds.label}: ${v}`;
             },
-            afterBody: (items) => {
-              // Show threshold values when HR is being hovered
-              const lines = [];
-              if (thresholds.lt2) lines.push(` LT2: ${thresholds.lt2} bpm`);
-              if (thresholds.lt1) lines.push(` LT1: ${thresholds.lt1} bpm`);
-              const hasHR = items.some(i => i.dataset.label === 'Heart Rate');
-              return hasHR ? lines : [];
-            },
           },
         },
       },
@@ -387,12 +398,12 @@ function initMetricToggles(chart, containerId, available) {
   if (!container || !chart) return;
 
   const METRICS = [
-    { key: 'hr',   label: 'HR',       color: '#ef5350', defaultOn: true  },
-    { key: 'pace', label: 'Pace',     color: '#42a5f5', defaultOn: true  },
-    { key: 'gap',  label: 'GAP',      color: '#38bdf8', defaultOn: true  },
-    { key: 'alt',  label: 'Altitude', color: '#66bb6a', defaultOn: true  },
-    { key: 'cad',  label: 'Cadence',  color: '#ffa726', defaultOn: false },
-    { key: 'pwr',  label: 'Power',    color: '#ab47bc', defaultOn: false },
+    { key: 'hr',   label: 'HR',       color: '#ff3355', defaultOn: true  },
+    { key: 'pace', label: 'Pace',     color: '#00aaff', defaultOn: true  },
+    { key: 'gap',  label: 'GAP',      color: '#00ccff', defaultOn: true  },
+    { key: 'alt',  label: 'Altitude', color: '#00ff87', defaultOn: true  },
+    { key: 'cad',  label: 'Cadence',  color: '#ffaa00', defaultOn: false },
+    { key: 'pwr',  label: 'Power',    color: '#aa55ff', defaultOn: false },
   ];
 
   METRICS.forEach(({ key, label, color, defaultOn }) => {
@@ -403,18 +414,20 @@ function initMetricToggles(chart, containerId, available) {
     btn.dataset.metricKey = key;
     btn.style.cssText = `
       padding: 3px 10px;
-      border-radius: 9999px;
       border: 1px solid ${color};
-      font-size: 0.75rem;
-      font-weight: 500;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: all 0.1s;
+      font-family: ui-monospace, monospace;
     `;
 
     const setActive = (active) => {
-      btn.style.background = active ? color + '33' : 'transparent';
-      btn.style.color = active ? color : '#6b7280';
-      btn.style.borderColor = active ? color : '#374151';
+      btn.style.background = active ? color + '18' : 'transparent';
+      btn.style.color = active ? color : '#3a3a3a';
+      btn.style.borderColor = active ? color : '#2e2e2e';
       btn.dataset.active = active ? '1' : '0';
     };
 
@@ -451,77 +464,118 @@ function setXAxis(mode) {
   const btnDist = document.getElementById('xaxis-distance');
   const btnTime = document.getElementById('xaxis-time');
   if (btnDist && btnTime) {
-    const activeStyle = 'background:#f97316;color:#fff;';
-    const inactiveStyle = 'background:#1f2937;color:#6b7280;';
-    btnDist.style.cssText = (mode === 'distance' ? activeStyle : inactiveStyle) + 'padding:6px 12px;font-size:0.75rem;font-weight:500;transition:all 0.15s;';
-    btnTime.style.cssText = (mode === 'time'     ? activeStyle : inactiveStyle) + 'padding:6px 12px;font-size:0.75rem;font-weight:500;transition:all 0.15s;';
+    btnDist.classList.toggle('active', mode === 'distance');
+    btnTime.classList.toggle('active', mode === 'time');
   }
 }
 
 /**
- * Render a GitHub-style activity heatmap.
+ * Render a GitHub-style activity heatmap, colored by total duration.
+ * Clicking a column shows all activities from that week in the detail panel.
  * @param {string} containerId  - div to render into
- * @param {{date: string, count: number, distance_km: number}[]} data
+ * @param {{date: string, count: number, duration_s: number, distance_km: number, activities: Array}[]} data
+ * @param {string} period       - "month" | "year" | "all"
  * @param {string} [tooltipId]  - optional element id to show hover text
+ * @param {string} [detailId]   - optional element id to show week detail on click
  */
-function renderActivityHeatmap(containerId, data, tooltipId) {
+function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  // Build a lookup map: date string -> {count, distance_km}
+  // Build a lookup map: date string -> day info
   const lookup = {};
   for (const d of data) {
     lookup[d.date] = d;
   }
 
-  // Color palette: 0 activities -> darkest, 4+ -> brightest
-  const COLORS = ["#1f2937", "#7c2d12", "#c2410c", "#ea580c", "#f97316"];
-  function color(count) {
-    if (count === 0) return COLORS[0];
-    if (count === 1) return COLORS[1];
-    if (count === 2) return COLORS[2];
-    if (count === 3) return COLORS[3];
-    return COLORS[4];
+  // Format seconds as "1h 23m" or "45m"
+  function fmtDuration(s) {
+    if (!s) return "0m";
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
   }
 
-  // Build 53 weeks ending today
+  // Color palette: intensity based on total duration (minutes)
+  const COLORS     = ["#1a1a1a", "rgba(0,255,135,0.15)", "rgba(0,255,135,0.38)", "rgba(0,255,135,0.65)", "#00ff87"];
+  const COLORS_DIM = ["#1a1a1a", "rgba(0,100,55,0.5)",   "rgba(0,100,55,0.7)",   "rgba(0,100,55,0.9)",   "#005c30"];
+  function colorFor(duration_s, dim) {
+    const palette = dim ? COLORS_DIM : COLORS;
+    const min = (duration_s || 0) / 60;
+    if (min === 0)  return palette[0];
+    if (min < 30)   return palette[1];
+    if (min < 60)   return palette[2];
+    if (min < 90)   return palette[3];
+    return palette[4];
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Find the Sunday on or after today to make a clean grid
-  const endDate = new Date(today);
-  // Go back to start of current week (Monday-based)
-  const dayOfWeek = (today.getDay() + 6) % 7; // Mon=0 … Sun=6
-  const startDate = new Date(endDate);
+  // Always render 53 weeks (full calendar) so the SVG fills width with a
+  // good aspect ratio.  The selected period is highlighted; everything outside
+  // is dimmed with a translucent overlay drawn on top.
+  const WEEKS = 53;
+  const dayOfWeek = (today.getDay() + 6) % 7; // Mon=0
+  const startDate = new Date(today);
   startDate.setDate(startDate.getDate() - dayOfWeek - 52 * 7);
 
-  const WEEKS = 53;
-  const DAY_SIZE = 11;   // px per cell
-  const DAY_GAP = 2;     // px gap
+  const DAY_SIZE = 11;
+  const DAY_GAP = 2;
   const CELL = DAY_SIZE + DAY_GAP;
-  const LABEL_H = 18;    // top label row height
+  const LABEL_H = 18;
+  const DOW_LABEL_W = 24;
 
   const DAY_NAMES = ["Mon", "Wed", "Fri"];
-  const DAY_ROWS  = [0, 2, 4]; // which row indices get a label
+  const DAY_ROWS  = [0, 2, 4];
 
   const svgW = WEEKS * CELL;
   const svgH = LABEL_H + 7 * CELL;
 
-  // Build SVG
+  // Compute which week columns are "in focus" for the selected period
+  let focusStartWeek = 0;
+  let focusEndWeek   = WEEKS - 1;
+  if (period === "month") {
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    firstOfMonth.setHours(0, 0, 0, 0);
+    focusStartWeek = Math.max(0, Math.floor((firstOfMonth - startDate) / (7 * 86400000)));
+  } else if (period === "year") {
+    const firstOfYear = new Date(today.getFullYear(), 0, 1);
+    firstOfYear.setHours(0, 0, 0, 0);
+    focusStartWeek = Math.max(0, Math.floor((firstOfYear - startDate) / (7 * 86400000)));
+  }
+  // "all": full range, no dimming
+
+  // Pre-compute per-week date ranges for click handling
+  // weekDates[week] = array of 7 dateStrings for that column
+  const weekDates = [];
+  const buildCur = new Date(startDate);
+  for (let week = 0; week < WEEKS; week++) {
+    const days = [];
+    for (let dow = 0; dow < 7; dow++) {
+      days.push(buildCur.toISOString().slice(0, 10));
+      buildCur.setDate(buildCur.getDate() + 1);
+    }
+    weekDates.push(days);
+  }
+
+  // Build SVG cells — each rect gets data-week index
   let cells = "";
   const cur = new Date(startDate);
   for (let week = 0; week < WEEKS; week++) {
+    const dim = (week < focusStartWeek || week > focusEndWeek);
     for (let dow = 0; dow < 7; dow++) {
       const dateStr = cur.toISOString().slice(0, 10);
-      const info = lookup[dateStr] || { count: 0, distance_km: 0 };
+      const info = lookup[dateStr] || { count: 0, duration_s: 0, distance_km: 0, activities: [] };
       const x = week * CELL;
       const y = LABEL_H + dow * CELL;
-      const title = info.count > 0
-        ? `${dateStr}: ${info.count} activit${info.count === 1 ? "y" : "ies"}, ${info.distance_km} km`
+      const tip = info.duration_s > 0
+        ? `${dateStr}: ${fmtDuration(info.duration_s)}, ${info.distance_km} km`
         : dateStr;
-      cells += `<rect x="${x}" y="${y}" width="${DAY_SIZE}" height="${DAY_SIZE}" rx="2"
-        fill="${color(info.count)}" data-tip="${title}"
-        style="cursor:${info.count > 0 ? 'pointer' : 'default'}"/>`;
+      cells += `<rect x="${x}" y="${y}" width="${DAY_SIZE}" height="${DAY_SIZE}" rx="0"
+        fill="${colorFor(info.duration_s, dim)}" data-tip="${tip}" data-date="${dateStr}" data-week="${week}"
+        style="cursor:pointer"/>`;
       cur.setDate(cur.getDate() + 1);
     }
   }
@@ -534,7 +588,7 @@ function renderActivityHeatmap(containerId, data, tooltipId) {
     const m = labelCur.getMonth();
     if (m !== lastMonth) {
       const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-      monthLabels += `<text x="${week * CELL}" y="${LABEL_H - 4}" fill="#6b7280" font-size="10" font-family="sans-serif">${MONTH_NAMES[m]}</text>`;
+      monthLabels += `<text x="${week * CELL}" y="${LABEL_H - 4}" fill="#555" font-size="9" font-family="ui-monospace,monospace">${MONTH_NAMES[m]}</text>`;
       lastMonth = m;
     }
     labelCur.setDate(labelCur.getDate() + 7);
@@ -545,10 +599,10 @@ function renderActivityHeatmap(containerId, data, tooltipId) {
   for (let i = 0; i < DAY_NAMES.length; i++) {
     const row = DAY_ROWS[i];
     const y = LABEL_H + row * CELL + DAY_SIZE - 1;
-    dowLabels += `<text x="-2" y="${y}" fill="#4b5563" font-size="9" font-family="sans-serif" text-anchor="end">${DAY_NAMES[i]}</text>`;
+    dowLabels += `<text x="-2" y="${y}" fill="#3a3a3a" font-size="8" font-family="ui-monospace,monospace" text-anchor="end">${DAY_NAMES[i]}</text>`;
   }
 
-  const svg = `<svg width="${svgW + 24}" height="${svgH}" viewBox="-24 0 ${svgW + 24} ${svgH}" xmlns="http://www.w3.org/2000/svg">
+  const svg = `<svg width="100%" viewBox="-${DOW_LABEL_W} 0 ${svgW + DOW_LABEL_W} ${svgH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
     ${monthLabels}
     ${dowLabels}
     ${cells}
@@ -558,12 +612,73 @@ function renderActivityHeatmap(containerId, data, tooltipId) {
 
   // Tooltip on hover
   const tooltipEl = tooltipId ? document.getElementById(tooltipId) : null;
-  container.querySelectorAll("rect[data-tip]").forEach((rect) => {
+  const detailEl  = detailId  ? document.getElementById(detailId)  : null;
+
+  let activeWeek = null;
+
+  container.querySelectorAll("rect[data-week]").forEach((rect) => {
     rect.addEventListener("mouseenter", () => {
       if (tooltipEl) tooltipEl.textContent = rect.getAttribute("data-tip");
     });
     rect.addEventListener("mouseleave", () => {
       if (tooltipEl) tooltipEl.textContent = "";
+    });
+    rect.addEventListener("click", () => {
+      if (!detailEl) return;
+      const weekIdx = parseInt(rect.getAttribute("data-week"), 10);
+
+      // Toggle off if same week clicked again
+      if (activeWeek === weekIdx) {
+        activeWeek = null;
+        detailEl.innerHTML = "";
+        return;
+      }
+      activeWeek = weekIdx;
+
+      // Gather all activities for this week's 7 days
+      const days = weekDates[weekIdx];
+      const weekStart = days[0];
+      const weekEnd   = days[6];
+
+      const allActivities = [];
+      let totalDuration = 0, totalDistance = 0, totalCount = 0;
+      for (const dateStr of days) {
+        const info = lookup[dateStr];
+        if (!info || !info.activities) continue;
+        for (const a of info.activities) {
+          allActivities.push({ ...a, date: dateStr });
+          totalDuration += a.duration_s || 0;
+          totalDistance += a.distance_km || 0;
+          totalCount++;
+        }
+      }
+
+      if (allActivities.length === 0) {
+        detailEl.innerHTML = `<div style="border-top:1px solid #222;padding-top:10px;margin-top:6px;font-size:11px;color:var(--text-dim);">No activities for week of ${weekStart}</div>`;
+        return;
+      }
+
+      const rows = allActivities.map(a => {
+        const dist = a.distance_km > 0 ? `${a.distance_km} km` : "—";
+        const nameCell = a.strava_id
+          ? `<a href="/activities/${a.strava_id}" style="color:inherit;text-decoration:none;border-bottom:1px solid #333" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='inherit'">${a.name}</a>`
+          : a.name;
+        return `<tr>
+          <td style="padding:3px 12px 3px 0;color:var(--text-dim);white-space:nowrap">${a.date}</td>
+          <td style="padding:3px 12px 3px 0;color:var(--text-dim)">${a.sport_type || "—"}</td>
+          <td style="padding:3px 12px 3px 0">${nameCell}</td>
+          <td style="padding:3px 12px 3px 0;color:var(--accent);white-space:nowrap">${fmtDuration(a.duration_s)}</td>
+          <td style="padding:3px 0;color:var(--text-dim);white-space:nowrap">${dist}</td>
+        </tr>`;
+      }).join("");
+
+      detailEl.innerHTML = `
+        <div style="border-top:1px solid #222;padding-top:10px;margin-top:6px;">
+          <span style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:8px;">
+            Week of ${weekStart} → ${weekEnd} &nbsp;·&nbsp; ${totalCount} activit${totalCount === 1 ? "y" : "ies"} &nbsp;·&nbsp; ${fmtDuration(totalDuration)} &nbsp;·&nbsp; ${totalDistance.toFixed(1)} km
+          </span>
+          <table style="font-size:11px;font-family:ui-monospace,monospace;border-collapse:collapse;width:100%">${rows}</table>
+        </div>`;
     });
   });
 }
@@ -590,18 +705,18 @@ function renderVo2maxChart(canvasId, data) {
         {
           label: "VO₂max (ml/kg/min)",
           data: estimates,
-          borderColor: "#a78bfa",
-          backgroundColor: "rgba(167,139,250,0.10)",
-          borderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6,
+          borderColor: "#aa55ff",
+          backgroundColor: "rgba(170,85,255,0.08)",
+          borderWidth: 1.5,
+          pointRadius: 3,
+          pointHoverRadius: 5,
           tension: 0.3,
           fill: true,
         },
         {
           label: "Average",
           data: labels.map(() => parseFloat(avg.toFixed(1))),
-          borderColor: "rgba(251,146,60,0.5)",
+          borderColor: "rgba(0,170,255,0.4)",
           borderWidth: 1.5,
           borderDash: [5, 4],
           pointRadius: 0,
@@ -625,13 +740,13 @@ function renderVo2maxChart(canvasId, data) {
       },
       scales: {
         x: {
-          grid: { color: "#1f2937" },
-          ticks: { maxTicksLimit: 10, maxRotation: 45 },
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: { maxTicksLimit: 10, maxRotation: 45, font: { size: 10, family: 'ui-monospace, monospace' } },
         },
         y: {
-          grid: { color: "#1f2937" },
-          title: { display: true, text: "ml/kg/min", color: "#9ca3af" },
-          ticks: { callback: (v) => v.toFixed(0) },
+          grid: { color: "rgba(255,255,255,0.04)" },
+          title: { display: true, text: "ml/kg/min", color: "#888", font: { size: 10, family: 'ui-monospace, monospace' } },
+          ticks: { callback: (v) => v.toFixed(0), font: { size: 10, family: 'ui-monospace, monospace' } },
           suggestedMin: 30,
         },
       },
@@ -640,8 +755,10 @@ function renderVo2maxChart(canvasId, data) {
 }
 
 
-Chart.defaults.color = "#9ca3af";
-Chart.defaults.borderColor = "#1f2937";
+Chart.defaults.color = "#888888";
+Chart.defaults.borderColor = "rgba(255,255,255,0.04)";
+Chart.defaults.font.family = 'ui-monospace, monospace';
+Chart.defaults.font.size = 10;
 
 /**
  * Render the CTL / ATL / TSB training load chart.
@@ -661,9 +778,9 @@ function renderTrainingLoadChart(canvasId, labels, series) {
         {
           label: "CTL (Fitness)",
           data: series.ctl,
-          borderColor: "#60a5fa",
-          backgroundColor: "rgba(96,165,250,0.08)",
-          borderWidth: 2,
+          borderColor: "#00aaff",
+          backgroundColor: "rgba(0,170,255,0.06)",
+          borderWidth: 1.5,
           pointRadius: 0,
           tension: 0.3,
           fill: false,
@@ -671,9 +788,9 @@ function renderTrainingLoadChart(canvasId, labels, series) {
         {
           label: "ATL (Fatigue)",
           data: series.atl,
-          borderColor: "#fb923c",
-          backgroundColor: "rgba(251,146,60,0.08)",
-          borderWidth: 2,
+          borderColor: "#ffaa00",
+          backgroundColor: "rgba(255,170,0,0.06)",
+          borderWidth: 1.5,
           pointRadius: 0,
           tension: 0.3,
           fill: false,
@@ -681,8 +798,8 @@ function renderTrainingLoadChart(canvasId, labels, series) {
         {
           label: "TSB (Form)",
           data: series.tsb,
-          borderColor: "#4ade80",
-          backgroundColor: "rgba(74,222,128,0.08)",
+          borderColor: "#00ff87",
+          backgroundColor: "rgba(0,255,135,0.06)",
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0.3,
@@ -707,14 +824,11 @@ function renderTrainingLoadChart(canvasId, labels, series) {
       },
       scales: {
         x: {
-          grid: { color: "#1f2937" },
-          ticks: {
-            maxTicksLimit: 10,
-            maxRotation: 0,
-          },
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: { maxTicksLimit: 10, maxRotation: 0 },
         },
         y: {
-          grid: { color: "#1f2937" },
+          grid: { color: "rgba(255,255,255,0.04)" },
           ticks: { callback: (v) => v.toFixed(0) },
         },
       },
@@ -723,94 +837,133 @@ function renderTrainingLoadChart(canvasId, labels, series) {
 }
 
 /**
+ * Format decimal hours as "Xh Ym".
+ * @param {number} h
+ * @returns {string}
+ */
+function _fmtHours(h) {
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+}
+
+/**
  * Render weekly training volume bar chart.
  * @param {string} canvasId
- * @param {{week_start: string, distance_km: number, activity_count: number}[]} weeklyData
+ * @param {{week_start: string, distance_km: number, duration_h: number, activity_count: number}[]} weeklyData
+ * @param {{metric?: 'distance'|'time', runData?: Array, rideData?: Array}} [options]
  */
-function renderWeeklyVolumeChart(canvasId, weeklyData) {
+function renderWeeklyVolumeChart(canvasId, weeklyData, options = {}) {
   const ctx = document.getElementById(canvasId);
   if (!ctx) return;
 
-  const labels = weeklyData.map((w) => w.week_start);
-  const distances = weeklyData.map((w) => w.distance_km);
-  const counts = weeklyData.map((w) => w.activity_count);
+  const isTime  = (options.metric || 'distance') === 'time';
+  const isSplit = !!(options.runData && options.rideData);
 
-  // Compute average for reference line
-  const nonZero = distances.filter((d) => d > 0);
-  const avg = nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
+  const labels   = weeklyData.map((w) => w.week_start);
+  const getValue = (w) => isTime ? w.duration_h : w.distance_km;
+  const yUnit    = isTime ? 'h' : 'km';
+  const fmtVal   = isTime ? _fmtHours : (v) => `${v.toFixed(1)} km`;
+
+  const datasets = [];
+
+  if (isSplit) {
+    datasets.push({
+      type: 'bar',
+      label: `Running (${yUnit})`,
+      data: options.runData.map(getValue),
+      backgroundColor: 'rgba(0,170,255,0.30)',
+      borderColor: '#00aaff',
+      borderWidth: 1,
+      borderRadius: 0,
+      yAxisID: 'y',
+      stack: 'vol',
+    });
+    datasets.push({
+      type: 'bar',
+      label: `Cycling (${yUnit})`,
+      data: options.rideData.map(getValue),
+      backgroundColor: 'rgba(255,170,0,0.30)',
+      borderColor: '#ffaa00',
+      borderWidth: 1,
+      borderRadius: 0,
+      yAxisID: 'y',
+      stack: 'vol',
+    });
+  } else {
+    const values  = weeklyData.map(getValue);
+    const nonZero = values.filter((d) => d > 0);
+    const avg     = nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
+    datasets.push({
+      type: 'bar',
+      label: isTime ? 'Duration (h)' : 'Distance (km)',
+      data: values,
+      backgroundColor: 'rgba(0,170,255,0.25)',
+      borderColor: '#00aaff',
+      borderWidth: 1,
+      borderRadius: 0,
+      yAxisID: 'y',
+    });
+    datasets.push({
+      type: 'line',
+      label: `Avg ${yUnit}/week`,
+      data: labels.map(() => parseFloat(avg.toFixed(3))),
+      borderColor: 'rgba(0,255,135,0.4)',
+      borderWidth: 1.5,
+      borderDash: [5, 4],
+      pointRadius: 0,
+      fill: false,
+      yAxisID: 'y',
+    });
+  }
+
+  // Activity count (weeklyData is "all sports" in split mode)
+  datasets.push({
+    type: 'line',
+    label: 'Activities',
+    data: weeklyData.map((w) => w.activity_count),
+    borderColor: '#ff3355',
+    backgroundColor: 'rgba(255,51,85,0.06)',
+    borderWidth: 1.5,
+    pointRadius: 0,
+    tension: 0.3,
+    fill: false,
+    yAxisID: 'y2',
+  });
 
   new Chart(ctx, {
-    data: {
-      labels,
-      datasets: [
-        {
-          type: "bar",
-          label: "Distance (km)",
-          data: distances,
-          backgroundColor: "rgba(249,115,22,0.7)",
-          borderColor: "#f97316",
-          borderWidth: 1,
-          borderRadius: 3,
-          yAxisID: "y",
-        },
-        {
-          type: "line",
-          label: "Avg km/week",
-          data: labels.map(() => parseFloat(avg.toFixed(1))),
-          borderColor: "rgba(96,165,250,0.5)",
-          borderWidth: 1.5,
-          borderDash: [5, 4],
-          pointRadius: 0,
-          fill: false,
-          yAxisID: "y",
-        },
-        {
-          type: "line",
-          label: "Activities",
-          data: counts,
-          borderColor: "#4ade80",
-          backgroundColor: "rgba(74,222,128,0.1)",
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.3,
-          fill: false,
-          yAxisID: "y2",
-        },
-      ],
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
-      interaction: { mode: "index", intersect: false },
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: {
-          position: "top",
-          labels: { usePointStyle: true, padding: 16 },
-        },
+        legend: { position: 'top', labels: { usePointStyle: true, padding: 16 } },
         tooltip: {
           callbacks: {
-            label: (ctx) => {
-              if (ctx.dataset.label === "Activities")
-                return ` Activities: ${ctx.parsed.y}`;
-              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} km`;
+            label: (item) => {
+              if (item.dataset.label === 'Activities') return ` Activities: ${item.parsed.y}`;
+              return ` ${item.dataset.label}: ${fmtVal(item.parsed.y)}`;
             },
           },
         },
       },
       scales: {
         x: {
-          grid: { color: "#1f2937" },
+          grid: { color: 'rgba(255,255,255,0.04)' },
           ticks: { maxTicksLimit: 12, maxRotation: 45 },
+          stacked: isSplit,
         },
         y: {
-          grid: { color: "#1f2937" },
-          position: "left",
-          title: { display: true, text: "km", color: "#9ca3af" },
-          ticks: { callback: (v) => v + " km" },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          position: 'left',
+          stacked: isSplit,
+          title: { display: true, text: yUnit, color: '#888' },
+          ticks: { callback: (v) => isTime ? `${v.toFixed(1)}h` : `${v} km` },
         },
         y2: {
           grid: { drawOnChartArea: false },
-          position: "right",
-          title: { display: true, text: "count", color: "#9ca3af" },
+          position: 'right',
+          title: { display: true, text: 'count', color: '#888' },
           ticks: { stepSize: 1, callback: (v) => v },
         },
       },

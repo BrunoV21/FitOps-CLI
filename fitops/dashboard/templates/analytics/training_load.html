@@ -1,61 +1,57 @@
 {% extends "base.html" %}
 {% block title %}Training Load — FitOps{% endblock %}
+{% block page_name %}Training Load{% endblock %}
 
 {% block content %}
-<div class="mb-6 flex items-center justify-between">
+<div class="page-header">
   <div>
-    <h1 class="text-2xl font-bold text-white">Training Load</h1>
-    <p class="text-gray-400 text-sm mt-1">CTL (Fitness) · ATL (Fatigue) · TSB (Form)</p>
+    <p class="page-title">Training Load</p>
+    <p class="page-subtitle">CTL (Fitness) · ATL (Fatigue) · TSB (Form)</p>
   </div>
-
-  <!-- Filters -->
-  <form method="get" class="flex items-center gap-3">
-    <select name="days"
-            class="bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500">
+  <form method="get" class="filter-bar" style="margin-bottom:0;">
+    <select name="days" class="select-ctrl">
       {% for d in [30, 60, 90, 180, 365] %}
       <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
       {% endfor %}
     </select>
-    <button type="submit"
-            class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-      Update
-    </button>
+    <button type="submit" class="btn btn-primary">Update</button>
   </form>
 </div>
 
 {% if current_load %}
-<!-- Current values -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
-    <p class="text-gray-500 text-xs uppercase tracking-wider">Fitness (CTL)</p>
-    <p class="text-3xl font-bold text-blue-400 mt-1">{{ current_load.ctl }}</p>
-    <p class="text-gray-600 text-xs mt-1">Chronic Training Load</p>
+<!-- Metric panels -->
+<div class="grid-4" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:0ms">
+    <p class="panel-label">Fitness (CTL)</p>
+    <p class="panel-metric c-blue">{{ current_load.ctl }}</p>
+    <p class="panel-sub">Chronic Training Load</p>
   </div>
-  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
-    <p class="text-gray-500 text-xs uppercase tracking-wider">Fatigue (ATL)</p>
-    <p class="text-3xl font-bold text-orange-400 mt-1">{{ current_load.atl }}</p>
-    <p class="text-gray-600 text-xs mt-1">Acute Training Load</p>
+  <div class="panel panel--accent-amber" style="--delay:40ms">
+    <p class="panel-label">Fatigue (ATL)</p>
+    <p class="panel-metric c-amber">{{ current_load.atl }}</p>
+    <p class="panel-sub">Acute Training Load</p>
   </div>
-  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
-    <p class="text-gray-500 text-xs uppercase tracking-wider">Form (TSB)</p>
-    <p class="text-3xl font-bold mt-1 {% if current_load.tsb > 5 %}text-green-400{% elif current_load.tsb < -10 %}text-red-400{% else %}text-yellow-400{% endif %}">
-      {{ current_load.tsb }}
-    </p>
-    <p class="text-gray-600 text-xs mt-1">Training Stress Balance</p>
+  <div class="panel panel--accent{% if current_load.tsb > 5 %}-green{% elif current_load.tsb < -10 %}-red{% else %}-amber{% endif %}" style="--delay:80ms">
+    <p class="panel-label">Form (TSB)</p>
+    <p class="panel-metric
+      {% if current_load.tsb > 5 %}c-green
+      {% elif current_load.tsb < -10 %}c-red
+      {% else %}c-amber{% endif %}">{{ current_load.tsb }}</p>
+    <p class="panel-sub">Training Stress Balance</p>
   </div>
-  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
-    <p class="text-gray-500 text-xs uppercase tracking-wider">Status</p>
-    <p class="text-lg font-semibold text-white mt-2">
-      <span class="inline-block px-2 py-1 rounded text-sm font-medium
-        {% if 'Fresh' in current_load.form_label %}bg-green-900 text-green-300
-        {% elif 'Productive' in current_load.form_label %}bg-blue-900 text-blue-300
-        {% elif 'Overreaching' in current_load.form_label or 'risk' in current_load.form_label %}bg-red-900 text-red-300
-        {% else %}bg-gray-800 text-gray-300{% endif %}">
+  <div class="panel" style="--delay:120ms">
+    <p class="panel-label">Status</p>
+    <div style="margin-top:12px;">
+      <span class="badge
+        {% if 'Fresh' in current_load.form_label %}badge-green
+        {% elif 'Productive' in current_load.form_label %}badge-blue
+        {% elif 'Overreaching' in current_load.form_label or 'risk' in current_load.form_label %}badge-red
+        {% else %}badge-dim{% endif %}" style="font-size:11px;padding:4px 10px;">
         {{ current_load.form_label }}
       </span>
-    </p>
+    </div>
     {% if current_load.ramp_rate_pct is not none %}
-    <p class="text-gray-500 text-xs mt-2">Ramp: {{ current_load.ramp_rate_pct }}% · {{ current_load.ramp_label }}</p>
+    <p class="panel-sub" style="margin-top:10px;">Ramp: {{ current_load.ramp_rate_pct }}% · {{ current_load.ramp_label }}</p>
     {% endif %}
   </div>
 </div>
@@ -67,9 +63,9 @@
 {% if overtraining.atl_sustained_high %}{% set _ = warnings.append("ATL sustained high") %}{% endif %}
 {% if overtraining.tsb_negative_sustained %}{% set _ = warnings.append("TSB negative for 7+ days") %}{% endif %}
 {% if warnings %}
-<div class="mb-6 bg-red-950 border border-red-800 rounded-xl px-5 py-4">
-  <p class="text-red-300 text-sm font-semibold mb-1">⚠️ Overtraining Indicators</p>
-  <ul class="text-red-400 text-sm list-disc list-inside space-y-0.5">
+<div class="alert alert-red mt-4">
+  <p class="alert-title">Overtraining Indicators</p>
+  <ul>
     {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
   </ul>
 </div>
@@ -77,13 +73,13 @@
 {% endif %}
 
 <!-- Chart -->
-<div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+<div class="panel" style="margin-top:1px;--delay:160ms">
   <canvas id="trainingLoadChart" height="80"></canvas>
 </div>
 
 {% else %}
-<div class="bg-gray-900 rounded-xl p-8 border border-gray-800 text-center text-gray-500">
-  No training data found. Run <code class="text-gray-400">fitops sync run</code> first.
+<div class="empty-state">
+  No training data found. Run <code>fitops sync run</code> first.
 </div>
 {% endif %}
 {% endblock %}
@@ -92,8 +88,7 @@
 <script>
 const CHART_DATA = {{ chart_data_json | safe }};
 if (CHART_DATA.length > 0) {
-  const labels = CHART_DATA.map(d => d.date);
-  renderTrainingLoadChart("trainingLoadChart", labels, {
+  renderTrainingLoadChart("trainingLoadChart", CHART_DATA.map(d => d.date), {
     ctl: CHART_DATA.map(d => d.ctl),
     atl: CHART_DATA.map(d => d.atl),
     tsb: CHART_DATA.map(d => d.tsb),
