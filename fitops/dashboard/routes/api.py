@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 
 from fitops.config.settings import get_settings
 from fitops.db.models.activity import Activity
@@ -15,39 +16,48 @@ from fitops.strava.sync_engine import SyncEngine
 
 router = APIRouter()
 
-_STREAMS_BATCH = 50
 
+async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
+    """Fetch and cache streams for activities missing them (or all if force=True).
 
-async def _fetch_streams_for_new(limit: int) -> dict:
-    """Fetch and cache streams for activities that don't have them yet."""
+    limit=0 fetches all matching activities.
+    """
     async with get_async_session() as session:
-        result = await session.execute(
-            select(Activity.id, Activity.strava_id)
-            .where(Activity.streams_fetched == False)  # noqa: E712
-            .where(Activity.average_heartrate.isnot(None))
-            .order_by(Activity.start_date.desc())
-            .limit(limit)
-        )
+        stmt = select(Activity.id, Activity.strava_id).order_by(Activity.start_date.desc())
+        if not force:
+            stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712
+        if limit > 0:
+            stmt = stmt.limit(limit)
+        result = await session.execute(stmt)
         rows = result.fetchall()
+
     if not rows:
         return {"streams_fetched": 0, "errors": 0}
 
     client = StravaClient()
     fetched = errors = 0
-    for internal_id, strava_id in rows:
+    total = len(rows)
+    for idx, (internal_id, strava_id) in enumerate(rows, 1):
         try:
+            if force:
+                async with get_async_session() as session:
+                    await session.execute(
+                        sa_delete(ActivityStream).where(ActivityStream.activity_id == internal_id)
+                    )
             stream_data = await client.get_activity_streams(strava_id)
             async with get_async_session() as session:
                 for stream_type, stream_obj in stream_data.items():
                     data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
-                    existing = await session.execute(
-                        select(ActivityStream).where(
-                            ActivityStream.activity_id == internal_id,
-                            ActivityStream.stream_type == stream_type,
+                    if not force:
+                        existing = await session.execute(
+                            select(ActivityStream).where(
+                                ActivityStream.activity_id == internal_id,
+                                ActivityStream.stream_type == stream_type,
+                            )
                         )
-                    )
-                    if existing.scalar_one_or_none() is None:
-                        session.add(ActivityStream.from_strava_stream(internal_id, stream_type, data_list))
+                        if existing.scalar_one_or_none() is not None:
+                            continue
+                    session.add(ActivityStream.from_strava_stream(internal_id, stream_type, data_list))
                 row = (await session.execute(
                     select(Activity).where(Activity.id == internal_id)
                 )).scalar_one_or_none()
@@ -56,6 +66,9 @@ async def _fetch_streams_for_new(limit: int) -> dict:
             fetched += 1
         except Exception:
             errors += 1
+        # Rate limit: ~1 req/sec to stay under 100 req/15min
+        if idx < total:
+            await asyncio.sleep(1.0)
     return {"streams_fetched": fetched, "errors": errors}
 
 
@@ -74,7 +87,7 @@ def register() -> APIRouter:
 
         streams_result = None
         if result.activities_created > 0:
-            streams_result = await _fetch_streams_for_new(_STREAMS_BATCH)
+            streams_result = await _fetch_streams(limit=result.activities_created)
 
         return JSONResponse({
             "activities_created": result.activities_created,
@@ -84,5 +97,60 @@ def register() -> APIRouter:
             "streams": streams_result,
             "synced_at": datetime.now(timezone.utc).isoformat(),
         })
+
+    @router.post("/api/sync/streams")
+    async def api_sync_streams(force: bool = False, limit: int = 0):
+        settings = get_settings()
+        if not settings.athlete_id:
+            return JSONResponse(
+                {"error": "Not authenticated. Run fitops auth login first."},
+                status_code=401,
+            )
+
+        result = await _fetch_streams(limit=limit, force=force)
+        return JSONResponse({
+            **result,
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    @router.post("/api/sync/streams/{strava_id}")
+    async def api_sync_activity_streams(strava_id: int):
+        settings = get_settings()
+        if not settings.athlete_id:
+            return JSONResponse(
+                {"error": "Not authenticated. Run fitops auth login first."},
+                status_code=401,
+            )
+
+        async with get_async_session() as session:
+            row = (await session.execute(
+                select(Activity).where(Activity.strava_id == strava_id)
+            )).scalar_one_or_none()
+
+        if row is None:
+            return JSONResponse({"error": "Activity not found."}, status_code=404)
+
+        client = StravaClient()
+        try:
+            stream_data = await client.get_activity_streams(strava_id)
+            async with get_async_session() as session:
+                activity = (await session.execute(
+                    select(Activity).where(Activity.strava_id == strava_id)
+                )).scalar_one_or_none()
+                if activity:
+                    for stream_type, stream_obj in stream_data.items():
+                        data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+                        existing = await session.execute(
+                            select(ActivityStream).where(
+                                ActivityStream.activity_id == activity.id,
+                                ActivityStream.stream_type == stream_type,
+                            )
+                        )
+                        if existing.scalar_one_or_none() is None:
+                            session.add(ActivityStream.from_strava_stream(activity.id, stream_type, data_list))
+                    activity.streams_fetched = True
+            return JSONResponse({"ok": True, "streams_fetched": len(stream_data)})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     return router

@@ -17,6 +17,7 @@ def print_activities_table(activities: list[dict]) -> None:
         return
 
     table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("ID", style="dim", no_wrap=True)
     table.add_column("Date", style="dim", no_wrap=True)
     table.add_column("Name")
     table.add_column("Sport", no_wrap=True)
@@ -26,6 +27,7 @@ def print_activities_table(activities: list[dict]) -> None:
     table.add_column("HR", justify="right", no_wrap=True)
 
     for a in activities:
+        activity_id = str(a.get("strava_activity_id") or "")
         date_str = (a.get("start_date_local") or "")[:10]
         name = a.get("name") or ""
         sport = a.get("sport_type") or ""
@@ -43,7 +45,7 @@ def print_activities_table(activities: list[dict]) -> None:
             perf = "-"
         hr_block = a.get("heart_rate")
         hr = str(int(hr_block["average_bpm"])) if hr_block and hr_block.get("average_bpm") else "-"
-        table.add_row(date_str, name, sport, dist_str, dur, perf, hr)
+        table.add_row(activity_id, date_str, name, sport, dist_str, dur, perf, hr)
 
     console.print(table)
 

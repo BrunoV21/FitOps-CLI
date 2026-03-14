@@ -12,18 +12,16 @@ from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
-from fitops.db.models.activity_laps import ActivityLap
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
-from fitops.output.formatter import format_activity_row, make_meta, _fmt_seconds, _round2
+from fitops.output.formatter import format_activity_row, make_meta
 from fitops.output.text_formatter import (
     print_activities_table,
     print_activity_detail,
-    print_laps_table,
     print_streams_summary,
 )
 from fitops.strava.client import StravaClient
-from fitops.utils.exceptions import FitOpsError, NotAuthenticatedError
+from fitops.utils.exceptions import NotAuthenticatedError
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -265,76 +263,3 @@ def get_streams(
         typer.echo(json.dumps(out, indent=2, default=str))
     else:
         print_streams_summary(out["streams"], activity_id)
-
-
-@app.command("laps")
-def get_laps(
-    activity_id: int = typer.Argument(..., help="Strava activity ID."),
-    fetch_fresh: bool = typer.Option(False, "--fresh", help="Re-fetch laps from Strava API."),
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
-) -> None:
-    """Get lap splits for an activity."""
-    settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1)
-
-    init_db()
-
-    async def _fetch():
-        async with get_async_session() as session:
-            result = await session.execute(
-                select(Activity).where(Activity.strava_id == activity_id)
-            )
-            activity = result.scalar_one_or_none()
-            if not activity:
-                typer.echo(f"Activity {activity_id} not found locally.", err=True)
-                raise typer.Exit(1)
-
-            if fetch_fresh or not activity.laps_fetched:
-                client = StravaClient()
-                laps_data = await client.get_activity_laps(activity_id)
-                for lap in laps_data:
-                    session.add(ActivityLap.from_strava_data(activity.id, lap))
-                activity.laps_fetched = True
-
-            laps_result = await session.execute(
-                select(ActivityLap)
-                .where(ActivityLap.activity_id == activity.id)
-                .order_by(ActivityLap.lap_index)
-            )
-            laps = laps_result.scalars().all()
-
-        return {
-            "_meta": make_meta(total_count=len(laps)),
-            "activity_strava_id": activity_id,
-            "laps": [
-                {
-                    "lap_index": lap.lap_index,
-                    "name": lap.name,
-                    "duration": {
-                        "moving_time_seconds": lap.moving_time_s,
-                        "moving_time_formatted": _fmt_seconds(lap.moving_time_s),
-                    },
-                    "distance": {
-                        "meters": _round2(lap.distance_m),
-                        "km": _round2(lap.distance_m / 1000) if lap.distance_m else None,
-                    },
-                    "average_speed_ms": _round2(lap.average_speed_ms),
-                    "heart_rate": {
-                        "average_bpm": _round2(lap.average_heartrate),
-                        "max_bpm": lap.max_heartrate,
-                    } if lap.average_heartrate else None,
-                    "average_watts": _round2(lap.average_watts),
-                }
-                for lap in laps
-            ],
-        }
-
-    out = asyncio.run(_fetch())
-    if json_output:
-        typer.echo(json.dumps(out, indent=2, default=str))
-    else:
-        print_laps_table(out["laps"], activity_id)

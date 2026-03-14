@@ -62,7 +62,6 @@ fitops activities list                      # last 20 activities
 fitops activities list --sport Run --limit 10 --after 2025-01-01
 fitops activities get <strava_id>           # single activity + HR drift insight
 fitops activities streams <strava_id>       # raw HR/pace/power/altitude streams
-fitops activities laps <strava_id>          # lap splits
 ```
 
 Key output fields per activity:
@@ -166,10 +165,29 @@ fitops analytics snapshot        # today's CTL, ATL, TSB, VO2max, LT1/LT2
 ```bash
 fitops workouts list                              # list .md files in ~/.fitops/workouts/
 fitops workouts show threshold-tuesday            # display workout definition
+fitops workouts create '{"name":"...","segments":[...]}'  # create workout from JSON
 fitops workouts link threshold-tuesday <id>       # link workout to activity
+fitops workouts unlink <strava_id>                # remove workout↔activity link
+fitops workouts get <strava_id>                   # retrieve workout linked to activity
 fitops workouts compliance <strava_id>            # score HR compliance per segment
 fitops workouts history --limit 10                # recent linked workouts
 ```
+
+### Dashboard — Local Visual Interface
+```bash
+fitops dashboard serve                      # launch dashboard at http://localhost:5000
+fitops dashboard serve --port 8080          # custom port
+fitops dashboard serve --no-browser         # skip auto-open in browser
+```
+
+The dashboard provides a browser-based UI for exploring all training data visually:
+- **Overview** — CTL/ATL/TSB trend chart, weekly volume, recent activities
+- **Activities** — filterable list and individual activity detail views
+- **Analytics** — performance metrics, training load history, VO2max trend
+- **Trends** — volume, pace, HR trends over time
+- **Profile** — athlete settings and equipment mileage
+
+> If the user wants to visualise or browse their data interactively, always offer to launch the dashboard with `fitops dashboard serve`. It is the fastest way to explore training history without writing queries.
 
 ---
 
@@ -224,6 +242,12 @@ fitops activities get <strava_id>
 ```bash
 fitops athlete equipment --type shoes
 ```
+
+### "Show me my data visually" / "Open the dashboard"
+```bash
+fitops dashboard serve
+```
+Opens a browser-based dashboard at http://localhost:5000 with charts for training load, activities, analytics, and trends.
 
 ---
 

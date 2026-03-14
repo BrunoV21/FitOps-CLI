@@ -82,13 +82,20 @@ async def get_equipment_with_stats(athlete_id: int) -> list[dict]:
 
 
 async def get_activity_heatmap_data(
-    athlete_id: int, weeks: int = 53
+    athlete_id: int, since: datetime | None = None, weeks: int = 53
 ) -> list[dict]:
-    """Return per-day activity counts and distances for the past `weeks` weeks."""
-    cutoff = datetime.now(timezone.utc) - timedelta(weeks=weeks)
+    """Return per-day duration totals and per-activity detail for the period since `since`."""
+    cutoff = since if since is not None else datetime.now(timezone.utc) - timedelta(weeks=weeks)
     async with get_async_session() as session:
         result = await session.execute(
-            select(Activity.start_date_local, Activity.distance_m, Activity.sport_type)
+            select(
+                Activity.strava_id,
+                Activity.start_date_local,
+                Activity.name,
+                Activity.sport_type,
+                Activity.distance_m,
+                Activity.moving_time_s,
+            )
             .where(
                 Activity.athlete_id == athlete_id,
                 Activity.start_date >= cutoff,
@@ -104,11 +111,18 @@ async def get_activity_heatmap_data(
             continue
         key = dt.strftime("%Y-%m-%d")
         if key not in day_map:
-            day_map[key] = {"date": key, "count": 0, "distance_km": 0.0}
+            day_map[key] = {"date": key, "count": 0, "duration_s": 0, "distance_km": 0.0, "activities": []}
         day_map[key]["count"] += 1
-        day_map[key]["distance_km"] += round((row.distance_m or 0) / 1000, 2)
+        day_map[key]["duration_s"] += row.moving_time_s or 0
+        day_map[key]["distance_km"] += (row.distance_m or 0) / 1000
+        day_map[key]["activities"].append({
+            "strava_id": row.strava_id,
+            "name": row.name or row.sport_type or "Activity",
+            "sport_type": row.sport_type or "",
+            "distance_km": round((row.distance_m or 0) / 1000, 2),
+            "duration_s": row.moving_time_s or 0,
+        })
 
-    # Round accumulated distances
     for v in day_map.values():
         v["distance_km"] = round(v["distance_km"], 1)
 

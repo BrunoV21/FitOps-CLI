@@ -7,13 +7,20 @@ from typing import Optional
 
 @dataclass
 class WorkoutSegmentDef:
-    """A segment definition parsed from a workout markdown body."""
+    """A segment definition parsed from a workout markdown body or JSON structure."""
 
     index: int
     name: str
     step_type: str              # warmup | interval | recovery | cooldown | main
     target_zone: Optional[int]  # 1–5, derived from "Z4" / "Zone 4" in text
     duration_min: Optional[float]
+
+    # Extended target fields (set by JSON parser; None for markdown-based segments)
+    target_hr_min_bpm: Optional[float] = None
+    target_hr_max_bpm: Optional[float] = None
+    target_pace_min_s_per_km: Optional[float] = None
+    target_pace_max_s_per_km: Optional[float] = None
+    target_focus_type: str = "hr_zone"  # hr_zone | hr_range | pace_range | none
 
 
 # ---------------------------------------------------------------------------

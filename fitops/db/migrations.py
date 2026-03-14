@@ -75,6 +75,29 @@ async def _migrate_workout_columns(conn) -> None:
             )
 
 
+# Columns added to `workout_segments` for extended compliance scoring.
+_WORKOUT_SEGMENT_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("avg_speed_ms", "REAL"),
+    ("avg_cadence", "REAL"),
+    ("avg_gap_per_km", "REAL"),
+    ("target_hr_min_bpm", "REAL"),
+    ("target_hr_max_bpm", "REAL"),
+    ("target_pace_min_s_per_km", "REAL"),
+    ("target_pace_max_s_per_km", "REAL"),
+]
+
+
+async def _migrate_workout_segment_columns(conn) -> None:
+    """Add new columns to the workout_segments table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(workout_segments)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _WORKOUT_SEGMENT_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE workout_segments ADD COLUMN {col_name} {col_type}")
+            )
+
+
 async def create_all_tables(engine: AsyncEngine | None = None) -> None:
     if engine is None:
         engine = get_engine()
@@ -84,6 +107,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_athlete_columns(conn)
         await _migrate_activity_columns(conn)
         await _migrate_workout_columns(conn)
+        await _migrate_workout_segment_columns(conn)
 
 
 def init_db() -> None:

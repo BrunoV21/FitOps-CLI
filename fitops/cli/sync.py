@@ -20,29 +20,39 @@ from fitops.output.text_formatter import print_sync_result, print_sync_streams_r
 
 app = typer.Typer(no_args_is_help=True)
 
-STREAMS_BATCH_LIMIT = 50  # cap per run to stay within Strava rate limits
 
-
-async def _fetch_streams_for_activities(activity_ids: list[int], strava_ids: list[int]) -> dict:
+async def _fetch_streams_for_activities(
+    activity_ids: list[int], strava_ids: list[int], force: bool = False
+) -> dict:
     """Fetch and cache streams for a list of (internal_id, strava_id) pairs."""
+    from sqlalchemy import delete as sa_delete
     from fitops.strava.client import StravaClient
     client = StravaClient()
     fetched = 0
     errors = 0
-    for internal_id, strava_id in zip(activity_ids, strava_ids):
+    total = len(activity_ids)
+    for idx, (internal_id, strava_id) in enumerate(zip(activity_ids, strava_ids), 1):
+        typer.echo(f"  [{idx}/{total}] activity {strava_id}...", err=True)
         try:
+            if force:
+                async with get_async_session() as session:
+                    await session.execute(
+                        sa_delete(ActivityStream).where(ActivityStream.activity_id == internal_id)
+                    )
             stream_data = await client.get_activity_streams(strava_id)
             async with get_async_session() as session:
                 for stream_type, stream_obj in stream_data.items():
                     data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
-                    existing = await session.execute(
-                        select(ActivityStream).where(
-                            ActivityStream.activity_id == internal_id,
-                            ActivityStream.stream_type == stream_type,
+                    if not force:
+                        existing = await session.execute(
+                            select(ActivityStream).where(
+                                ActivityStream.activity_id == internal_id,
+                                ActivityStream.stream_type == stream_type,
+                            )
                         )
-                    )
-                    if existing.scalar_one_or_none() is None:
-                        session.add(ActivityStream.from_strava_stream(internal_id, stream_type, data_list))
+                        if existing.scalar_one_or_none() is not None:
+                            continue
+                    session.add(ActivityStream.from_strava_stream(internal_id, stream_type, data_list))
                 activity_row = await session.execute(
                     select(Activity).where(Activity.id == internal_id)
                 )
@@ -50,8 +60,12 @@ async def _fetch_streams_for_activities(activity_ids: list[int], strava_ids: lis
                 if row:
                     row.streams_fetched = True
             fetched += 1
-        except Exception:
+        except Exception as e:
+            typer.echo(f"    error: {e}", err=True)
             errors += 1
+        # Rate limit: ~1 request/sec to stay under 100 req/15min
+        if idx < total:
+            await asyncio.sleep(1.0)
     return {"streams_fetched": fetched, "errors": errors}
 
 
@@ -59,7 +73,8 @@ async def _fetch_streams_for_activities(activity_ids: list[int], strava_ids: lis
 def run(
     full: bool = typer.Option(False, "--full", help="Full historical sync from the beginning."),
     after: Optional[str] = typer.Option(None, "--after", help="Sync from this date (YYYY-MM-DD)."),
-    streams: bool = typer.Option(False, "--streams", help="Also fetch HR streams for newly synced activities (up to 50)."),
+    streams: bool = typer.Option(False, "--streams", help="Also fetch streams for newly synced activities."),
+    force_streams: bool = typer.Option(False, "--force-streams", help="Re-fetch streams for all activities (slow — ~1 req/sec)."),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
     """Sync activities from Strava."""
@@ -87,9 +102,12 @@ def run(
         result = asyncio.run(engine.run(full=full, after_override=after_dt))
 
         streams_result: Optional[dict] = None
-        if streams and result.activities_created > 0:
-            typer.echo(f"Fetching streams for up to {STREAMS_BATCH_LIMIT} new activities...")
-            streams_result = asyncio.run(_fetch_and_cache_new_streams(limit=STREAMS_BATCH_LIMIT))
+        if force_streams:
+            typer.echo("Fetching streams for all activities (force refresh)...")
+            streams_result = asyncio.run(_fetch_and_cache_new_streams(limit=0, force=True))
+        elif streams and result.activities_created > 0:
+            typer.echo(f"Fetching streams for {result.activities_created} new activities...")
+            streams_result = asyncio.run(_fetch_and_cache_new_streams(limit=result.activities_created))
 
         out: dict = {
             "sync_type": sync_type,
@@ -110,31 +128,36 @@ def run(
         raise typer.Exit(1)
 
 
-async def _fetch_and_cache_new_streams(limit: int) -> dict:
-    """Fetch streams for activities with HR data that don't have streams yet."""
+async def _fetch_and_cache_new_streams(limit: int = 0, force: bool = False) -> dict:
+    """Fetch streams for activities that don't have them (or all, if force=True).
+
+    limit=0 means no limit (fetch all matching activities).
+    """
     async with get_async_session() as session:
-        result = await session.execute(
+        stmt = (
             select(Activity.id, Activity.strava_id)
-            .where(Activity.streams_fetched == False)  # noqa: E712
-            .where(Activity.average_heartrate.isnot(None))
             .order_by(Activity.start_date.desc())
-            .limit(limit)
         )
+        if not force:
+            stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712
+        if limit > 0:
+            stmt = stmt.limit(limit)
+        result = await session.execute(stmt)
         rows = result.fetchall()
     if not rows:
         return {"streams_fetched": 0, "errors": 0}
     internal_ids = [r[0] for r in rows]
     strava_ids = [r[1] for r in rows]
-    return await _fetch_streams_for_activities(internal_ids, strava_ids)
+    return await _fetch_streams_for_activities(internal_ids, strava_ids, force=force)
 
 
 @app.command("streams")
 def sync_streams(
-    limit: int = typer.Option(50, "--limit", help="Max activities to fetch streams for (default 50, Strava rate limit safe)."),
-    all_sports: bool = typer.Option(False, "--all", help="Include activities without HR data too."),
+    limit: int = typer.Option(0, "--limit", help="Max activities to fetch streams for. 0 = all (default)."),
+    force: bool = typer.Option(False, "--force", help="Re-fetch streams even for activities that already have them."),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
 ) -> None:
-    """Fetch and cache streams for activities that don't have them yet."""
+    """Fetch and cache streams for all activities that don't have them yet."""
     settings = get_settings()
     try:
         settings.require_auth()
@@ -146,24 +169,21 @@ def sync_streams(
 
     async def _run():
         async with get_async_session() as session:
-            stmt = (
-                select(Activity.id, Activity.strava_id)
-                .where(Activity.streams_fetched == False)  # noqa: E712
-                .order_by(Activity.start_date.desc())
-                .limit(limit)
-            )
-            if not all_sports:
-                stmt = stmt.where(Activity.average_heartrate.isnot(None))
+            stmt = select(Activity.id, Activity.strava_id).order_by(Activity.start_date.desc())
+            if not force:
+                stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712
+            if limit > 0:
+                stmt = stmt.limit(limit)
             result = await session.execute(stmt)
             rows = result.fetchall()
 
         if not rows:
             return {"streams_fetched": 0, "errors": 0, "message": "No activities need streams."}
 
-        typer.echo(f"Fetching streams for {len(rows)} activities...", err=True)
+        typer.echo(f"Fetching streams for {len(rows)} activities (~1 req/sec)...", err=True)
         internal_ids = [r[0] for r in rows]
         strava_ids = [r[1] for r in rows]
-        return await _fetch_streams_for_activities(internal_ids, strava_ids)
+        return await _fetch_streams_for_activities(internal_ids, strava_ids, force=force)
 
     try:
         result = asyncio.run(_run())

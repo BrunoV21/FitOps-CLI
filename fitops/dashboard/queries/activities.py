@@ -14,6 +14,7 @@ from fitops.db.session import get_async_session
 async def get_recent_activities(
     athlete_id: int,
     limit: int = 50,
+    offset: int = 0,
     sport: Optional[str] = None,
     days: Optional[int] = None,
     since: Optional[datetime] = None,
@@ -27,9 +28,25 @@ async def get_recent_activities(
         elif days:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
-        q = q.order_by(Activity.start_date.desc()).limit(limit)
+        q = q.order_by(Activity.start_date.desc()).offset(offset).limit(limit)
         result = await session.execute(q)
         return list(result.scalars().all())
+
+
+async def count_activities(
+    athlete_id: int,
+    sport: Optional[str] = None,
+    days: Optional[int] = None,
+) -> int:
+    async with get_async_session() as session:
+        q = select(func.count(Activity.id)).where(Activity.athlete_id == athlete_id)
+        if sport:
+            q = q.where(Activity.sport_type == sport)
+        if days:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            q = q.where(Activity.start_date >= cutoff)
+        result = await session.execute(q)
+        return result.scalar_one() or 0
 
 
 async def get_activity_detail(athlete_id: int, strava_id: int) -> Optional[Activity]:
