@@ -85,9 +85,19 @@ def test_headwind_crosswind():
 # ---------------------------------------------------------------------------
 
 def test_pace_wind_factor_headwind():
-    """2.8 m/s headwind → factor slightly above 1.0 (penalty)."""
+    """2.8 m/s (~10 km/h) headwind → ~4-5% penalty (Pugh 1971 calibration)."""
     factor = pace_wind_factor(2.8)
-    assert factor > 1.0
+    assert 1.03 < factor < 1.07
+
+
+def test_pace_wind_factor_pugh_calibration():
+    """Verify against Pugh (1971) empirical measurements."""
+    # 6.4 km/h (1.78 m/s): ~4% measured; we expect 1-5%
+    assert 0.01 < pace_wind_factor(1.78) - 1.0 < 0.05
+    # 12.9 km/h (3.58 m/s): ~8% measured; we expect 6-10%
+    assert 0.06 < pace_wind_factor(3.58) - 1.0 < 0.10
+    # 19.3 km/h (5.36 m/s): ~16% measured; we expect 14-20%
+    assert 0.14 < pace_wind_factor(5.36) - 1.0 < 0.20
 
 
 def test_pace_wind_factor_tailwind():
