@@ -266,6 +266,13 @@ def compute_activity_analytics(
     time_data = streams.get("time", [])
     velocity_data = streams.get("velocity_smooth", [])
 
+    # For effort-normalised analytics prefer True Pace (GAP+WAP), then GAP, then actual
+    pace_velocity = (
+        streams.get("true_velocity")
+        or streams.get("grade_adjusted_speed")
+        or velocity_data
+    )
+
     hr_zones = None
     pace_zones = None
     lt2 = None
@@ -274,12 +281,12 @@ def compute_activity_analytics(
     if hr_data and time_data:
         hr_zones = compute_time_in_hr_zones(hr_data, time_data)
         lt2 = infer_lt2_from_streams(
-            hr_data, time_data, velocity_data if velocity_data else None
+            hr_data, time_data, pace_velocity if pace_velocity else None
         )
 
     is_run = getattr(activity, "sport_type", None) in RUN_TYPES
-    if is_run and velocity_data and time_data:
-        pace_zones = compute_time_in_pace_zones(velocity_data, time_data)
+    if is_run and pace_velocity and time_data:
+        pace_zones = compute_time_in_pace_zones(pace_velocity, time_data)
 
     if is_run:
         est = _estimate_from_activity(activity)
