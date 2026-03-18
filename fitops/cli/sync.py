@@ -8,8 +8,10 @@ from typing import Optional
 import typer
 from sqlalchemy import select
 
+from fitops.analytics.weather_pace import wbgt_approx, pace_heat_factor as _pace_heat_factor
 from fitops.config.state import get_sync_state
 from fitops.config.settings import get_settings
+from fitops.dashboard.queries.weather import upsert_activity_weather
 from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
@@ -17,6 +19,7 @@ from fitops.db.session import get_async_session
 from fitops.strava.sync_engine import SyncEngine
 from fitops.utils.exceptions import FitOpsError, NotAuthenticatedError
 from fitops.output.text_formatter import print_sync_result, print_sync_streams_result, print_sync_status
+from fitops.weather.client import fetch_activity_weather
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -69,6 +72,42 @@ async def _fetch_streams_for_activities(
     return {"streams_fetched": fetched, "errors": errors}
 
 
+async def _fetch_weather_for_strava_ids(strava_ids: list[int]) -> dict:
+    """Fetch and store weather for a list of activity strava_ids."""
+    import json as _json
+    fetched = errors = 0
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(Activity).where(Activity.strava_id.in_(strava_ids))
+        )
+        acts = result.scalars().all()
+
+    for act in acts:
+        if not act.start_latlng or not act.start_date:
+            continue
+        typer.echo(f"  weather {act.strava_id}...", err=True)
+        try:
+            coords = _json.loads(act.start_latlng)
+            if not (isinstance(coords, list) and len(coords) == 2):
+                continue
+            lat, lng = float(coords[0]), float(coords[1])
+            weather = await fetch_activity_weather(lat, lng, act.start_date)
+            if weather:
+                tc = weather.get("temperature_c")
+                hum = weather.get("humidity_pct")
+                if tc is not None and hum is not None:
+                    weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
+                    weather["pace_heat_factor"] = round(_pace_heat_factor(tc, hum), 4)
+                await upsert_activity_weather(act.strava_id, weather, source="open-meteo")
+                fetched += 1
+        except Exception as e:
+            typer.echo(f"    weather error: {e}", err=True)
+            errors += 1
+        await asyncio.sleep(0.1)
+
+    return {"weather_fetched": fetched, "weather_errors": errors}
+
+
 @app.command("run")
 def run(
     full: bool = typer.Option(False, "--full", help="Full historical sync from the beginning."),
@@ -102,12 +141,27 @@ def run(
         result = asyncio.run(engine.run(full=full, after_override=after_dt))
 
         streams_result: Optional[dict] = None
+        weather_result: Optional[dict] = None
         if force_streams:
             typer.echo("Fetching streams for all activities (force refresh)...")
             streams_result = asyncio.run(_fetch_and_cache_new_streams(limit=0, force=True))
         elif streams and result.activities_created > 0:
             typer.echo(f"Fetching streams for {result.activities_created} new activities...")
             streams_result = asyncio.run(_fetch_and_cache_new_streams(limit=result.activities_created))
+
+        # Auto-fetch weather for new activities (when streams are also fetched)
+        if (streams or force_streams) and result.activities_created > 0:
+            typer.echo(f"Fetching weather for {result.activities_created} new activities...")
+            async def _get_new_ids() -> list[int]:
+                async with get_async_session() as session:
+                    res = await session.execute(
+                        select(Activity.strava_id)
+                        .order_by(Activity.start_date.desc())
+                        .limit(result.activities_created)
+                    )
+                    return [r[0] for r in res.all()]
+            new_ids = asyncio.run(_get_new_ids())
+            weather_result = asyncio.run(_fetch_weather_for_strava_ids(new_ids))
 
         out: dict = {
             "sync_type": sync_type,
@@ -119,6 +173,8 @@ def run(
         }
         if streams_result:
             out["streams"] = streams_result
+        if weather_result:
+            out["weather"] = weather_result
         if json_output:
             typer.echo(json.dumps(out, indent=2))
         else:

@@ -7,12 +7,14 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete as sa_delete, select
 
+from fitops.analytics.weather_pace import wbgt_approx, pace_heat_factor
 from fitops.config.settings import get_settings
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.session import get_async_session
 from fitops.strava.client import StravaClient
 from fitops.strava.sync_engine import SyncEngine
+from fitops.weather.client import fetch_activity_weather
 
 router = APIRouter()
 
@@ -72,6 +74,41 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
     return {"streams_fetched": fetched, "errors": errors}
 
 
+async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
+    """Fetch and store weather for a list of strava_ids that were just synced."""
+    import json as _json
+    from fitops.dashboard.queries.weather import upsert_activity_weather
+    fetched = errors = 0
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(Activity).where(Activity.strava_id.in_(strava_ids))
+        )
+        acts = result.scalars().all()
+
+    for act in acts:
+        if not act.start_latlng or not act.start_date:
+            continue
+        try:
+            coords = _json.loads(act.start_latlng)
+            if not (isinstance(coords, list) and len(coords) == 2):
+                continue
+            lat, lng = float(coords[0]), float(coords[1])
+            weather = await fetch_activity_weather(lat, lng, act.start_date)
+            if weather:
+                tc = weather.get("temperature_c")
+                hum = weather.get("humidity_pct")
+                if tc is not None and hum is not None:
+                    weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
+                    weather["pace_heat_factor"] = round(pace_heat_factor(tc, hum), 4)
+                await upsert_activity_weather(act.strava_id, weather, source="open-meteo")
+                fetched += 1
+        except Exception:
+            errors += 1
+        await asyncio.sleep(0.1)
+
+    return {"weather_fetched": fetched, "weather_errors": errors}
+
+
 def register() -> APIRouter:
     @router.post("/api/sync")
     async def api_sync():
@@ -86,8 +123,19 @@ def register() -> APIRouter:
         result = await engine.run(full=False)
 
         streams_result = None
+        weather_result = None
         if result.activities_created > 0:
             streams_result = await _fetch_streams(limit=result.activities_created)
+            # Get strava_ids of the newest activities (same count as created)
+            async with get_async_session() as session:
+                newest = await session.execute(
+                    select(Activity.strava_id)
+                    .where(Activity.athlete_id == settings.athlete_id)
+                    .order_by(Activity.start_date.desc())
+                    .limit(result.activities_created)
+                )
+                new_strava_ids = [r[0] for r in newest.all()]
+            weather_result = await _fetch_weather_for_new_activities(new_strava_ids)
 
         return JSONResponse({
             "activities_created": result.activities_created,
@@ -95,6 +143,7 @@ def register() -> APIRouter:
             "pages_fetched": result.pages_fetched,
             "duration_s": round(result.duration_s, 2),
             "streams": streams_result,
+            "weather": weather_result,
             "synced_at": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -149,7 +198,14 @@ def register() -> APIRouter:
                         if existing.scalar_one_or_none() is None:
                             session.add(ActivityStream.from_strava_stream(activity.id, stream_type, data_list))
                     activity.streams_fetched = True
-            return JSONResponse({"ok": True, "streams_fetched": len(stream_data)})
+            # Also fetch weather while we're here
+            weather_ok = False
+            try:
+                wr = await _fetch_weather_for_new_activities([strava_id])
+                weather_ok = wr.get("weather_fetched", 0) > 0
+            except Exception:
+                pass
+            return JSONResponse({"ok": True, "streams_fetched": len(stream_data), "weather_fetched": weather_ok})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 

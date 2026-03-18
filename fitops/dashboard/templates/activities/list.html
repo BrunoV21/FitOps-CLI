@@ -50,6 +50,7 @@
         <th class="r">Watts</th>
         <th class="r">TSS</th>
         <th class="r">Elev</th>
+        <th class="r">Weather</th>
       </tr>
     </thead>
     <tbody>
@@ -78,6 +79,16 @@
         <td class="r">{% if a.avg_watts %}{{ a.avg_watts }} W{% else %}—{% endif %}</td>
         <td class="r">{% if a.tss %}{{ a.tss }}{% else %}—{% endif %}</td>
         <td class="r">{% if a.elevation_m %}{{ a.elevation_m }} m{% else %}—{% endif %}</td>
+        <td class="r">
+          {% if a.weather %}
+            <span class="wbgt-{{ a.weather.wbgt_flag }}" style="font-weight:600;">{{ a.weather.temp_fmt }}</span>
+            {% if a.weather.condition %}
+              <span class="text-dim" style="font-size:11px;display:block;">{{ a.weather.condition | truncate(14, True) }}</span>
+            {% endif %}
+          {% else %}
+            <span class="text-dim">—</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
