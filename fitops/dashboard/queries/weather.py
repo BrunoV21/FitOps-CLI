@@ -13,6 +13,17 @@ from fitops.db.models.activity_weather import ActivityWeather
 from fitops.db.session import get_async_session
 
 
+async def get_weather_for_activities(strava_ids: list[int]) -> dict[int, ActivityWeather]:
+    """Batch load weather rows for a list of strava_ids. Returns {strava_id: ActivityWeather}."""
+    if not strava_ids:
+        return {}
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(ActivityWeather).where(ActivityWeather.activity_id.in_(strava_ids))
+        )
+        return {w.activity_id: w for w in result.scalars().all()}
+
+
 async def get_weather_for_activity(
     session: AsyncSession, activity_id: int
 ) -> Optional[ActivityWeather]:

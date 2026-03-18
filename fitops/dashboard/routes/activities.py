@@ -10,6 +10,12 @@ from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.activity_zones import compute_activity_analytics
 from fitops.analytics.athlete_settings import get_athlete_settings
+from fitops.analytics.weather_pace import (
+    compute_bearing,
+    compute_wap_factor,
+    wbgt_flag,
+    weather_condition_label,
+)
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import (
     count_activities,
@@ -20,6 +26,7 @@ from fitops.dashboard.queries.activities import (
     get_recent_activities,
 )
 from fitops.dashboard.queries.athlete import get_athlete
+from fitops.dashboard.queries.weather import get_weather_for_activities
 from fitops.dashboard.queries.workouts import get_workout_for_activity
 
 router = APIRouter()
@@ -85,6 +92,26 @@ def _activity_row(a) -> dict:
         "description": (a.description or "").strip() or None,
         "device_name": a.device_name,
         "gear_id": a.gear_id,
+    }
+
+
+def _weather_summary(w) -> dict:
+    """Convert an ActivityWeather row into a template-ready dict."""
+    wbgt = w.wbgt_c
+    wcode = w.weather_code
+    return {
+        "temperature_c": w.temperature_c,
+        "apparent_temp_c": w.apparent_temp_c,
+        "humidity_pct": w.humidity_pct,
+        "wind_speed_ms": w.wind_speed_ms,
+        "wind_direction_deg": w.wind_direction_deg,
+        "precipitation_mm": w.precipitation_mm,
+        "wbgt_c": wbgt,
+        "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else "green",
+        "pace_heat_factor": w.pace_heat_factor,
+        "source": w.source,
+        "condition": weather_condition_label(wcode) if wcode is not None else None,
+        "temp_fmt": f"{round(w.temperature_c)}°C" if w.temperature_c is not None else None,
     }
 
 
@@ -243,11 +270,23 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         total_pages = max(1, math.ceil(total / limit)) if total else 1
 
+        # Batch-load weather for all listed activities
+        strava_ids = [a.strava_id for a in activities]
+        weather_map = await get_weather_for_activities(strava_ids)
+
+        rows = []
+        for a in activities:
+            row = _activity_row(a)
+            w = weather_map.get(a.strava_id)
+            if w:
+                row["weather"] = _weather_summary(w)
+            rows.append(row)
+
         return templates.TemplateResponse(
             "activities/list.html",
             {
                 "request": request,
-                "activities": [_activity_row(a) for a in activities],
+                "activities": rows,
                 "sports": sports,
                 "selected_sport": sport,
                 "selected_days": days,
@@ -358,6 +397,49 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     ],
                 }
 
+        # Load weather and compute WAP for detail view
+        weather_panel = None
+        weather_map_detail = await get_weather_for_activities([strava_id])
+        w = weather_map_detail.get(strava_id)
+        if w:
+            ws = _weather_summary(w)
+
+            # Compute course bearing for wind component
+            course_bearing: Optional[float] = None
+            if activity.start_latlng and activity.end_latlng:
+                try:
+                    s = json.loads(activity.start_latlng)
+                    e = json.loads(activity.end_latlng)
+                    if len(s) == 2 and len(e) == 2:
+                        course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
+                except (json.JSONDecodeError, TypeError, IndexError):
+                    pass
+
+            wap_factor = 1.0
+            if w.temperature_c is not None and w.humidity_pct is not None:
+                wap_factor = compute_wap_factor(
+                    temp_c=w.temperature_c,
+                    rh_pct=w.humidity_pct,
+                    wind_speed_ms_val=w.wind_speed_ms or 0.0,
+                    wind_dir_deg=w.wind_direction_deg or 0.0,
+                    course_bearing=course_bearing,
+                )
+
+            wap_fmt = None
+            if activity.average_speed_ms and activity.average_speed_ms > 0:
+                actual_pace_s = 1000.0 / activity.average_speed_ms
+                wap_s = actual_pace_s / wap_factor
+                m, s_rem = divmod(int(wap_s), 60)
+                wap_fmt = f"{m}:{s_rem:02d}/km"
+
+            weather_panel = {
+                **ws,
+                "wap_factor": round(wap_factor, 4),
+                "wap_factor_pct": round((wap_factor - 1.0) * 100, 1),
+                "wap_fmt": wap_fmt,
+                "course_bearing": round(course_bearing, 0) if course_bearing is not None else None,
+            }
+
         return templates.TemplateResponse(
             "activities/detail.html",
             {
@@ -374,6 +456,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "sport_type": activity.sport_type,
                 "gear_name": gear_name,
                 "workout": workout_data,
+                "weather": weather_panel,
                 "lt2_hr": get_athlete_settings().lthr,
                 "lt1_hr": round(get_athlete_settings().lthr * 0.92) if get_athlete_settings().lthr else None,
                 "active_page": "activities",

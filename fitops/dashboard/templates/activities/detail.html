@@ -122,6 +122,79 @@
 </div>
 {% endif %}
 
+{# ── Weather Panel ────────────────────────────────────────────── #}
+{% if weather %}
+<div class="panel" style="--delay:440ms;margin-bottom:1px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <p class="panel-label" style="margin:0;">
+      Conditions
+      {% if weather.source == 'manual' %}<span class="badge badge-dim" style="margin-left:6px;">manual</span>{% endif %}
+    </p>
+    {% if weather.wap_fmt %}
+    <span style="font-size:11px;color:var(--text-dim);">
+      WAP
+      <span style="color:var(--accent-blue);font-weight:700;margin-left:4px;">{{ weather.wap_fmt }}</span>
+      {% if weather.wap_factor_pct != 0 %}
+      <span class="{% if weather.wap_factor_pct > 3 %}wap-factor-bad{% elif weather.wap_factor_pct > 0 %}wap-factor-warm{% else %}wap-factor-good{% endif %}" style="margin-left:4px;">
+        ({% if weather.wap_factor_pct > 0 %}+{% endif %}{{ "%.1f"|format(weather.wap_factor_pct) }}%)
+      </span>
+      {% endif %}
+    </span>
+    {% endif %}
+  </div>
+  <div class="effort-grid">
+    {% if weather.temperature_c is not none %}
+    <div class="effort-item">
+      <p class="effort-label">Temperature</p>
+      <p class="effort-val">
+        <span class="wbgt-{{ weather.wbgt_flag }}" style="font-weight:700;">{{ "%.0f"|format(weather.temperature_c) }}°C</span>
+        {% if weather.apparent_temp_c is not none and (weather.apparent_temp_c - weather.temperature_c) | abs > 1 %}
+        <span style="color:var(--text-dim);font-size:11px;margin-left:4px;">feels {{ "%.0f"|format(weather.apparent_temp_c) }}°</span>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.humidity_pct is not none %}
+    <div class="effort-item">
+      <p class="effort-label">Humidity</p>
+      <p class="effort-val">{{ "%.0f"|format(weather.humidity_pct) }}%</p>
+    </div>
+    {% endif %}
+    {% if weather.wind_speed_ms is not none %}
+    <div class="effort-item">
+      <p class="effort-label">Wind</p>
+      <p class="effort-val">{{ "%.1f"|format(weather.wind_speed_ms) }} m/s
+        {% if weather.wind_direction_deg is not none %}
+        <span style="color:var(--text-dim);font-size:11px;">{{ "%.0f"|format(weather.wind_direction_deg) }}°</span>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.wbgt_c is not none %}
+    <div class="effort-item">
+      <p class="effort-label">WBGT</p>
+      <p class="effort-val">
+        <span class="wbgt-{{ weather.wbgt_flag }}">{{ "%.1f"|format(weather.wbgt_c) }}</span>
+        <span class="badge wbgt-{{ weather.wbgt_flag }}" style="margin-left:6px;border-color:currentColor;">{{ weather.wbgt_flag }}</span>
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.precipitation_mm is not none and weather.precipitation_mm > 0 %}
+    <div class="effort-item">
+      <p class="effort-label">Precipitation</p>
+      <p class="effort-val">{{ "%.1f"|format(weather.precipitation_mm) }} mm</p>
+    </div>
+    {% endif %}
+    {% if weather.condition %}
+    <div class="effort-item">
+      <p class="effort-label">Condition</p>
+      <p class="effort-val">{{ weather.condition }}</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {# ── Activity Analysis: map + stream chart ──────────────────── #}
 {% if has_streams %}
 <div class="analysis-section" style="--delay:440ms;margin-bottom:1px;">
