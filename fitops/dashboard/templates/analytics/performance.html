@@ -180,7 +180,7 @@
 <!-- Pace threshold evolution chart -->
 <div class="panel" style="margin-top:1px;--delay:180ms">
   <p class="panel-label">Pace Thresholds Over Time</p>
-  <p class="panel-sub" style="margin-bottom:8px;">LT1 · LT2 · vVO₂max — derived per activity from VDOT &middot; lower = faster</p>
+  <p class="panel-sub" style="margin-bottom:8px;">LT1 · LT2 · vVO₂max &middot; lower = faster &middot; <span style="color:#00ff87;">stream-measured</span> when available, VDOT-derived otherwise</p>
   <canvas id="paceEvolutionChart" height="60"></canvas>
 </div>
 
@@ -200,6 +200,7 @@
         <th class="r">VDOT</th>
         <th class="r">Cooper</th>
         <th class="r">Signal</th>
+        <th class="r">Source</th>
       </tr>
     </thead>
     <tbody>
@@ -224,6 +225,13 @@
           <span class="badge badge-green" title="Updates rolling VO₂max">qualifying</span>
           {% else %}
           <span class="badge badge-dim" title="Too short/easy to update estimate">easy</span>
+          {% endif %}
+        </td>
+        <td class="r">
+          {% if row.estimation_method == "streams" %}
+          <span class="badge badge-green" title="VO₂max estimated from stream segments; LT paces directly measured">streams</span>
+          {% else %}
+          <span class="badge badge-dim" title="VO₂max estimated from whole-activity summary">summary</span>
           {% endif %}
         </td>
       </tr>
