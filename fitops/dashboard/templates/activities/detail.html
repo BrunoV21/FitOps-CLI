@@ -164,8 +164,8 @@
     <div class="effort-item">
       <p class="effort-label">Wind</p>
       <p class="effort-val">{{ "%.1f"|format(weather.wind_speed_ms) }} m/s
-        {% if weather.wind_direction_deg is not none %}
-        <span style="color:var(--text-dim);font-size:11px;">{{ "%.0f"|format(weather.wind_direction_deg) }}°</span>
+        {% if weather.wind_dir_compass %}
+        <span style="color:var(--text-dim);font-size:11px;">from {{ weather.wind_dir_compass }}</span>
         {% endif %}
       </p>
     </div>
@@ -527,7 +527,11 @@
   const SPORT_TYPE = {{ sport_type | tojson }};
   const THRESHOLDS = { lt1: {{ lt1_hr | tojson }}, lt2: {{ lt2_hr | tojson }} };
   const latlng     = STREAMS.latlng || [];
-  renderActivityMap('activity-map', latlng);
+  const _windData = {% if weather and weather.wind_direction_deg is not none %}{
+    dirDeg: {{ weather.wind_direction_deg }},
+    label: '{{ weather.wind_dir_compass or "" }} · {{ "%.1f"|format(weather.wind_speed_ms) if weather.wind_speed_ms is not none else "?" }} m/s'
+  }{% else %}null{% endif %};
+  renderActivityMap('activity-map', latlng, _windData);
   const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE, THRESHOLDS);
   const hasGap = (STREAMS.grade_adjusted_speed || []).length > 0
     || ((STREAMS.grade_smooth || []).length > 0 && (STREAMS.velocity_smooth || []).length > 0);
