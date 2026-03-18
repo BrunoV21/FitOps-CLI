@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.training_load import _compute_overtraining_indicators
-from fitops.analytics.vo2max import estimate_vo2max, compute_vo2max_rolling
+from fitops.analytics.vo2max import estimate_vo2max, compute_vo2max_rolling, vo2max_from_lt2_pace
 from fitops.config.settings import get_settings
 from fitops.analytics.vo2max import compute_race_predictions
 from fitops.analytics.zone_inference import paces_from_vdot
@@ -89,7 +89,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         history = []
 
         if athlete_id:
-            best_vo2max = await estimate_vo2max(athlete_id, max_activities=50)
+            best_vo2max = await estimate_vo2max(athlete_id)
             history = await get_vo2max_history(athlete_id, days=days)
             # Anchor rolling model at the known best estimate so the starting
             # point isn't dragged down by the first easy run in the window.
@@ -112,13 +112,48 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if best_vo2max:
             race_predictions = compute_race_predictions(best_vo2max, lt2_pace_s=lt2_pace_s)
 
-        # Enrich each history row with derived pace thresholds from VDOT
+        # Enrich each history row with pace thresholds.
+        #
+        # Smoothing strategy — two layers:
+        #
+        # 1. VDOT anchor: use rolling_vo2max (ratchet+decay model) rather than the
+        #    per-activity raw vdot. rolling_vo2max already absorbs noise: it rises
+        #    fully on PRs, damps downward signals to 20%, and only decays after 14 days
+        #    with no qualifying effort. This prevents the pace lines from jumping every
+        #    time there's a short training gap.
+        #
+        # 2. Measured LT2 (stream-based): accurate but session-to-session noisy.
+        #    Apply a running EWMA (α=0.3) in speed space so one hard interval session
+        #    can't spike the LT2 line up by 20 sec/km. Back-calculate implied VDOT from
+        #    the smoothed LT2 and re-derive all three paces — ordering guaranteed.
+        _LT2_EWMA_ALPHA = 0.3
+        smoothed_lt2_speed: Optional[float] = None  # running EWMA in m/s (history is oldest-first)
+
         for row in history:
-            vdot = row.get("vdot")
-            if vdot:
-                lt1_s, lt2_s, vo2s = paces_from_vdot(vdot)
+            # Prefer rolling_vo2max (smoothed); fall back to raw vdot for early rows
+            rolling_vdot = row.get("rolling_vo2max") or row.get("vdot")
+            lt1_s = lt2_s = vo2s = None
+            if rolling_vdot:
+                lt1_s, lt2_s, vo2s = paces_from_vdot(rolling_vdot)
+
+            if row.get("estimation_method") == "streams" and row.get("measured_lt2_pace_s"):
+                raw_speed = 1000.0 / row["measured_lt2_pace_s"]  # pace (s/km) → speed (m/s)
+                if smoothed_lt2_speed is None:
+                    smoothed_lt2_speed = raw_speed
+                else:
+                    smoothed_lt2_speed = (
+                        _LT2_EWMA_ALPHA * raw_speed
+                        + (1 - _LT2_EWMA_ALPHA) * smoothed_lt2_speed
+                    )
+                smoothed_lt2_pace_s = round(1000.0 / smoothed_lt2_speed, 1)
+                implied_vdot = vo2max_from_lt2_pace(smoothed_lt2_pace_s)
+                lt1_s, lt2_s, vo2s = paces_from_vdot(implied_vdot)
+
+            if lt1_s:
                 row["derived_lt1_pace_s"] = lt1_s
+            if lt2_s:
                 row["derived_lt2_pace_s"] = lt2_s
+            if vo2s:
                 row["derived_vo2max_pace_s"] = vo2s
 
         history_json = json.dumps(history)
