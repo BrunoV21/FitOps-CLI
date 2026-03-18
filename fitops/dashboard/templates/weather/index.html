@@ -60,7 +60,7 @@
           <th>Actual</th>
           <th>°C</th>
           <th>RH%</th>
-          <th>Wind</th>
+          <th>Wind (km/h)</th>
           <th>WBGT</th>
           <th>Factor</th>
           <th>WAP</th>
@@ -84,7 +84,7 @@
             {% else %}—{% endif %}
           </td>
           <td class="text-muted">{{ "%.0f"|format(row.humidity_pct) if row.humidity_pct is not none else "—" }}%</td>
-          <td class="text-muted">{{ "%.1f"|format(row.wind_speed_ms) if row.wind_speed_ms is not none else "—" }} m/s</td>
+          <td class="text-muted">{{ "%.1f"|format(row.wind_speed_ms * 3.6) if row.wind_speed_ms is not none else "—" }} km/h</td>
           <td>
             {% if row.wbgt_c is not none %}
               <span class="wbgt-{{ row.wbgt_flag }}">{{ "%.1f"|format(row.wbgt_c) }}</span>
