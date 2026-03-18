@@ -400,6 +400,27 @@ input, select, textarea { font-family: var(--font); }
 .btn-ghost { background: transparent; border-color: var(--border); color: var(--text-muted); }
 .btn-ghost:hover { border-color: var(--border-hover); color: var(--text-primary); }
 .btn-ghost.disabled { opacity: 0.35; pointer-events: none; cursor: default; }
+.btn-secondary { background: transparent; border-color: var(--border); color: var(--text-secondary); }
+.btn-secondary:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.btn-danger { background: transparent; border-color: var(--accent-red); color: var(--accent-red); }
+.btn-danger:hover { background: var(--accent-red); color: #fff; }
+
+/* ── Note body (rendered markdown) ─────────────────────────── */
+.note-body { font-size: 0.88rem; line-height: 1.7; color: var(--text-primary); }
+.note-body h1,.note-body h2,.note-body h3 { margin: 1.2em 0 0.4em; font-weight: 600; }
+.note-body h1 { font-size: 1.2rem; }
+.note-body h2 { font-size: 1.05rem; }
+.note-body h3 { font-size: 0.95rem; }
+.note-body p { margin: 0.5em 0; }
+.note-body ul,.note-body ol { margin: 0.5em 0; padding-left: 1.4em; }
+.note-body li { margin: 0.2em 0; }
+.note-body code { background: var(--bg-secondary); padding: 1px 5px; border-radius: 3px; font-size: 0.82rem; }
+.note-body pre { background: var(--bg-secondary); padding: 10px 14px; border-radius: 6px; overflow-x: auto; }
+.note-body pre code { background: none; padding: 0; }
+.note-body strong { font-weight: 600; }
+.note-body em { font-style: italic; }
+.note-body blockquote { border-left: 3px solid var(--border); margin: 0.5em 0; padding-left: 12px; color: var(--text-muted); }
+.note-body hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
 
 /* ── Pagination ─────────────────────────────────────────────── */
 .pagination { display: flex; align-items: center; gap: 12px; margin-top: 20px; }

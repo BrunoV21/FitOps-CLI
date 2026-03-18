@@ -17,6 +17,7 @@ from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
 from fitops.db.models.workout import Workout  # noqa: F401
 from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
 from fitops.db.models.analytics_snapshot import AnalyticsSnapshot  # noqa: F401
+from fitops.db.models.note import Note  # noqa: F401
 
 # Columns added to `athletes` after the initial schema.
 _ATHLETE_NEW_COLUMNS: list[tuple[str, str]] = [
