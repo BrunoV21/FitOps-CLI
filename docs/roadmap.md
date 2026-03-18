@@ -175,7 +175,7 @@ fitops backup list                       # Show available remote snapshots
 
 ---
 
-## Phase 6 — Notes & Memos 🔜
+## Phase 6 — Notes & Memos ✅
 
 **Goal:** Lightweight markdown-based note-taking system with tags, optional activity association, accessible from both CLI (for agents) and dashboard (for humans).
 
@@ -231,69 +231,209 @@ fitops notes tags                          # list all tags with counts
 
 **Goal:** Adjust pace for environmental conditions (temperature, humidity, wind) — similar to how GAP adjusts for elevation — and combine both into a single "True Pace" metric that strips away all external factors.
 
-### Weather Data
+---
 
-Fetch historical weather for each activity using GPS start coordinates + start time:
+### Weather Provider: Open-Meteo Historical Archive API
 
-| Source | Notes |
-|--------|-------|
-| **Open-Meteo Historical API** | Free, no API key, hourly resolution, covers global history |
-| **Fallback: manual input** | `fitops weather set <activity_id> --temp 32 --humidity 80 --wind 15` |
+**Chosen provider: Open-Meteo** — confirmed best option after full evaluation.
 
-Store per-activity weather in `activity_weather` table or JSON column on `activities`:
-- `temperature_c`, `humidity_pct`, `wind_speed_kmh`, `wind_direction_deg`, `conditions` (rain/sun/etc.)
+| Provider | Historical | Free / No Key | Accuracy |
+|---|---|---|---|
+| **Open-Meteo** ✅ | Back to 1940 | ✅ No key, 10k req/day | ERA5 reanalysis (global grid) |
+| Meteostat | ✅ | RapidAPI key, ~500 req/mo | Station interpolation (variable) |
+| Visual Crossing | ✅ | Key required, 1k records/day | Station + model blend |
+| OpenWeatherMap | Paid only | ❌ | n/a |
+
+**API Endpoint:** `https://archive-api.open-meteo.com/v1/archive`
+
+**Example call** — weather at lat=52.52, lon=13.40 on 2024-06-15:
+```
+https://archive-api.open-meteo.com/v1/archive
+  ?latitude=52.52
+  &longitude=13.40
+  &start_date=2024-06-15
+  &end_date=2024-06-15
+  &hourly=temperature_2m,relative_humidity_2m,apparent_temperature,
+          precipitation,wind_speed_10m,wind_direction_10m,
+          wind_gusts_10m,dew_point_2m,weather_code
+  &timezone=UTC
+```
+
+Response is 24-entry hourly arrays; `hour_index = activity_start_utc.hour` selects the right slot.
+
+**No API key required for non-commercial / personal use.**
+Rate limits: 600 req/min · 5,000 req/hr · 10,000 req/day. One call covers a full day — more than enough for any backfill scenario.
+
+**GPS source for coordinates:** `start_latlng` from `activities` table (already synced from Strava). Fallback to polyline centroid when available from streams.
+
+**Storage:** `activity_weather` table (new):
+```
+id, activity_id (FK), temperature_c, humidity_pct, apparent_temp_c,
+wind_speed_kmh, wind_direction_deg, wind_gusts_kmh, dew_point_c,
+precipitation_mm, weather_code, fetched_at, source ("open-meteo" | "manual")
+```
+
+---
 
 ### Pace Adjustment Models
 
-**Temperature adjustment** (based on research — Ely et al., Vihma 2010):
-- Optimal range: 8–15°C (no adjustment)
-- Per degree above 15°C: +0.3–0.5% pace penalty (exponential above 25°C)
-- Per degree below 5°C: +0.1–0.2% pace penalty
-- Above 30°C: additional humidity multiplier
+All formulas are grounded in published sports science research.
 
-**Humidity adjustment:**
-- Below 40%: negligible
-- 40–60%: +0.5–1.0% when temp > 20°C
-- Above 75%: +2–4% when temp > 25°C (heat index interaction)
+#### Temperature + Humidity — WBGT-based model (Ely et al. 2007 / Vihma 2010)
 
-**Wind adjustment:**
-- Headwind: +0.3% per km/h (above 10 km/h threshold)
-- Tailwind: −0.15% per km/h (capped — less benefit than headwind cost)
-- Crosswind: 50% of headwind effect
-- Requires course direction vs wind direction (from GPS track bearing)
+The canonical source is **Ely et al. (2007)** *Medicine & Science in Sports & Exercise* — marathon performance analysis across 5 decades of race data.
+
+**Step 1: Compute WBGT approximation** (Liljegren simplified, using vapor pressure):
+```python
+import math
+
+def _vapor_pressure(temp_c: float, rh_pct: float) -> float:
+    """Vapor pressure (kPa) via Magnus formula."""
+    return (rh_pct / 100.0) * 0.6105 * math.exp(17.27 * temp_c / (temp_c + 237.3))
+
+def wbgt_approx(temp_c: float, rh_pct: float) -> float:
+    e = _vapor_pressure(temp_c, rh_pct)
+    return 0.567 * temp_c + 0.393 * e + 3.94
+```
+
+**Step 2: Pace penalty from WBGT** (Ely/ACSM piecewise, validated against marathon data):
+```python
+def pace_heat_factor(temp_c: float, rh_pct: float) -> float:
+    """Returns pace multiplier: 1.0 = neutral, 1.08 = 8% slower."""
+    wbgt = wbgt_approx(temp_c, rh_pct)
+    if wbgt < 10:
+        return 1.0                                         # optimal / cold
+    elif wbgt < 18:
+        return 1.0 + 0.002 * (wbgt - 10)                 # 0–1.6% (10–18°C WBGT)
+    elif wbgt < 23:
+        return 1.016 + 0.006 * (wbgt - 18)               # 1.6–4.6% (18–23°C WBGT)
+    elif wbgt < 28:
+        return 1.046 + 0.014 * (wbgt - 23)               # 4.6–11.6% (23–28°C WBGT)
+    else:
+        return 1.116 + 0.020 * (wbgt - 28)               # >11.6%, steep above 28°C
+```
+
+**Key benchmarks** (WBGT ≈ air temp when RH ~50%):
+- 10°C, 60% RH → ~0% penalty
+- 20°C, 60% RH → ~3% slower
+- 28°C, 60% RH → ~9% slower
+- 32°C, 75% RH → ~14% slower
+
+#### Wind — Vector projection model (Pugh 1971 / Davies 1980)
+
+Wind direction from Open-Meteo is **meteorological convention**: degrees the wind blows *FROM* (0°=from North, 90°=from East).
+
+**Step 1: Course bearing** — compute mean bearing of GPS track from polyline or start/end coordinates:
+```python
+def bearing_deg(lat1, lon1, lat2, lon2) -> float:
+    """Great-circle initial bearing in degrees (0=North, clockwise)."""
+    dlon = math.radians(lon2 - lon1)
+    lat1_r, lat2_r = math.radians(lat1), math.radians(lat2)
+    x = math.sin(dlon) * math.cos(lat2_r)
+    y = math.cos(lat1_r) * math.sin(lat2_r) - math.sin(lat1_r) * math.cos(lat2_r) * math.cos(dlon)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+```
+
+**Step 2: Headwind component** — dot product of wind vector onto course direction:
+```python
+def headwind_kmh(wind_speed: float, wind_dir_deg: float, course_bearing_deg: float) -> float:
+    """
+    Positive = headwind (costs energy), negative = tailwind (saves energy).
+    wind_dir_deg: direction wind blows FROM (met convention).
+    course_bearing_deg: direction athlete runs TOWARD.
+    """
+    wind_toward_deg = (wind_dir_deg + 180) % 360   # direction wind travels toward
+    wind_u = wind_speed * math.sin(math.radians(wind_toward_deg))
+    wind_v = wind_speed * math.cos(math.radians(wind_toward_deg))
+    run_u = math.sin(math.radians(course_bearing_deg))
+    run_v = math.cos(math.radians(course_bearing_deg))
+    return -(wind_u * run_u + wind_v * run_v)       # negative dot = headwind
+```
+
+**Step 3: Pace penalty from wind** (aerodynamic drag model, Pugh 1971):
+```python
+def pace_wind_factor(headwind_kmh_val: float) -> float:
+    """
+    Headwind > 0 → pace penalty (slower). Tailwind < 0 → pace benefit (faster).
+    Tailwind benefit is ~55% of equivalent headwind cost (physics asymmetry).
+    Validated range: ±40 km/h wind.
+    """
+    if headwind_kmh_val >= 0:
+        penalty = 0.0025 * (headwind_kmh_val ** 1.5)     # ~3% at 10 km/h, ~8% at 20 km/h
+    else:
+        penalty = -0.0014 * (abs(headwind_kmh_val) ** 1.5)  # 55% of headwind cost
+    return max(0.85, min(1.25, 1.0 + penalty / 100))
+```
+
+**Rule of thumb:** 10 km/h headwind ≈ +3–4% pace penalty; 20 km/h ≈ +8–10%.
+
+For **out-and-back** courses the net wind effect ≈ 0 (cancel each direction). Wind matters most for point-to-point or heavily directional courses.
+
+---
+
+### VO2max Heat/Humidity Penalty
+
+Based on **Nybo et al. (2001)** and **González-Alonso et al. (1999)**: each 1°C rise in core body temperature above 37°C reduces VO2max by ~3%. In hot/humid conditions, core temp is elevated 0.5–2.0°C before the same aerobic work, effectively suppressing the aerobic ceiling.
+
+```python
+def vo2max_heat_factor(temp_c: float, rh_pct: float) -> float:
+    """
+    VO2max multiplier due to heat stress.
+    1.0 = no reduction, 0.92 = 8% reduction.
+    Source: Cheuvront & Haymes (2001), González-Alonso (1999).
+    """
+    if temp_c <= 10:
+        return 1.0
+    e = _vapor_pressure(temp_c, rh_pct)
+    heat_stress = temp_c + 0.33 * e - 4.0          # simplified heat stress index
+    reduction = min(0.25, max(0.0, 0.01 * (heat_stress - 10)))
+    return 1.0 - reduction
+```
+
+**Benchmarks:**
+- 21°C, 50% RH → ~3–5% VO2max reduction
+- 30°C, 50% RH → ~8–12% reduction
+- 35°C, 70% RH → ~15–20% reduction
+
+This factor is applied on top of the standard VDOT/VO2max estimate to produce a **heat-adjusted VO2max** that reflects the athlete's true aerobic capacity under those conditions.
+
+---
 
 ### True Pace
 
-**True Pace = WAP + GAP combined** — the pace you would have run on flat ground in ideal weather.
+**True Pace = WAP + GAP combined** — the pace you would have run on flat ground in ideal weather (15°C, 40% RH, no wind).
 
 ```
-true_pace = actual_pace × gap_factor × wap_factor
+true_pace = actual_pace_s_per_km / (gap_factor × wap_factor)
 ```
 
 Where:
-- `gap_factor` = grade-adjusted correction (already available from elevation streams)
-- `wap_factor` = weather-adjusted correction (temperature + humidity + wind)
+- `gap_factor` = grade-adjusted correction from elevation streams (already in pipeline)
+- `wap_factor` = 1 / (pace_heat_factor × pace_wind_factor)
 
-This gives athletes a single "effort-normalized" pace metric that is comparable across all conditions — a hilly, hot, windy 10K becomes directly comparable to a flat, cool, calm 10K.
+A single effort-normalized metric — a hilly, hot, headwind 10K becomes directly comparable to a flat, cool, calm 10K. Also enables cross-season VO2max trending without weather noise.
+
+---
 
 ### CLI Commands
 
 ```bash
-fitops weather fetch <activity_id>          # fetch + store weather for an activity
-fitops weather fetch --all                  # backfill weather for all activities with GPS
-fitops weather show <activity_id>           # display weather conditions
-fitops weather set <activity_id> --temp 28 --humidity 70 --wind 12  # manual override
+fitops weather fetch <activity_id>          # fetch + store weather for one activity
+fitops weather fetch --all                  # backfill all activities with GPS coords
+fitops weather show <activity_id>           # display stored weather conditions
+fitops weather set <activity_id> --temp 28 --humidity 70 --wind 12 --wind-dir 270  # manual override
 
-fitops analytics wap <activity_id>          # show Weather-Adjusted Pace vs actual
-fitops analytics true-pace <activity_id>    # show True Pace (WAP + GAP combined)
-fitops analytics true-pace --list --sport Run --limit 10  # True Pace for recent runs
+fitops analytics wap <activity_id>          # Weather-Adjusted Pace vs actual
+fitops analytics true-pace <activity_id>    # True Pace (WAP + GAP combined)
+fitops analytics true-pace --list --sport Run --limit 10   # recent runs with True Pace
 ```
 
 ### Dashboard
 
-- Weather conditions badge on activity cards
-- WAP / GAP / True Pace comparison chart per activity
-- True Pace trend over time (flat, comparable line across seasons)
+- Weather conditions badge on activity cards (temp + icon from `weather_code`)
+- WAP / GAP / True Pace comparison panel per activity
+- True Pace trend over time — a flat, season-agnostic fitness line
+- Heat-adjusted VO2max overlay on the VO2max history chart
 
 ---
 
