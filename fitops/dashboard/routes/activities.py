@@ -13,6 +13,7 @@ from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_wap_factor,
+    deg_to_compass,
     wbgt_flag,
     weather_condition_label,
 )
@@ -105,6 +106,7 @@ def _weather_summary(w) -> dict:
         "humidity_pct": w.humidity_pct,
         "wind_speed_ms": w.wind_speed_ms,
         "wind_direction_deg": w.wind_direction_deg,
+        "wind_dir_compass": deg_to_compass(w.wind_direction_deg) if w.wind_direction_deg is not None else None,
         "precipitation_mm": w.precipitation_mm,
         "wbgt_c": wbgt,
         "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else "green",

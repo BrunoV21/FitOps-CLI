@@ -29,11 +29,63 @@ function _syncChartToIndex(idx) {
 }
 
 /**
+ * Build the compass rose SVG string.
+ * @param {number|null} windDirDeg - meteorological FROM direction, or null
+ * @returns {string} SVG markup
+ */
+function _compassSVG(windDirDeg) {
+  const cx = 44, cy = 44, r = 30, size = 88;
+  // Cardinal + intercardinal tick marks
+  let ticks = '';
+  for (let i = 0; i < 16; i++) {
+    const rad = (i * 22.5 - 90) * Math.PI / 180;
+    const inner = i % 4 === 0 ? r - 7 : (i % 2 === 0 ? r - 4 : r - 2);
+    ticks += `<line x1="${(cx + r * Math.cos(rad)).toFixed(1)}" y1="${(cy + r * Math.sin(rad)).toFixed(1)}"
+      x2="${(cx + inner * Math.cos(rad)).toFixed(1)}" y2="${(cy + inner * Math.sin(rad)).toFixed(1)}"
+      stroke="#333" stroke-width="1"/>`;
+  }
+  // N/S/E/W labels
+  const cards = [['N', 0], ['E', 90], ['S', 180], ['W', 270]];
+  let labels = '';
+  cards.forEach(([lbl, deg]) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    const tx = (cx + (r + 9) * Math.cos(rad)).toFixed(1);
+    const ty = (cy + (r + 9) * Math.sin(rad) + 3).toFixed(1);
+    const col = lbl === 'N' ? '#00ff87' : '#3a3a3a';
+    labels += `<text x="${tx}" y="${ty}" text-anchor="middle" font-size="8" fill="${col}" font-family="ui-monospace,monospace" font-weight="700">${lbl}</text>`;
+  });
+  // Wind arrow: FROM direction inward to center
+  let windArrow = '';
+  if (windDirDeg !== null && windDirDeg !== undefined) {
+    const fromRad = (windDirDeg - 90) * Math.PI / 180;
+    const tx = (cx + (r - 4) * Math.cos(fromRad)).toFixed(1);
+    const ty = (cy + (r - 4) * Math.sin(fromRad)).toFixed(1);
+    // Endpoint near center (leave room for arrowhead)
+    const ex = (cx - 6 * Math.cos(fromRad)).toFixed(1);
+    const ey = (cy - 6 * Math.sin(fromRad)).toFixed(1);
+    windArrow = `
+      <defs>
+        <marker id="wah" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+          <polygon points="0,0 5,2.5 0,5" fill="#00aaff"/>
+        </marker>
+      </defs>
+      <line x1="${tx}" y1="${ty}" x2="${ex}" y2="${ey}"
+        stroke="#00aaff" stroke-width="1.5" marker-end="url(#wah)"/>`;
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${size}" height="${size}" fill="rgba(0,0,0,0.78)" rx="0"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#222" stroke-width="1"/>
+    ${ticks}${labels}${windArrow}
+  </svg>`;
+}
+
+/**
  * Render an interactive Leaflet map of the GPS route with hover sync.
  * @param {string} containerId - ID of the div to mount the map into
  * @param {[number, number][]} latlng - Array of [lat, lng] pairs
+ * @param {{dirDeg?: number, label?: string}|null} [windData] - optional wind info for compass
  */
-function renderActivityMap(containerId, latlng) {
+function renderActivityMap(containerId, latlng, windData) {
   const container = document.getElementById(containerId);
   if (!container) return;
   if (!latlng || latlng.length < 2) {
@@ -81,6 +133,18 @@ function renderActivityMap(containerId, latlng) {
     if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
     _activitySync.hoverMarker.setStyle({ opacity: 0, fillOpacity: 0 });
   });
+
+  // Compass rose control (bottom-right)
+  const compassCtrl = L.control({ position: 'bottomright' });
+  compassCtrl.onAdd = function() {
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'line-height:0;cursor:default;border:1px solid #1a1a1a;';
+    div.innerHTML = _compassSVG(windData ? windData.dirDeg : null);
+    if (windData && windData.label) div.title = 'Wind from ' + windData.label;
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  };
+  compassCtrl.addTo(map);
 
   map.on('click', () => map.scrollWheelZoom.enable());
   map.on('blur',  () => map.scrollWheelZoom.disable());

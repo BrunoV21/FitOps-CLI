@@ -136,6 +136,24 @@ def compute_wap_factor(
 
 
 # ---------------------------------------------------------------------------
+# Wind direction — degrees → compass label
+# ---------------------------------------------------------------------------
+
+_COMPASS_16 = [
+    "N", "NNE", "NE", "ENE",
+    "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW",
+    "W", "WNW", "NW", "NNW",
+]
+
+
+def deg_to_compass(deg: float) -> str:
+    """Convert meteorological wind-from direction (degrees) to 16-point compass label."""
+    idx = round(deg / 22.5) % 16
+    return _COMPASS_16[idx]
+
+
+# ---------------------------------------------------------------------------
 # WMO weather code labels
 # ---------------------------------------------------------------------------
 
