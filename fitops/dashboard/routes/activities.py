@@ -14,6 +14,10 @@ from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_wap_factor,
     deg_to_compass,
+    headwind_ms,
+    pace_heat_factor as _pace_heat_factor,
+    pace_wind_factor,
+    vo2max_heat_factor,
     wbgt_flag,
     weather_condition_label,
 )
@@ -105,6 +109,7 @@ def _weather_summary(w) -> dict:
         "apparent_temp_c": w.apparent_temp_c,
         "humidity_pct": w.humidity_pct,
         "wind_speed_ms": w.wind_speed_ms,
+        "wind_speed_kmh": round(w.wind_speed_ms * 3.6, 1) if w.wind_speed_ms is not None else None,
         "wind_direction_deg": w.wind_direction_deg,
         "wind_dir_compass": deg_to_compass(w.wind_direction_deg) if w.wind_direction_deg is not None else None,
         "precipitation_mm": w.precipitation_mm,
@@ -115,6 +120,103 @@ def _weather_summary(w) -> dict:
         "condition": weather_condition_label(wcode) if wcode is not None else None,
         "temp_fmt": f"{round(w.temperature_c)}°C" if w.temperature_c is not None else None,
     }
+
+
+def _compute_true_pace_stream(streams: dict, weather) -> list | None:
+    """
+    True Pace (s/km) = GAP adjusted for weather.
+    Normalises both gradient and conditions — the best single effort metric.
+    Requires both latlng data AND gradient data (grade_adjusted_speed or grade_smooth).
+    """
+    latlng_pts = streams.get("latlng", [])
+    vel = streams.get("velocity_smooth", [])
+    if not latlng_pts or not vel or not weather:
+        return None
+
+    # Build GAP speed (m/s): prefer Strava's stream, fall back to computed
+    gap_raw = streams.get("grade_adjusted_speed", [])
+    grade = streams.get("grade_smooth", [])
+    n_v = len(vel)
+    if gap_raw and len(gap_raw) >= n_v * 0.8:
+        gap_speed = gap_raw
+    elif grade and len(grade) >= n_v * 0.8:
+        gap_speed = [v * (1 + 0.033 * g) if (v and v > 0.1) else 0.0 for v, g in zip(vel, grade)]
+    else:
+        return None  # No gradient data available
+
+    heat_f = 1.0
+    if weather.temperature_c is not None and weather.humidity_pct is not None:
+        heat_f = _pace_heat_factor(weather.temperature_c, weather.humidity_pct)
+
+    wind_ms = weather.wind_speed_ms or 0.0
+    wind_dir = weather.wind_direction_deg or 0.0
+
+    n = min(len(latlng_pts), len(vel), len(gap_speed))
+    _LOOK = 7
+    last_bearing = 0.0
+    result: list = []
+
+    for i in range(n):
+        gs = gap_speed[i] if i < len(gap_speed) else 0.0
+        if not gs or gs <= 0.1:
+            result.append(None)
+            continue
+
+        j = min(i + _LOOK, n - 1)
+        pt1, pt2 = latlng_pts[i], latlng_pts[j]
+        if pt1[0] != pt2[0] or pt1[1] != pt2[1]:
+            last_bearing = compute_bearing(pt1[0], pt1[1], pt2[0], pt2[1])
+
+        hw = headwind_ms(wind_ms, wind_dir, last_bearing)
+        weather_f = heat_f * pace_wind_factor(hw)
+        result.append((1000.0 / gs) / weather_f if weather_f > 0 else None)
+
+    return result if any(x is not None for x in result) else None
+
+
+def _compute_wap_stream(streams: dict, weather) -> list | None:
+    """
+    Compute per-GPS-point WAP pace (s/km) by resolving the headwind component
+    at each moment using local course bearing from the latlng stream.
+
+    Heat factor is constant for the activity; wind factor varies per GPS segment.
+    Uses a 7-point lookahead window to stabilise noisy 1-second GPS bearings.
+    """
+    latlng_pts = streams.get("latlng", [])
+    vel = streams.get("velocity_smooth", [])
+    if not latlng_pts or not vel or not weather:
+        return None
+
+    heat_f = 1.0
+    if weather.temperature_c is not None and weather.humidity_pct is not None:
+        heat_f = _pace_heat_factor(weather.temperature_c, weather.humidity_pct)
+
+    wind_ms = weather.wind_speed_ms or 0.0
+    wind_dir = weather.wind_direction_deg or 0.0
+
+    n = min(len(latlng_pts), len(vel))
+    _LOOK = 7  # lookahead window (seconds ≈ ~25 m at 3.5 m/s)
+
+    last_bearing = 0.0
+    wap: list = []
+
+    for i in range(n):
+        v = vel[i]
+        if not v or v <= 0.1:
+            wap.append(None)
+            continue
+
+        # Bearing over a short forward window to reduce GPS noise
+        j = min(i + _LOOK, n - 1)
+        pt1, pt2 = latlng_pts[i], latlng_pts[j]
+        if pt1[0] != pt2[0] or pt1[1] != pt2[1]:
+            last_bearing = compute_bearing(pt1[0], pt1[1], pt2[0], pt2[1])
+
+        hw = headwind_ms(wind_ms, wind_dir, last_bearing)
+        total_f = heat_f * pace_wind_factor(hw)
+        wap.append((1000.0 / v) / total_f if total_f > 0 else None)
+
+    return wap if any(x is not None for x in wap) else None
 
 
 def _compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
@@ -315,7 +417,23 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 laps = await get_activity_laps(activity.id)
             if activity and activity.streams_fetched:
                 streams = await get_activity_streams(activity.id)
-                analytics = compute_activity_analytics(activity, streams)
+
+        # Load weather early — True Pace stream must be injected before analytics
+        _weather_map = await get_weather_for_activities([strava_id])
+        _weather_obj = _weather_map.get(strava_id)
+
+        if streams and _weather_obj:
+            wap_s = _compute_wap_stream(streams, _weather_obj)
+            if wap_s:
+                streams["wap_pace"] = wap_s
+            tp_s = _compute_true_pace_stream(streams, _weather_obj)
+            if tp_s:
+                streams["true_pace"] = tp_s
+                # true_velocity (m/s) consumed by analytics engine
+                streams["true_velocity"] = [1000.0 / p if p and p > 0 else 0.0 for p in tp_s]
+
+        if activity and streams:
+            analytics = compute_activity_analytics(activity, streams)
 
         if activity is None:
             return templates.TemplateResponse(
@@ -399,10 +517,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     ],
                 }
 
-        # Load weather and compute WAP for detail view
+        # Build weather panel (weather already loaded above)
         weather_panel = None
-        weather_map_detail = await get_weather_for_activities([strava_id])
-        w = weather_map_detail.get(strava_id)
+        w = _weather_obj
         if w:
             ws = _weather_summary(w)
 
@@ -434,12 +551,34 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 m, s_rem = divmod(int(wap_s), 60)
                 wap_fmt = f"{m}:{s_rem:02d}/km"
 
+            # HR heat/humidity impact
+            hr_heat_pct: Optional[float] = None
+            hr_heat_bpm: Optional[int] = None
+            if w.temperature_c is not None and w.humidity_pct is not None:
+                vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
+                if vo2_factor < 0.99:  # meaningful reduction (>1%)
+                    hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
+                    if activity.average_heartrate and activity.average_heartrate > 0:
+                        hr_heat_bpm = round(activity.average_heartrate * (1.0 / vo2_factor - 1.0))
+
+            # True Pace summary: median of stream values (robust to outliers)
+            true_pace_fmt = None
+            tp_stream = streams.get("true_pace", [])
+            valid_tp = [p for p in tp_stream if p is not None]
+            if valid_tp:
+                median_tp = sorted(valid_tp)[len(valid_tp) // 2]
+                m_tp, s_tp = divmod(int(median_tp), 60)
+                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+
             weather_panel = {
                 **ws,
                 "wap_factor": round(wap_factor, 4),
                 "wap_factor_pct": round((wap_factor - 1.0) * 100, 1),
                 "wap_fmt": wap_fmt,
+                "true_pace_fmt": true_pace_fmt,
                 "course_bearing": round(course_bearing, 0) if course_bearing is not None else None,
+                "hr_heat_pct": hr_heat_pct,
+                "hr_heat_bpm": hr_heat_bpm,
             }
 
         return templates.TemplateResponse(

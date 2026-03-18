@@ -130,10 +130,15 @@
       Conditions
       {% if weather.source == 'manual' %}<span class="badge badge-dim" style="margin-left:6px;">manual</span>{% endif %}
     </p>
-    {% if weather.wap_fmt %}
+    {% if weather.true_pace_fmt or weather.wap_fmt %}
     <span style="font-size:11px;color:var(--text-dim);">
+      {% if weather.true_pace_fmt %}
+      True Pace
+      <span style="color:var(--accent-primary);font-weight:700;margin-left:4px;">{{ weather.true_pace_fmt }}</span>
+      {% else %}
       WAP
       <span style="color:var(--accent-blue);font-weight:700;margin-left:4px;">{{ weather.wap_fmt }}</span>
+      {% endif %}
       {% if weather.wap_factor_pct != 0 %}
       <span class="{% if weather.wap_factor_pct > 3 %}wap-factor-bad{% elif weather.wap_factor_pct > 0 %}wap-factor-warm{% else %}wap-factor-good{% endif %}" style="margin-left:4px;">
         ({% if weather.wap_factor_pct > 0 %}+{% endif %}{{ "%.1f"|format(weather.wap_factor_pct) }}%)
@@ -160,10 +165,10 @@
       <p class="effort-val">{{ "%.0f"|format(weather.humidity_pct) }}%</p>
     </div>
     {% endif %}
-    {% if weather.wind_speed_ms is not none %}
+    {% if weather.wind_speed_kmh is not none %}
     <div class="effort-item">
       <p class="effort-label">Wind</p>
-      <p class="effort-val">{{ "%.1f"|format(weather.wind_speed_ms) }} m/s
+      <p class="effort-val">{{ weather.wind_speed_kmh }} km/h
         {% if weather.wind_dir_compass %}
         <span style="color:var(--text-dim);font-size:11px;">from {{ weather.wind_dir_compass }}</span>
         {% endif %}
@@ -172,10 +177,21 @@
     {% endif %}
     {% if weather.wbgt_c is not none %}
     <div class="effort-item">
-      <p class="effort-label">WBGT</p>
+      <p class="effort-label"><abbr title="Wet Bulb Globe Temperature — combines temperature, humidity and radiant heat into a single heat stress index">WBGT</abbr></p>
       <p class="effort-val">
-        <span class="wbgt-{{ weather.wbgt_flag }}">{{ "%.1f"|format(weather.wbgt_c) }}</span>
+        <span class="wbgt-{{ weather.wbgt_flag }}">{{ "%.1f"|format(weather.wbgt_c) }}°C</span>
         <span class="badge wbgt-{{ weather.wbgt_flag }}" style="margin-left:6px;border-color:currentColor;">{{ weather.wbgt_flag }}</span>
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.hr_heat_pct and weather.hr_heat_pct > 0 %}
+    <div class="effort-item">
+      <p class="effort-label"><abbr title="Estimated HR elevation at the same pace due to reduced VO₂max capacity from heat and humidity (Sawka/Kenefick)">Heat HR Effect</abbr></p>
+      <p class="effort-val">
+        <span class="wap-factor-warm">+{{ "%.1f"|format(weather.hr_heat_pct) }}%</span>
+        {% if weather.hr_heat_bpm %}
+        <span style="color:var(--text-dim);font-size:11px;margin-left:4px;">≈ +{{ weather.hr_heat_bpm }} bpm</span>
+        {% endif %}
       </p>
     </div>
     {% endif %}
@@ -529,7 +545,7 @@
   const latlng     = STREAMS.latlng || [];
   const _windData = {% if weather and weather.wind_direction_deg is not none %}{
     dirDeg: {{ weather.wind_direction_deg }},
-    label: '{{ weather.wind_dir_compass or "" }} · {{ "%.1f"|format(weather.wind_speed_ms) if weather.wind_speed_ms is not none else "?" }} m/s'
+    label: '{{ weather.wind_dir_compass or "" }} · {{ weather.wind_speed_kmh if weather.wind_speed_kmh is not none else "?" }} km/h'
   }{% else %}null{% endif %};
   renderActivityMap('activity-map', latlng, _windData);
   const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE, THRESHOLDS);
@@ -539,6 +555,8 @@
     hr:   (STREAMS.heartrate || []).length > 0,
     pace: (STREAMS.velocity_smooth || []).length > 0,
     gap:  hasGap,
+    wap:  (STREAMS.wap_pace || []).length > 0,
+    tp:   (STREAMS.true_pace || []).length > 0,
     alt:  (STREAMS.altitude || []).length > 0,
     cad:  (STREAMS.cadence || []).length > 0,
     pwr:  (STREAMS.watts || []).length > 0,
