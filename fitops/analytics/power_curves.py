@@ -36,7 +36,7 @@ def _fit_cp(durations: list[int], powers: list[float]) -> tuple[Optional[float],
         from scipy.optimize import curve_fit
     except ImportError:
         return None, None, None
-    if len(durations) < 3:
+    if len(durations) < 5:
         return None, None, None
     try:
         def model(t, cp, w_prime):
@@ -44,7 +44,7 @@ def _fit_cp(durations: list[int], powers: list[float]) -> tuple[Optional[float],
         popt, _ = curve_fit(
             model, durations, powers,
             p0=[powers[-1] * 0.9, powers[0] * durations[0] * 0.2],
-            maxfev=5000, bounds=([0, 0], [600, 100000]),
+            maxfev=5000, bounds=([0, 0], [600, 60000]),  # typical W' ≈ 15–40 kJ; cap at 60 kJ
         )
         cp, w_prime = popt
         y_pred = [model(t, cp, w_prime) for t in durations]
@@ -140,7 +140,7 @@ async def compute_power_curve(
     mmp_curve = {}
     for dur in STANDARD_DURATIONS:
         vals = dur_values[dur]
-        mmp_curve[str(dur)] = round(sum(vals) / len(vals), 1) if vals else None
+        mmp_curve[str(dur)] = round(sum(vals) / len(vals), 1) if len(vals) >= 3 else None
 
     cp = w_prime = r_sq = None
     zones: list[dict] = []
@@ -148,10 +148,10 @@ async def compute_power_curve(
 
     if is_cycling:
         valid = [(d, mmp_curve[str(d)]) for d in STANDARD_DURATIONS if mmp_curve.get(str(d)) is not None]
-        if len(valid) >= 3:
+        if len(valid) >= 5:
             durs, pows = zip(*valid)
             cp, w_prime, r_sq = _fit_cp(list(durs), list(pows))
-        if cp:
+        if cp and r_sq is not None and r_sq >= 0.7:
             zones = _cp_zones(cp)
             if weight_kg:
                 ptw_info = {

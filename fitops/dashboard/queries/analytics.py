@@ -11,7 +11,7 @@ from fitops.analytics.training_load import (
     compute_training_load,
 )
 from fitops.analytics.trends import TrendResult, compute_trends
-from fitops.analytics.vo2max import RUN_TYPES, _estimate_from_activity
+from fitops.analytics.vo2max import RUN_TYPES, _effort_qualifies, _estimate_from_activity, _estimate_from_streams
 from fitops.db.models.activity import Activity
 from fitops.db.session import get_async_session
 
@@ -42,14 +42,25 @@ async def get_trends_data(
 
 
 async def get_vo2max_history(
-    athlete_id: int, days: int = 365, max_activities: int = 30
+    athlete_id: int, days: int = 365
 ) -> list[dict]:
-    """Return VO2max estimates for recent run activities, oldest first."""
+    """Return VO2max estimates for recent qualifying run activities, oldest first.
+
+    Only activities with sufficient effort (avg HR near threshold) are included.
+    Easy/Z2 runs are excluded because pace-based VDOT estimation is not meaningful
+    without a near-threshold effort.
+    """
+    from fitops.analytics.athlete_settings import get_athlete_settings
+    settings = get_athlete_settings()
+    lthr = settings.lthr
+    max_hr = settings.max_hr
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     async with get_async_session() as session:
         result = await session.execute(
             select(Activity)
             .where(
+                Activity.manual == False,
                 Activity.athlete_id == athlete_id,
                 Activity.sport_type.in_(list(RUN_TYPES)),
                 Activity.start_date >= cutoff,
@@ -57,28 +68,38 @@ async def get_vo2max_history(
                 Activity.moving_time_s > 0,
             )
             .order_by(Activity.start_date.desc())
-            .limit(max_activities)
         )
         activities = result.scalars().all()
 
-    rows = []
-    for a in activities:
-        est = _estimate_from_activity(a)
-        if est is None:
-            continue
-        rows.append(
-            {
-                "date": a.start_date.date().isoformat() if a.start_date else "unknown",
-                "name": a.name,
-                "strava_id": a.strava_id,
-                "distance_km": round((a.distance_m or 0) / 1000, 2),
-                "estimate": est.estimate,
-                "confidence": est.confidence,
-                "confidence_label": est.confidence_label,
-                "vdot": est.vdot,
-                "cooper": est.cooper,
-            }
-        )
+        rows = []
+        for a in activities:
+            qualifies, effort_reason = _effort_qualifies(a.average_heartrate, lthr, max_hr)
+            if not qualifies:
+                continue
+            est = None
+            if a.streams_fetched:
+                est = await _estimate_from_streams(a, session, lthr, max_hr)
+            if est is None:
+                est = _estimate_from_activity(a)
+            if est is None:
+                continue
+            rows.append(
+                {
+                    "date": a.start_date.date().isoformat() if a.start_date else "unknown",
+                    "name": a.name,
+                    "strava_id": a.strava_id,
+                    "distance_km": round((a.distance_m or 0) / 1000, 2),
+                    "avg_hr": a.average_heartrate,
+                    "effort_reason": effort_reason,
+                    "estimate": est.estimate,
+                    "confidence": est.confidence,
+                    "confidence_label": est.confidence_label,
+                    "vdot": est.vdot,
+                    "cooper": est.cooper,
+                    "estimation_method": est.estimation_method,
+                    "measured_lt2_pace_s": est.measured_lt2_pace_s,
+                }
+            )
 
     # Return oldest first (for chart rendering)
     return list(reversed(rows))

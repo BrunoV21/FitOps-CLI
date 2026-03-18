@@ -133,8 +133,12 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     ]
 
     if all_rolling:
+        # Clip top 2% before taking 90th percentile — prevents a single interval spike
+        # from biasing LTHR high. Winsorize: cap values above 98th percentile.
+        ceiling = _percentile(all_rolling, 98)
+        all_rolling_clipped = [min(v, ceiling) for v in all_rolling] if ceiling else all_rolling
         inference_method = "rolling_window"
-        lthr_raw = _percentile(all_rolling, LTHR_PERCENTILE)
+        lthr_raw = _percentile(all_rolling_clipped, LTHR_PERCENTILE)
     else:
         inference_method = "percentile_fallback"
         lthr_raw = _percentile(all_hr, 85)

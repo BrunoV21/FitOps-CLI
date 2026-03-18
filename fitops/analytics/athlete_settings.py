@@ -74,6 +74,10 @@ class AthleteSettings:
         return self._data.get("lt2_hr")
 
     @property
+    def age(self) -> Optional[int]:
+        return self._data.get("age")
+
+    @property
     def vo2max_override(self) -> Optional[float]:
         return self._data.get("vo2max_override")
 
