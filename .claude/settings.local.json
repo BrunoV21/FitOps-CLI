@@ -111,7 +111,17 @@
       "Bash(python -m pytest tests/ -v -x -q 2>&1 | tail -20)",
       "Bash(python:*)",
       "Bash(uv run:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(tree:*)",
+      "Bash(find /c/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/analytics -type f -name \"*.py\" 2>/dev/null | head -20)",
+      "Bash(find /c/Users/GL504GS/Desktop/repos/FitOps-CLI/fitops/db/models -type f -name \"*.py\" 2>/dev/null | head -20)",
+      "Bash(git log:*)",
+      "Bash(pip install:*)",
+      "Bash(fitops notes:*)",
+      "Bash(pytest tests/ -q)",
+      "Bash(git:*)",
+      "Bash(git -C:*)"
     ]
   },
   "enabledMcpjsonServers": [
