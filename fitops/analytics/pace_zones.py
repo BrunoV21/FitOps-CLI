@@ -20,6 +20,7 @@ PACE_ZONE_DEFS = [
 def _fmt_pace(s: Optional[int]) -> Optional[str]:
     if s is None:
         return None
+    s = int(s)
     return f"{s // 60}:{s % 60:02d}"
 
 
@@ -41,8 +42,8 @@ class PaceZoneResult:
 def compute_pace_zones(threshold_pace_s: int, source: str = "manual") -> PaceZoneResult:
     zones = []
     for zone_num, name, faster_pct, slower_pct in PACE_ZONE_DEFS:
-        min_s = round(threshold_pace_s * faster_pct) if faster_pct is not None else None
-        max_s = round(threshold_pace_s * slower_pct) if slower_pct is not None else None
+        min_s = int(round(threshold_pace_s * faster_pct)) if faster_pct is not None else None
+        max_s = int(round(threshold_pace_s * slower_pct)) if slower_pct is not None else None
         zones.append({
             "zone": zone_num,
             "name": name,
