@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Notes — FitOps{% endblock %}
+{% block page_name %}Notes{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Notes</p>
+    <p class="page-subtitle">Training memos, race plans, and coaching notes</p>
+  </div>
+  <a href="/notes/create" class="btn-primary">+ New Note</a>
+</div>
+
+<!-- Filters -->
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+  <form method="get" action="/notes" style="display:flex;gap:8px;align-items:center;">
+    <input
+      type="text"
+      name="q"
+      value="{{ active_q }}"
+      placeholder="Search notes..."
+      style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.82rem;width:200px;"
+    />
+    {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}" />{% endif %}
+    <button type="submit" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-secondary);font-size:0.82rem;cursor:pointer;">Search</button>
+    {% if active_q or active_tag %}
+    <a href="/notes" style="font-size:0.78rem;color:var(--text-muted);text-decoration:none;">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Tag pills -->
+{% if all_tags %}
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
+  <a href="/notes{% if active_q %}?q={{ active_q }}{% endif %}"
+     class="badge {% if not active_tag %}badge-blue{% else %}badge-dim{% endif %}"
+     style="text-decoration:none;cursor:pointer;">All</a>
+  {% for t in all_tags %}
+  <a href="/notes?tag={{ t.tag }}{% if active_q %}&q={{ active_q }}{% endif %}"
+     class="badge {% if active_tag == t.tag %}badge-blue{% else %}badge-dim{% endif %}"
+     style="text-decoration:none;cursor:pointer;">
+    {{ t.tag }} <span style="opacity:0.6;">{{ t.count }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if notes %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Tags</th>
+        <th>Activity</th>
+        <th class="r">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for n in notes %}
+      <tr style="cursor:pointer;" onclick="window.location='/notes/{{ n.slug }}'">
+        <td class="w" style="font-weight:600;">
+          <a href="/notes/{{ n.slug }}" class="panel-link" style="color:var(--text-primary);" onclick="event.stopPropagation();">{{ n.title }}</a>
+          {% if n.body_preview %}
+          <div style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:400px;">{{ n.body_preview }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            {% for tag in n.tags %}
+            <span class="badge badge-dim" style="font-size:0.72rem;">{{ tag }}</span>
+            {% endfor %}
+          </div>
+        </td>
+        <td>
+          {% if n.activity_id %}
+          <a href="/activities/{{ n.activity_id }}" style="color:var(--accent-primary);font-size:0.82rem;" onclick="event.stopPropagation();">
+            #{{ n.activity_id }}
+          </a>
+          {% else %}
+          <span style="color:var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        <td class="r" style="color:var(--text-muted);white-space:nowrap;">{{ n.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+  <div style="font-size:2rem;margin-bottom:12px;">📝</div>
+  <p style="font-size:0.95rem;margin-bottom:16px;">No notes yet{% if active_tag %} tagged <strong>{{ active_tag }}</strong>{% endif %}{% if active_q %} matching <strong>{{ active_q }}</strong>{% endif %}.</p>
+  <a href="/notes/create" class="btn-primary">Create your first note</a>
+</div>
+{% endif %}
+{% endblock %}

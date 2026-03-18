@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ note.title if note else "Note not found" }} — FitOps{% endblock %}
+{% block page_name %}Notes{% endblock %}
+
+{% block content %}
+{% if not note %}
+<div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+  <p>Note not found.</p>
+  <a href="/notes" style="color:var(--accent-primary);">← Back to Notes</a>
+</div>
+{% else %}
+
+<div class="page-header">
+  <div>
+    <a href="/notes" style="font-size:0.8rem;color:var(--text-muted);text-decoration:none;">← Notes</a>
+    <p class="page-title" style="margin-top:6px;">{{ note.title }}</p>
+    <p class="page-subtitle">{{ note.created }}</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <a href="/notes/{{ note.slug }}/edit" class="btn-secondary">Edit</a>
+    <form method="post" action="/notes/{{ note.slug }}/delete" style="display:inline;"
+          onsubmit="return confirm('Delete this note?');">
+      <button type="submit" class="btn-danger">Delete</button>
+    </form>
+  </div>
+</div>
+
+<!-- Tags -->
+{% if note.tags %}
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
+  {% for tag in note.tags %}
+  <a href="/notes?tag={{ tag }}" class="badge badge-blue" style="text-decoration:none;">{{ tag }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Linked activity card -->
+{% if linked_activity %}
+<div class="panel" style="margin-bottom:20px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    {{ sport_icon(linked_activity.sport_type) }}
+    <div>
+      <a href="/activities/{{ linked_activity.strava_id }}" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
+        {{ linked_activity.name }}
+      </a>
+      <div style="font-size:0.8rem;color:var(--text-muted);">
+        {{ linked_activity.date }}
+        {% if linked_activity.distance_km %} · {{ linked_activity.distance_km }} km{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% elif note.activity_id %}
+<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;">
+  Linked to activity #{{ note.activity_id }} (not synced locally)
+</div>
+{% endif %}
+
+<!-- Body -->
+<div class="panel">
+  <div class="note-body">
+    {{ note.body | render_md }}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

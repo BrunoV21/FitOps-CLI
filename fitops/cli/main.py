@@ -17,6 +17,7 @@ def _register_subapps() -> None:
     from fitops.cli.athlete import app as athlete_app
     from fitops.cli.analytics import app as analytics_app
     from fitops.cli.workouts import app as workouts_app
+    from fitops.cli.notes import app as notes_app
     from fitops.cli.dashboard import app as dashboard_app
 
     app.add_typer(auth_app, name="auth", help="Manage Strava authentication.")
@@ -25,6 +26,7 @@ def _register_subapps() -> None:
     app.add_typer(athlete_app, name="athlete", help="View athlete profile and stats.")
     app.add_typer(analytics_app, name="analytics", help="Training analytics (CTL, ATL, VO2max, zones).")
     app.add_typer(workouts_app, name="workouts", help="Markdown workout definitions and activity linking.")
+    app.add_typer(notes_app, name="notes", help="Create and manage training notes.")
     app.add_typer(dashboard_app, name="dashboard", help="Launch local training dashboards.")
 
 

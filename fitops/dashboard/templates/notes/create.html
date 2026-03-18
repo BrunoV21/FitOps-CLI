@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit Note" if note else "New Note" }} — FitOps{% endblock %}
+{% block page_name %}Notes{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/notes" style="font-size:0.8rem;color:var(--text-muted);text-decoration:none;">← Notes</a>
+    <p class="page-title" style="margin-top:6px;">{{ "Edit Note" if note else "New Note" }}</p>
+  </div>
+</div>
+
+<div class="panel" style="max-width:700px;">
+  <form method="post" action="{{ '/notes/' + note.slug + '/edit' if note else '/notes/create' }}">
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:0.82rem;color:var(--text-secondary);margin-bottom:6px;">Title</label>
+      <input
+        type="text"
+        name="title"
+        value="{{ note.title if note else '' }}"
+        placeholder="e.g. Race plan — Sunday 12K"
+        required
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;"
+      />
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:0.82rem;color:var(--text-secondary);margin-bottom:6px;">Tags <span style="opacity:0.5;">(comma-separated)</span></label>
+      <input
+        type="text"
+        name="tags"
+        value="{{ note.tags if note else '' }}"
+        placeholder="e.g. race, plan, 12k, taper"
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;"
+      />
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:0.82rem;color:var(--text-secondary);margin-bottom:6px;">Activity ID <span style="opacity:0.5;">(optional — Strava activity to link)</span></label>
+      <input
+        type="text"
+        name="activity_id"
+        value="{{ note.activity_id if note else '' }}"
+        placeholder="e.g. 17763668953"
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;"
+      />
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <label style="display:block;font-size:0.82rem;color:var(--text-secondary);margin-bottom:6px;">Body <span style="opacity:0.5;">(markdown)</span></label>
+      <textarea
+        name="body"
+        rows="14"
+        placeholder="Write your note here. Supports **markdown**."
+        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:0.85rem;font-family:monospace;resize:vertical;box-sizing:border-box;line-height:1.5;"
+      >{{ note.body if note else '' }}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button type="submit" class="btn-primary">{{ "Save Changes" if note else "Create Note" }}</button>
+      <a href="/notes{% if note %}/{{ note.slug }}{% endif %}" class="btn-secondary">Cancel</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

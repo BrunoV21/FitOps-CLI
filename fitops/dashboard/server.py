@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import markdown as md_lib
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,7 +13,7 @@ _HERE = Path(__file__).parent
 
 
 def create_app() -> FastAPI:
-    from fitops.dashboard.routes import activities, analytics, api, overview, profile, workouts
+    from fitops.dashboard.routes import activities, analytics, api, notes, overview, profile, workouts
 
     app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None)
 
@@ -87,6 +89,9 @@ def create_app() -> FastAPI:
         return _SPORT_ICONS.get(sport, Markup(_DEFAULT))
 
     templates.env.globals["sport_icon"] = sport_icon
+    templates.env.filters["render_md"] = lambda text: Markup(
+        md_lib.markdown(text or "", extensions=["nl2br", "fenced_code"])
+    )
 
     # Register all routers (each route module returns its router after
     # binding the shared templates instance)
@@ -96,5 +101,6 @@ def create_app() -> FastAPI:
     app.include_router(analytics.register(templates))
     app.include_router(profile.register(templates))
     app.include_router(workouts.register(templates))
+    app.include_router(notes.register(templates))
 
     return app
