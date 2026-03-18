@@ -83,13 +83,18 @@ def _make_daily_load(ctl: float, atl: float, daily_tss: float = 50.0) -> object:
     return DailyLoad(date=date.today(), daily_tss=daily_tss, ctl=ctl, atl=atl, tsb=round(ctl - atl, 2))
 
 
+def _pad_to_21(entry) -> list:
+    """Pad a single DailyLoad to 21 entries to satisfy the ACWR history gate."""
+    from fitops.analytics.training_load import DailyLoad
+    filler = DailyLoad(date=date.today(), daily_tss=50.0, ctl=entry.ctl, atl=entry.atl, tsb=entry.tsb)
+    return [filler] * 20 + [entry]
+
+
 def test_acwr_optimal():
     from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
 
-    history = [
-        DailyLoad(date=date.today(), daily_tss=50.0, ctl=50.0, atl=55.0, tsb=-5.0)
-    ]
-    result = _compute_overtraining_indicators(history)
+    entry = DailyLoad(date=date.today(), daily_tss=50.0, ctl=50.0, atl=55.0, tsb=-5.0)
+    result = _compute_overtraining_indicators(_pad_to_21(entry))
     assert result["acwr"] == round(55.0 / 50.0, 2)
     assert result["acwr_label"] == "Optimal"
 
@@ -97,10 +102,8 @@ def test_acwr_optimal():
 def test_acwr_detraining():
     from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
 
-    history = [
-        DailyLoad(date=date.today(), daily_tss=10.0, ctl=50.0, atl=30.0, tsb=20.0)
-    ]
-    result = _compute_overtraining_indicators(history)
+    entry = DailyLoad(date=date.today(), daily_tss=10.0, ctl=50.0, atl=30.0, tsb=20.0)
+    result = _compute_overtraining_indicators(_pad_to_21(entry))
     assert result["acwr"] == round(30.0 / 50.0, 2)
     assert result["acwr_label"] == "Detraining"
 
@@ -108,20 +111,16 @@ def test_acwr_detraining():
 def test_acwr_danger():
     from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
 
-    history = [
-        DailyLoad(date=date.today(), daily_tss=200.0, ctl=40.0, atl=75.0, tsb=-35.0)
-    ]
-    result = _compute_overtraining_indicators(history)
+    entry = DailyLoad(date=date.today(), daily_tss=200.0, ctl=40.0, atl=75.0, tsb=-35.0)
+    result = _compute_overtraining_indicators(_pad_to_21(entry))
     assert result["acwr_label"] == "Danger — high injury risk"
 
 
 def test_acwr_zero_ctl():
     from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
 
-    history = [
-        DailyLoad(date=date.today(), daily_tss=0.0, ctl=0.0, atl=0.0, tsb=0.0)
-    ]
-    result = _compute_overtraining_indicators(history)
+    entry = DailyLoad(date=date.today(), daily_tss=0.0, ctl=0.0, atl=0.0, tsb=0.0)
+    result = _compute_overtraining_indicators(_pad_to_21(entry))
     assert result["acwr"] is None
     assert result["acwr_label"] == "Unknown"
 
@@ -153,8 +152,8 @@ def test_monotony_varied():
 def test_hr_drift_well_coupled():
     from fitops.analytics.activity_insights import compute_hr_drift
 
-    hr = [150.0] * 100
-    pace = [3.5] * 100
+    hr = [150.0] * 700
+    pace = [3.5] * 700
     result = compute_hr_drift(hr, pace)
     assert result is not None
     assert abs(result["decoupling_pct"]) < 1.0
@@ -165,8 +164,8 @@ def test_hr_drift_fading():
     from fitops.analytics.activity_insights import compute_hr_drift
 
     # Rising HR with constant pace → HR:pace ratio worsens (efficiency drops)
-    hr = [140.0 + i * 0.5 for i in range(100)]
-    pace = [3.5] * 100
+    hr = [140.0 + i * 0.1 for i in range(700)]
+    pace = [3.5] * 700
     result = compute_hr_drift(hr, pace)
     assert result is not None
     # efficiency in second half is lower (smaller pace/hr ratio)

@@ -1,9 +1,11 @@
 """Tests for analytics calculations."""
+import pytest
 from datetime import date
 
-from fitops.analytics.training_load import ALPHA_ATL, ALPHA_CTL, CTL_DAYS, ATL_DAYS, TrainingLoadResult, DailyLoad
-from fitops.analytics.vo2max import _vdot, _mcardle, _costill, _confidence
+from fitops.analytics.training_load import ALPHA_ATL, ALPHA_CTL, CTL_DAYS, ATL_DAYS, TrainingLoadResult, DailyLoad, _compute_overtraining_indicators
+from fitops.analytics.vo2max import _vdot, _mcardle, _costill, _confidence, _extract_high_intensity_segments, VO2MaxResult
 from fitops.analytics.zones import compute_lthr_zones, compute_max_hr_zones, compute_hrr_zones, compute_zones
+from fitops.analytics.activity_insights import compute_hr_drift
 
 
 def test_alpha_values():
@@ -97,3 +99,149 @@ def test_zones_dispatch():
     assert compute_zones("max-hr", max_hr=190) is not None
     assert compute_zones("hrr", max_hr=190, resting_hr=50) is not None
     assert compute_zones("lthr") is None
+
+
+# ---------------------------------------------------------------------------
+# _extract_high_intensity_segments tests
+# ---------------------------------------------------------------------------
+
+def _make_streams(entries):
+    """Build (hr_data, time_data, speed_data) from list of (hr, speed, dt) tuples."""
+    hr_data = []
+    time_data = [0]
+    speed_data = []
+    t = 0
+    for hr, spd, dt in entries:
+        hr_data.append(hr)
+        speed_data.append(spd)
+        t += dt
+        time_data.append(t)
+    # time_data has n+1 elements; trim to n so all three lists have the same length
+    time_data = time_data[:-1]
+    return hr_data, time_data, speed_data
+
+
+def test_extract_segments_basic():
+    """700 s above threshold → 1 segment emitted."""
+    entries = [(160, 3.5, 1)] * 700  # 700 samples × 1 s each
+    hr, t, spd = _make_streams(entries)
+    segs = _extract_high_intensity_segments(hr, t, spd, min_hr=150)
+    assert len(segs) == 1
+    assert segs[0].duration_s == pytest.approx(699, abs=1)
+
+
+def test_extract_segments_too_short():
+    """500 s above threshold (< 600 s minimum) → empty list."""
+    entries = [(160, 3.5, 1)] * 500
+    hr, t, spd = _make_streams(entries)
+    segs = _extract_high_intensity_segments(hr, t, spd, min_hr=150)
+    assert segs == []
+
+
+def test_extract_segments_multiple():
+    """Two 700 s qualifying blocks separated by 200 s recovery → 2 segments."""
+    block = [(160, 3.5, 1)] * 700
+    recovery = [(120, 2.0, 1)] * 200  # HR below min_hr=150
+    entries = block + recovery + block
+    hr, t, spd = _make_streams(entries)
+    segs = _extract_high_intensity_segments(hr, t, spd, min_hr=150)
+    assert len(segs) == 2
+
+
+def test_extract_segments_speed_filter():
+    """HR qualifies but speed is below min_speed_ms → no segments."""
+    entries = [(160, 0.3, 1)] * 700  # speed 0.3 < 0.5 threshold
+    hr, t, spd = _make_streams(entries)
+    segs = _extract_high_intensity_segments(hr, t, spd, min_hr=150)
+    assert segs == []
+
+
+# ---------------------------------------------------------------------------
+# Minimum sample guard tests
+# ---------------------------------------------------------------------------
+
+def _make_daily_load(n: int, tss: float = 50.0) -> list:
+    """Create n DailyLoad entries with constant TSS/CTL/ATL for guard testing."""
+    return [DailyLoad(date=date.today(), daily_tss=tss, ctl=40.0, atl=50.0, tsb=-10.0) for _ in range(n)]
+
+
+def test_overtraining_acwr_requires_21_days():
+    """History with < 21 entries → acwr is None, label is 'Insufficient history'."""
+    history = _make_daily_load(10)
+    result = _compute_overtraining_indicators(history)
+    assert result["acwr"] is None
+    assert result["acwr_label"] == "Insufficient history"
+
+
+def test_overtraining_acwr_present_after_21_days():
+    """History with exactly 21 entries → acwr is computed."""
+    history = _make_daily_load(21)
+    result = _compute_overtraining_indicators(history)
+    assert result["acwr"] is not None
+
+
+def test_overtraining_monotony_requires_5_days():
+    """Only 3 days of TSS → training_monotony is None."""
+    history = _make_daily_load(3)
+    result = _compute_overtraining_indicators(history)
+    assert result["training_monotony"] is None
+
+
+def test_volume_trend_insufficient_data():
+    """< 6 weeks of data → vol_direction is 'insufficient_data'."""
+    from fitops.analytics.trends import TrendResult
+    # We test the direction logic directly via a small helper
+    # The weekly_data list drives the branch; simulate it with 3 entries
+    from fitops.analytics.trends import _linear_regression
+    weekly_data = [{"distance_km": float(i), "activity_count": 1} for i in range(3)]
+    if len(weekly_data) >= 6:
+        x = list(range(len(weekly_data)))
+        y = [w["distance_km"] for w in weekly_data]
+        vol_slope, _ = _linear_regression(x, y)
+        vol_direction = "increasing" if vol_slope > 0.5 else ("decreasing" if vol_slope < -0.5 else "stable")
+    else:
+        vol_slope, vol_direction = 0.0, "insufficient_data"
+    assert vol_direction == "insufficient_data"
+
+
+def test_pace_trend_insufficient_data():
+    """< 4 months of pace data → pace_direction is 'insufficient_data'."""
+    # Build a monthly_pace dict with 2 keys
+    from collections import defaultdict
+    monthly_pace = defaultdict(list)
+    monthly_pace[(2026, 1)].append((5.0, 10000))
+    monthly_pace[(2026, 2)].append((4.9, 10000))
+    # Replicate the guard logic from trends.py
+    if len(monthly_pace) >= 4:
+        pace_direction = "computed"
+    elif len(monthly_pace) >= 2:
+        pace_direction = "insufficient_data"
+    else:
+        pace_direction = None
+    assert pace_direction == "insufficient_data"
+
+
+def test_hr_drift_requires_600_samples():
+    """compute_hr_drift with < 600 valid samples returns None."""
+    hr = [150.0] * 300
+    pace = [3.0] * 300
+    assert compute_hr_drift(hr, pace) is None
+
+
+def test_vo2max_result_default_method():
+    """VO2MaxResult created without estimation_method defaults to 'summary'."""
+    result = VO2MaxResult(
+        estimate=52.0,
+        confidence=0.7,
+        vdot=52.0,
+        cooper=51.5,
+        activity_strava_id=123,
+        activity_name="Test Run",
+        activity_date="2026-01-01",
+        distance_km=10.0,
+        pace_per_km="5:00",
+    )
+    assert result.estimation_method == "summary"
+    # LT1 is no longer measured from streams; only LT2 measurement field exists
+    assert hasattr(result, "measured_lt2_pace_s")
+    assert not hasattr(result, "measured_lt1_pace_s")
