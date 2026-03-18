@@ -536,8 +536,8 @@ def print_pace_zones(data: dict) -> None:
             table.add_row(
                 str(z.get("zone") or ""),
                 z.get("name") or "",
-                z.get("min_pace") or "-",
-                z.get("max_pace") or "-",
+                z.get("min_pace_fmt") or "-",
+                z.get("max_pace_fmt") or "-",
             )
         console.print(table)
     console.print()
