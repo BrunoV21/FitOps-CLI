@@ -149,11 +149,49 @@
   {% endif %}
 </div>
 
+<!-- Two-column charts: Elevation + Wind -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+  <div class="panel" style="margin-bottom:0;">
+    <div class="panel-header">
+      <span class="panel-title">Elevation Profile</span>
+      <span class="panel-meta">{{ "%.0f"|format(course.total_elevation_gain_m) }} m gain</span>
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    </div>
+    <div class="chart-wrap" style="height:200px;">
+      <canvas id="elevationChart"></canvas>
+    </div>
+  </div>
+  <div class="panel" style="margin-bottom:0;">
+    <div class="panel-header">
+      <span class="panel-title">Wind Profile</span>
+      {% if weather_info %}
+      <span class="panel-meta">{{ weather_info.wind_speed_kmh }} km/h at {{ weather_info.wind_direction_deg | int }}°</span>
+      {% endif %}
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    </div>
+    <div class="chart-wrap" style="height:200px;">
+      <canvas id="windChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Pace Bar Chart -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Per-km Target Pace</span>
+    <span class="panel-meta">lower = faster &middot; avg {{ avg_pace_fmt }}/km</span>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <div class="chart-wrap" style="height:260px;">
+    <canvas id="paceChart"></canvas>
+  </div>
+</div>
+
 <!-- Split Table -->
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Split Detail</span>
-    <span class="panel-meta">{{ splits|length }} km segments &middot; avg {{ avg_pace_fmt }}/km</span>
+    <span class="panel-meta">{{ splits|length }} km segments</span>
   </div>
   <div class="table-wrap">
     <table class="data-table">
@@ -214,5 +252,205 @@
   </div>
 </div>
 
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if splits %}
+<script>
+(function() {
+  const labels = {{ chart_labels_json | safe }};
+  const paces = {{ chart_paces_json | safe }};
+  const avgPace = {{ avg_pace_s }};
+  {% if pacer_pace_s %}
+  const pacerPaceS = {{ pacer_pace_s }};
+  const dropAtKm = {{ drop_at_km }};
+  {% else %}
+  const pacerPaceS = null;
+  const dropAtKm = null;
+  {% endif %}
+
+  // ── Elevation profile ──────────────────────────────────────
+  const elevData = {{ elevation_profile_json | safe }};
+  const elevLabels = elevData.map(d => d.km);
+  const elevValues = elevData.map(d => d.elevation_m);
+  new Chart(document.getElementById('elevationChart'), {
+    type: 'line',
+    data: {
+      labels: elevLabels,
+      datasets: [{
+        label: 'Elevation (m)',
+        data: elevValues,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.15)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'km' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { title: { display: true, text: 'm' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // ── Wind profile ───────────────────────────────────────────
+  const windValues = {{ wind_profile_json | safe }};
+  const windColors = windValues.map(v =>
+    v > 5.4  ? '#ef4444' :
+    v > 1.8  ? '#fb923c' :
+    v > -1.8 ? '#facc15' :
+    v > -5.4 ? '#4ade80' :
+               '#22c55e'
+  );
+  new Chart(document.getElementById('windChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Headwind (km/h)',
+        data: windValues,
+        backgroundColor: windColors,
+        borderWidth: 0,
+        borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'km' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: {
+          title: { display: true, text: '← tailwind  |  headwind →' },
+          ticks: { color: '#888', callback: v => (v > 0 ? '+' : '') + v.toFixed(1) + ' km/h' },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              const dir = v > 1.8 ? 'Headwind' : v < -1.8 ? 'Tailwind' : 'Crosswind';
+              return `${dir}: ${Math.abs(v).toFixed(1)} km/h`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  function fmtPace(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.round(s % 60);
+    return `${m}:${sec.toString().padStart(2,'0')}/km`;
+  }
+
+  const _paceMin = Math.min(...paces);
+  const _paceMax = Math.max(...paces);
+  const _buf = Math.max((_paceMax - _paceMin) * 0.15, 12);
+  const yMin = Math.floor(_paceMin - _buf);
+  const yMax = Math.ceil(_paceMax + _buf);
+
+  const colors = paces.map(s =>
+    s < avgPace * 0.95 ? '#22c55e' :
+    s > avgPace * 1.05 ? '#ef4444' :
+    '#f59e0b'
+  );
+
+  const cumPaces = {{ cum_pace_profile_json | safe }};
+
+  const datasets = [
+    {
+      label: 'Target Pace',
+      data: paces,
+      backgroundColor: colors,
+      borderWidth: 0,
+      borderRadius: 2,
+      order: 3,
+    },
+    {
+      label: 'Average Pace',
+      data: labels.map(() => avgPace),
+      type: 'line',
+      borderColor: 'rgba(248,250,252,0.55)',
+      borderWidth: 1.5,
+      borderDash: [8, 4],
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      order: 1,
+    },
+    {
+      label: 'Cumulative Avg',
+      data: cumPaces,
+      type: 'line',
+      borderColor: 'rgba(148,163,184,0.8)',
+      borderWidth: 1.5,
+      borderDash: [4, 3],
+      pointRadius: 0,
+      fill: false,
+      tension: 0.4,
+      order: 2,
+    },
+  ];
+
+  if (pacerPaceS !== null) {
+    datasets.push({
+      label: 'Pacer Pace',
+      data: labels.map(km => km <= dropAtKm ? pacerPaceS : null),
+      type: 'line',
+      borderColor: '#a855f7',
+      borderWidth: 2,
+      borderDash: [6, 3],
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      order: 0,
+    });
+  }
+
+  const barLabels = labels.map(km => km - 1);
+
+  new Chart(document.getElementById('paceChart'), {
+    type: 'bar',
+    data: { labels: barLabels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Kilometre' },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#888' },
+          barPercentage: 1.0,
+          categoryPercentage: 0.92,
+        },
+        y: {
+          min: yMin,
+          max: yMax,
+          title: { display: true, text: 'Pace' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          ticks: { color: '#888', callback: val => fmtPace(val) },
+        }
+      },
+      plugins: {
+        legend: { display: true, labels: { color: '#888', boxWidth: 16, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            title: ctx => `km ${parseInt(ctx[0].label) + 1}`,
+            label: ctx => ctx.raw === null ? null : `${ctx.dataset.label}: ${fmtPace(ctx.raw)}`,
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}
