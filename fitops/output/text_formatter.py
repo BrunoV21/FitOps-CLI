@@ -543,6 +543,101 @@ def print_pace_zones(data: dict) -> None:
     console.print()
 
 
+def print_weather_forecast(forecast: dict) -> None:
+    """Print race-day weather forecast as rich formatted output."""
+    date = forecast.get("date") or ""
+    hour = forecast.get("hour_local")
+    tz = forecast.get("timezone") or "UTC"
+    lat = forecast.get("lat")
+    lng = forecast.get("lng")
+
+    temp_c = forecast.get("temperature_c")
+    apparent_c = forecast.get("apparent_temp_c")
+    humidity = forecast.get("humidity_pct")
+    dew_c = forecast.get("dew_point_c")
+    precip = forecast.get("precipitation_mm")
+    condition = forecast.get("condition") or "-"
+    wind_speed = forecast.get("wind_speed_ms")
+    wind_gusts = forecast.get("wind_gusts_ms")
+    wind_dir_deg = forecast.get("wind_direction_deg")
+    wind_compass = forecast.get("wind_direction_compass") or "-"
+    wbgt = forecast.get("wbgt_c")
+    wbgt_flag_val = forecast.get("wbgt_flag") or "-"
+    pace_heat = forecast.get("pace_heat_factor")
+    vo2_heat = forecast.get("vo2max_heat_factor")
+    headwind = forecast.get("headwind_ms")
+    wap = forecast.get("wap_factor")
+    bearing = forecast.get("course_bearing_deg")
+
+    # Header
+    loc_str = f"[dim]{lat:.4f}, {lng:.4f}[/dim]" if lat is not None and lng is not None else ""
+    console.print()
+    console.print(
+        f"[bold]Race Day Forecast[/bold]  [dim]{date}  {hour:02d}:00 local  ({tz})[/dim]  {loc_str}"
+    )
+    console.print()
+
+    # Conditions table
+    cond_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold", expand=False)
+    cond_table.add_column("Condition", style="dim")
+    cond_table.add_column("Value", justify="right")
+
+    def _c(v, fmt=".1f", suffix=""):
+        return f"{v:{fmt}}{suffix}" if v is not None else "-"
+
+    # WBGT flag colour
+    _flag_colour = {"green": "green", "yellow": "yellow", "red": "red", "black": "bold red"}
+    flag_markup = f"[{_flag_colour.get(wbgt_flag_val, 'dim')}]{wbgt_flag_val.upper()}[/]" if wbgt_flag_val != "-" else "-"
+
+    cond_table.add_row("Temperature",     f"{_c(temp_c, suffix=' °C')}  (feels {_c(apparent_c, suffix=' °C')})")
+    cond_table.add_row("Humidity",        _c(humidity, fmt=".0f", suffix=" %"))
+    cond_table.add_row("Dew Point",       _c(dew_c, suffix=" °C"))
+    cond_table.add_row("Precipitation",   _c(precip, fmt=".1f", suffix=" mm"))
+    cond_table.add_row("Condition",       condition)
+    cond_table.add_row("Wind Speed",      f"{_c(wind_speed, fmt='.1f', suffix=' m/s')}  (gusts {_c(wind_gusts, fmt='.1f', suffix=' m/s')})")
+    cond_table.add_row("Wind Direction",  f"{wind_compass}  ({_c(wind_dir_deg, fmt='.0f', suffix='°')})")
+    console.print(cond_table)
+
+    # Race factors table
+    console.print("[bold]Race Adjustment Factors[/bold]")
+    console.print()
+    factors_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold", expand=False)
+    factors_table.add_column("Factor", style="dim")
+    factors_table.add_column("Value", justify="right")
+    factors_table.add_column("Meaning")
+
+    wbgt_str = f"{wbgt:.2f} °C" if wbgt is not None else "-"
+    pace_heat_str = f"{pace_heat:.4f}" if pace_heat is not None else "-"
+    pace_pct = f"+{(pace_heat - 1) * 100:.1f}% slower" if pace_heat and pace_heat > 1 else ("no penalty" if pace_heat else "-")
+    vo2_str = f"{vo2_heat:.4f}" if vo2_heat is not None else "-"
+    vo2_pct = f"{(vo2_heat - 1) * 100:.1f}% capacity" if vo2_heat and vo2_heat < 1 else ("full capacity" if vo2_heat else "-")
+
+    hw_str = "-"
+    hw_meaning = "provide --course-bearing for wind calc"
+    if headwind is not None:
+        hw_str = f"{headwind:+.2f} m/s"
+        hw_meaning = "tailwind" if headwind < 0 else ("headwind" if headwind > 0 else "crosswind")
+
+    wap_str = "-"
+    wap_meaning = "provide --course-bearing for full WAP"
+    if wap is not None:
+        wap_str = f"{wap:.4f}"
+        wap_pct = (wap - 1) * 100
+        sign = "+" if wap_pct > 0 else ""
+        wap_meaning = f"{sign}{wap_pct:.1f}% pace {'penalty' if wap_pct > 0 else 'benefit'}"
+
+    bearing_str = f"{bearing:.0f}°" if bearing is not None else "-"
+
+    factors_table.add_row("WBGT",              wbgt_str,      flag_markup)
+    factors_table.add_row("Pace heat factor",  pace_heat_str, pace_pct)
+    factors_table.add_row("VO2max heat factor", vo2_str,      vo2_pct)
+    factors_table.add_row("Headwind",          hw_str,        hw_meaning)
+    factors_table.add_row("WAP factor",        wap_str,       wap_meaning)
+    factors_table.add_row("Course bearing",    bearing_str,   "")
+    console.print(factors_table)
+    console.print()
+
+
 def print_snapshot(data: dict) -> None:
     s = data.get("snapshot") or {}
     console.print()

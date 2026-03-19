@@ -39,7 +39,76 @@
   </div>
 </div>
 
-<!-- Row 2: Recent activities + Training status -->
+<!-- Row 2: Today's Weather -->
+{% if today_weather %}
+<div class="grid-4 mb-6" style="margin-bottom:1px;">
+
+  <!-- Temperature -->
+  <div class="panel panel--accent-blue" style="--delay:100ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Temperature · Now</p>
+    <p style="font-size:22px;font-weight:700;color:var(--text-primary);line-height:1;letter-spacing:-0.02em;">
+      {% if today_weather.temperature_c is not none %}{{ today_weather.temperature_c }}{% else %}—{% endif %}<span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:3px;">°C</span>
+    </p>
+    <p class="panel-sub" style="margin-top:6px;">
+      Feels {{ today_weather.apparent_temp_c if today_weather.apparent_temp_c is not none else '—' }} °C
+      · {{ today_weather.humidity_pct if today_weather.humidity_pct is not none else '—' }}% RH
+    </p>
+  </div>
+
+  <!-- Conditions -->
+  <div class="panel" style="--delay:120ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Conditions</p>
+    <p style="font-size:14px;font-weight:700;color:var(--text-primary);line-height:1.2;margin-bottom:6px;">{{ today_weather.condition }}</p>
+    <p class="panel-sub">
+      {% if today_weather.precipitation_mm is not none and today_weather.precipitation_mm > 0 %}Precip {{ today_weather.precipitation_mm }} mm{% else %}No precipitation{% endif %}
+      · <span style="color:var(--text-dim);font-size:10px;">{{ today_weather.lat | round(2) }}, {{ today_weather.lng | round(2) }}</span>
+    </p>
+  </div>
+
+  <!-- Wind -->
+  <div class="panel panel--accent-amber" style="--delay:140ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Wind</p>
+    <p style="font-size:22px;font-weight:700;color:var(--text-primary);line-height:1;letter-spacing:-0.02em;">
+      {% if today_weather.wind_speed_kmh is not none %}{{ today_weather.wind_speed_kmh }}{% else %}—{% endif %}<span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:3px;">km/h</span>
+    </p>
+    <p class="panel-sub" style="margin-top:6px;">
+      {{ today_weather.wind_direction_compass or '—' }}
+      {% if today_weather.wind_gusts_kmh and today_weather.wind_gusts_kmh > 0 %}· gusts {{ today_weather.wind_gusts_kmh }} km/h{% endif %}
+    </p>
+  </div>
+
+  <!-- Race Factors -->
+  <div class="panel panel--accent" style="--delay:160ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Race Factors</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      {% if today_weather.wbgt_flag %}
+      <span class="badge
+        {% if today_weather.wbgt_flag == 'green' %}badge-green
+        {% elif today_weather.wbgt_flag == 'yellow' %}badge-amber
+        {% else %}badge-red{% endif %}">{{ today_weather.wbgt_flag | upper }}</span>
+      {% endif %}
+      {% if today_weather.wbgt_c is not none %}
+      <span style="font-size:13px;font-weight:700;color:var(--text-primary);">WBGT {{ today_weather.wbgt_c }} °C</span>
+      {% endif %}
+    </div>
+    <p class="panel-sub">
+      Heat penalty:
+      <span class="
+        {% if today_weather.pace_heat_factor <= 1.01 %}c-green
+        {% elif today_weather.pace_heat_factor <= 1.05 %}c-amber
+        {% else %}c-red{% endif %}">
+        {% if today_weather.pace_heat_factor is not none %}
+          {% if today_weather.pace_heat_factor <= 1.0 %}none
+          {% else %}+{{ "%.1f"|format((today_weather.pace_heat_factor - 1) * 100) }}%{% endif %}
+        {% else %}—{% endif %}
+      </span>
+    </p>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- Row 3: Recent activities + Training status -->
 <div class="grid-12" style="margin-bottom:1px;">
 
   <!-- Recent Activities (col 1-8) -->
@@ -112,7 +181,7 @@
 
 </div>
 
-<!-- Row 3: Activity Heatmap -->
+<!-- Row 4: Activity Heatmap -->
 <div class="panel col-12" style="--delay:200ms">
   <div class="panel-header">
     <span class="panel-label">Activity History</span>
