@@ -11,6 +11,7 @@ from sqlalchemy import select
 from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_wap_factor,
+    deg_to_compass,
     vo2max_heat_factor,
     wbgt_approx,
     wbgt_flag,
@@ -25,7 +26,8 @@ from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
 from fitops.db.session import get_async_session
 from fitops.output.formatter import make_meta
-from fitops.weather.client import fetch_activity_weather
+from fitops.output.text_formatter import print_weather_forecast
+from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -254,6 +256,85 @@ def show_weather(
         raise typer.Exit(1)
 
     typer.echo(json.dumps({"_meta": make_meta(), "weather": result}, indent=2))
+
+
+@app.command("forecast")
+def forecast_weather(
+    lat: float = typer.Option(..., "--lat", help="Latitude of race location."),
+    lng: float = typer.Option(..., "--lng", help="Longitude of race location."),
+    date: str = typer.Option(..., "--date", help="Race date (YYYY-MM-DD)."),
+    hour: int = typer.Option(9, "--hour", help="Race start hour in local time (0-23). Default: 9."),
+    course_bearing: Optional[float] = typer.Option(
+        None, "--course-bearing",
+        help="Course bearing in degrees (0=N, 90=E) for headwind/tailwind calc.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+) -> None:
+    """Fetch race-day weather forecast and compute pace adjustment factors."""
+    import re
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        typer.echo(json.dumps({"error": "Date must be YYYY-MM-DD format."}, indent=2))
+        raise typer.Exit(1)
+    if not (0 <= hour <= 23):
+        typer.echo(json.dumps({"error": "Hour must be 0-23."}, indent=2))
+        raise typer.Exit(1)
+
+    weather = asyncio.run(fetch_forecast_weather(lat, lng, date, hour))
+    if weather is None:
+        typer.echo(
+            json.dumps(
+                {"error": "Failed to fetch forecast from Open-Meteo. Date may be beyond 16-day window."},
+                indent=2,
+            )
+        )
+        raise typer.Exit(1)
+
+    temp_c = weather.get("temperature_c")
+    humidity = weather.get("humidity_pct")
+    wind_speed = weather.get("wind_speed_ms") or 0.0
+    wind_dir = weather.get("wind_direction_deg") or 0.0
+    wcode = weather.get("weather_code")
+
+    wbgt: Optional[float] = None
+    if temp_c is not None and humidity is not None:
+        wbgt = round(wbgt_approx(temp_c, humidity), 2)
+
+    wap_factor: Optional[float] = None
+    headwind: Optional[float] = None
+    if temp_c is not None and humidity is not None:
+        from fitops.analytics.weather_pace import headwind_ms
+        if course_bearing is not None:
+            headwind = round(headwind_ms(wind_speed, wind_dir, course_bearing), 2)
+        wap_factor = round(
+            compute_wap_factor(temp_c, humidity, wind_speed, wind_dir, course_bearing), 4
+        )
+
+    forecast_dict = {
+        "date": date,
+        "hour_local": hour,
+        "timezone": weather.pop("_timezone", None),
+        "lat": lat,
+        "lng": lng,
+        **weather,
+        "condition": weather_condition_label(wcode) if wcode is not None else None,
+        "wbgt_c": wbgt,
+        "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else None,
+        "pace_heat_factor": round(pace_heat_factor(temp_c, humidity), 4)
+        if temp_c is not None and humidity is not None
+        else None,
+        "vo2max_heat_factor": round(vo2max_heat_factor(temp_c, humidity), 4)
+        if temp_c is not None and humidity is not None
+        else None,
+        "headwind_ms": headwind,
+        "wind_direction_compass": deg_to_compass(wind_dir) if wind_dir else None,
+        "wap_factor": wap_factor,
+        "course_bearing_deg": course_bearing,
+    }
+
+    if json_output:
+        typer.echo(json.dumps({"_meta": make_meta(), "forecast": forecast_dict}, indent=2))
+    else:
+        print_weather_forecast(forecast_dict)
 
 
 @app.command("set")

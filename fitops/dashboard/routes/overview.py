@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 
+from fitops.analytics.weather_pace import (
+    pace_heat_factor,
+    wbgt_approx,
+    wbgt_flag,
+    weather_condition_label,
+    deg_to_compass,
+)
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import get_activity_stats, get_recent_activities
 from fitops.dashboard.queries.analytics import get_training_load_data
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.profile import get_activity_heatmap_data
+from fitops.db.models.activity import Activity
+from fitops.db.session import get_async_session
+from fitops.weather.client import fetch_forecast_weather
 
 router = APIRouter()
 
@@ -53,6 +65,63 @@ def _format_activity(a) -> dict:
     }
 
 
+async def _get_today_weather(athlete_id: Optional[int]) -> Optional[dict]:
+    """Fetch today's forecast using coordinates from the athlete's most recent GPS activity."""
+    if not athlete_id:
+        return None
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(Activity)
+            .where(Activity.athlete_id == athlete_id)
+            .where(Activity.start_latlng.isnot(None))
+            .order_by(Activity.start_date.desc())
+            .limit(1)
+        )
+        act = result.scalar_one_or_none()
+    if not act or not act.start_latlng:
+        return None
+    try:
+        coords = json.loads(act.start_latlng)
+        lat, lng = float(coords[0]), float(coords[1])
+    except (json.JSONDecodeError, TypeError, ValueError, IndexError):
+        return None
+
+    now = datetime.now(timezone.utc)
+    raw = await fetch_forecast_weather(lat, lng, now.strftime("%Y-%m-%d"), now.hour)
+    if not raw:
+        return None
+
+    temp_c = raw.get("temperature_c")
+    humidity = raw.get("humidity_pct")
+    wind_speed = raw.get("wind_speed_ms") or 0.0
+    wind_dir = raw.get("wind_direction_deg") or 0.0
+    wcode = raw.get("weather_code")
+
+    wbgt_val: Optional[float] = None
+    heat_factor: Optional[float] = None
+    if temp_c is not None and humidity is not None:
+        wbgt_val = round(wbgt_approx(temp_c, humidity), 1)
+        heat_factor = round(pace_heat_factor(temp_c, humidity), 4)
+
+    return {
+        "temperature_c": round(temp_c, 1) if temp_c is not None else None,
+        "apparent_temp_c": round(raw.get("apparent_temp_c"), 1) if raw.get("apparent_temp_c") is not None else None,
+        "humidity_pct": humidity,
+        "precipitation_mm": raw.get("precipitation_mm"),
+        "wind_speed_kmh": round(wind_speed * 3.6, 1),
+        "wind_gusts_kmh": round((raw.get("wind_gusts_ms") or 0) * 3.6, 1),
+        "wind_direction_compass": deg_to_compass(wind_dir),
+        "condition": weather_condition_label(wcode) if wcode is not None else "—",
+        "weather_code": wcode,
+        "wbgt_c": wbgt_val,
+        "wbgt_flag": wbgt_flag(wbgt_val) if wbgt_val is not None else None,
+        "pace_heat_factor": heat_factor,
+        "timezone": raw.get("_timezone", "UTC"),
+        "lat": lat,
+        "lng": lng,
+    }
+
+
 _PERIOD_LABELS = {"week": "This Week", "month": "This Month", "year": "This Year", "all": "All Time"}
 
 
@@ -82,6 +151,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         stats = await get_activity_stats(athlete_id, since=since) if athlete_id else {}
         tl = await get_training_load_data(athlete_id, days=1) if athlete_id else None
         heatmap_data = await get_activity_heatmap_data(athlete_id, since=None) if athlete_id else []
+        today_weather = await _get_today_weather(athlete_id)
 
         current_load = None
         if tl and tl.current:
@@ -104,6 +174,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "heatmap_json": json.dumps(heatmap_data),
                 "period": period,
                 "period_label": _PERIOD_LABELS[period],
+                "today_weather": today_weather,
                 "active_page": "overview",
             },
         )
