@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="FitOps-test"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Sample Course</name>
+    <trkseg>
+      <trkpt lat="51.5000" lon="-0.1000"><ele>10.0</ele></trkpt>
+      <trkpt lat="51.5009" lon="-0.1000"><ele>20.0</ele></trkpt>
+      <trkpt lat="51.5018" lon="-0.1000"><ele>30.0</ele></trkpt>
+      <trkpt lat="51.5027" lon="-0.1000"><ele>25.0</ele></trkpt>
+      <trkpt lat="51.5036" lon="-0.1000"><ele>15.0</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
