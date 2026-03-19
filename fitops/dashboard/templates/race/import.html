@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Import Course — FitOps{% endblock %}
+{% block page_name %}Race{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Import Race Course</h1>
+    <p class="page-subtitle">Upload a GPX / TCX file or paste a MapMyRun URL.</p>
+  </div>
+  <a href="/race" class="btn">← Back to Courses</a>
+</div>
+
+{% if error %}
+<div class="alert alert-red" style="margin-bottom:1rem;">
+  <strong>Import failed:</strong> {{ error }}
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Course Details</span>
+  </div>
+  <form method="post" action="/race/import" enctype="multipart/form-data" style="padding:1rem 1.25rem;">
+
+    <div style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Course Name <span style="color:#ef4444;">*</span></label>
+      <input type="text" name="name" required placeholder="e.g. Amsterdam Marathon 2025"
+             style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+    </div>
+
+    <!-- Source type tabs -->
+    <div style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.5rem;">Source</label>
+      <div style="display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+          <input type="radio" name="source_type" value="file" id="src_file" checked onchange="toggleSource(this.value)">
+          GPX / TCX File
+        </label>
+        <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+          <input type="radio" name="source_type" value="strava" id="src_strava" onchange="toggleSource(this.value)">
+          Strava Activity URL
+        </label>
+        <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
+          <input type="radio" name="source_type" value="mapmyrun" id="src_mapmyrun" onchange="toggleSource(this.value)">
+          MapMyRun URL
+        </label>
+      </div>
+
+      <div id="panel_file">
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">GPX or TCX File</label>
+        <input type="file" name="file" accept=".gpx,.tcx"
+               style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.85rem;" />
+        <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Accepts .gpx and .tcx files. Elevation and coordinates are extracted automatically.</p>
+      </div>
+
+      <!-- Single URL field shared by strava + mapmyrun — label/hint swaps via JS -->
+      <div id="panel_url" style="display:none;">
+        <label id="url_label" style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">URL</label>
+        <input type="text" name="url" id="url_input" placeholder=""
+               style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        <p id="url_hint" style="font-size:0.75rem; color:#666; margin-top:0.3rem;"></p>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:0.75rem; align-items:center; margin-top:1.25rem;">
+      <button type="submit" class="btn btn-primary" id="importBtn">Import Course</button>
+      <a href="/race" class="btn">Cancel</a>
+      <span id="importSpinner" style="display:none; font-size:0.8rem; color:#888;">Fetching course data…</span>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var URL_META = {
+  strava:   { label: 'Strava Activity URL',  placeholder: 'https://www.strava.com/activities/12345678', hint: 'GPS data is fetched via your stored Strava token — run <code>fitops auth login</code> first if needed.' },
+  mapmyrun: { label: 'MapMyRun Route URL',   placeholder: 'https://www.mapmyrun.com/routes/view/...',   hint: 'Coordinates are scraped from the public route page.' },
+};
+function toggleSource(val) {
+  document.getElementById('panel_file').style.display = val === 'file' ? '' : 'none';
+  var urlPanel = document.getElementById('panel_url');
+  if (val === 'strava' || val === 'mapmyrun') {
+    urlPanel.style.display = '';
+    var m = URL_META[val];
+    document.getElementById('url_label').textContent     = m.label;
+    document.getElementById('url_input').placeholder     = m.placeholder;
+    document.getElementById('url_hint').innerHTML        = m.hint;
+  } else {
+    urlPanel.style.display = 'none';
+  }
+}
+
+// Show spinner on submit (URL fetch can take a few seconds)
+document.querySelector('form').addEventListener('submit', function() {
+  document.getElementById('importBtn').disabled = true;
+  document.getElementById('importSpinner').style.display = '';
+});
+</script>
+{% endblock %}
