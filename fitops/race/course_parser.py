@@ -398,7 +398,7 @@ async def parse_strava_activity(activity_strava_id: int, session) -> list[Course
 
     streams: dict[str, list] = {}
     for row in rows:
-        streams[row.stream_type] = json.loads(row.data)
+        streams[row.stream_type] = row.data
 
     latlng = streams.get("latlng", [])
     if not latlng:
