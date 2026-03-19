@@ -14,7 +14,7 @@
 
 ---
 
-## Phase 2 — Analytics 🔜
+## Phase 2 — Analytics ✅
 
 **Goal:** Calculate training metrics locally from synced activities.
 
@@ -58,7 +58,7 @@ fitops analytics zones --set-lthr 165    # Update LTHR setting
 
 ---
 
-## Phase 3 — Workouts & Compliance 🔜
+## Phase 3 — Workouts & Compliance ✅
 
 **Goal:** Create structured workouts, associate them with activities, score compliance.
 
