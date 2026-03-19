@@ -49,7 +49,7 @@ fitops race splits <course_id> --target-time HH:MM:SS
 **Plans:** 6 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Test scaffold, fixtures, and new deps (gpxpy, tcxreader)
+- [x] 08-01-PLAN.md — Test scaffold, fixtures, and new deps (gpxpy, tcxreader)
 - [x] 08-02-PLAN.md — RaceCourse DB model and migration
 - [ ] 08-03-PLAN.md — Course parser module (GPX, TCX, MapMyRun, Strava streams)
 - [ ] 08-04-PLAN.md — Simulation engine (GAP factor, even/negative/pacer strategies)
