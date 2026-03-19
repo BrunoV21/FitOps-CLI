@@ -168,7 +168,10 @@
 {% if history %}
 <!-- VO2max history chart -->
 <div class="panel" style="margin-top:1px;--delay:160ms">
-  <p class="panel-label">VO₂max Over Time</p>
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">VO₂max Over Time</p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
   <p class="panel-sub" style="margin-bottom:8px;">
     <span style="color:var(--accent-green);">&#9644;</span> Rolling estimate &nbsp;&middot;&nbsp;
     <span style="color:#aa55ff;">&#9679;</span> Qualifying effort (≥5 km) &nbsp;&middot;&nbsp;
@@ -179,7 +182,10 @@
 
 <!-- Pace threshold evolution chart -->
 <div class="panel" style="margin-top:1px;--delay:180ms">
-  <p class="panel-label">Pace Thresholds Over Time</p>
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">Pace Thresholds Over Time</p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
   <p class="panel-sub" style="margin-bottom:8px;">LT1 · LT2 · vVO₂max &middot; lower = faster &middot; <span style="color:#00ff87;">stream-measured</span> when available, VDOT-derived otherwise</p>
   <canvas id="paceEvolutionChart" height="60"></canvas>
 </div>

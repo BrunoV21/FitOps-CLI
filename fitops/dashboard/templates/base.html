@@ -127,6 +127,26 @@
 {% block scripts %}{% endblock %}
 
 <script>
+// Chart fullscreen helper
+function _fsPanel(btn) {
+  var el = btn.closest('.panel') || btn.closest('.analysis-section');
+  if (!el) return;
+  if (!document.fullscreenElement) {
+    el.requestFullscreen().catch(function() {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener('fullscreenchange', function() {
+  var el = document.fullscreenElement;
+  if (el) {
+    el.querySelectorAll('canvas').forEach(function(c) {
+      var chart = typeof Chart !== 'undefined' && Chart.getChart(c);
+      if (chart) setTimeout(function() { chart.resize(); }, 50);
+    });
+  }
+});
+
 // Stagger panel entrance animations
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.panel, .table-wrap, .alert, .empty-state').forEach((el, i) => {
