@@ -2,40 +2,77 @@
 {% block title %}{{ course.name }} — Course Profile — FitOps{% endblock %}
 {% block page_name %}Race{% endblock %}
 
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
-  <h1 class="page-title">{{ course.name }}</h1>
-  <p class="page-subtitle">Course Profile</p>
+  <div>
+    <h1 class="page-title">{{ course.name }}</h1>
+    <p class="page-subtitle">Course Profile</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;">
+    <a href="/race/{{ course.id }}/simulate" class="btn btn-primary">Simulate Race</a>
+    <a href="/race" class="btn">← Courses</a>
+  </div>
 </div>
 
 <!-- Summary cards -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-value">{{ "%.2f"|format(course.total_distance_km) }}</div>
-    <div class="stat-label">Distance (km)</div>
+{% set source_label = {
+  'strava_url': 'Strava',
+  'strava':     'Strava',
+  'mapmyrun':   'MapMyRun',
+  'gpx':        'GPX',
+  'tcx':        'TCX',
+  'file':       'File',
+}.get(course.source, course.source | capitalize) %}
+<div class="grid-4" style="margin-bottom:1px;">
+  <div class="panel panel--accent" style="--delay:0ms">
+    <p class="panel-label">Distance</p>
+    <p class="panel-metric">{{ "%.2f"|format(course.total_distance_km) }}</p>
+    <p class="panel-sub">km</p>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ "%.0f"|format(course.total_elevation_gain_m) }}</div>
-    <div class="stat-label">Elevation Gain (m)</div>
+  <div class="panel" style="--delay:40ms">
+    <p class="panel-label">Elevation Gain</p>
+    <p class="panel-metric">{{ "%.0f"|format(course.total_elevation_gain_m) }}</p>
+    <p class="panel-sub">metres</p>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ course.source }}</div>
-    <div class="stat-label">Source</div>
+  <div class="panel" style="--delay:80ms">
+    <p class="panel-label">GPS Points</p>
+    <p class="panel-metric">{{ course.num_points }}</p>
+    <p class="panel-sub">waypoints</p>
   </div>
-  <div class="stat-card">
-    <div class="stat-value">{{ course.num_points }}</div>
-    <div class="stat-label">GPS Points</div>
+  <div class="panel" style="--delay:120ms">
+    <p class="panel-label">Source</p>
+    <p class="panel-metric--md" style="margin-top:12px;">{{ source_label }}</p>
+    {% if course.source_ref %}
+    <p class="panel-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+      <a href="{{ course.source_ref }}" target="_blank" style="color:var(--accent-primary);">View original</a>
+    </p>
+    {% endif %}
   </div>
 </div>
 
-<!-- Elevation Profile Chart -->
-<div class="panel">
-  <div class="panel-header">
-    <span class="panel-title">Elevation Profile</span>
-    <span class="panel-meta">metres above sea level</span>
+<!-- Map + Elevation side by side -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+  <div class="panel" style="margin-bottom:0;">
+    <div class="panel-header">
+      <span class="panel-title">Course Map</span>
+      <span class="panel-meta">{{ "%.1f"|format(course.total_distance_km) }} km</span>
+    </div>
+    <div id="routeMap" style="height:280px; border-radius:4px;"></div>
   </div>
-  <div class="chart-wrap" style="height:280px;">
-    <canvas id="elevationChart"></canvas>
+  <div class="panel" style="margin-bottom:0;">
+    <div class="panel-header">
+      <span class="panel-title">Elevation Profile</span>
+      <span class="panel-meta">metres above sea level</span>
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    </div>
+    <div class="chart-wrap" style="height:280px;">
+      <canvas id="elevationChart"></canvas>
+    </div>
   </div>
 </div>
 
@@ -71,13 +108,28 @@
 </div>
 {% endif %}
 
-<div style="margin-top:1rem;">
-  <a href="/race/{{ course.id }}/simulate" class="btn">Simulate Race</a>
-  <a href="/race" class="btn" style="margin-left:0.5rem;">Back to Courses</a>
-</div>
 {% endblock %}
 
 {% block scripts %}
+<script>
+(function() {
+  (function() {
+    var coords = {{ route_coords_json | safe }};
+    if (!coords || coords.length < 2) return;
+    var map = L.map('routeMap', { scrollWheelZoom: false, zoomControl: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(map);
+    var line = L.polyline(coords, { color: '#00ff87', weight: 2.5, opacity: 0.9 }).addTo(map);
+    map.fitBounds(line.getBounds(), { padding: [16, 16] });
+    L.circleMarker(coords[0], { radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2 }).addTo(map).bindTooltip('Start');
+    L.circleMarker(coords[coords.length - 1], { radius: 5, color: '#ff3355', fillColor: '#ff3355', fillOpacity: 1, weight: 2 }).addTo(map).bindTooltip('Finish');
+    setTimeout(function() { map.invalidateSize(); }, 150);
+  })();
+})();
+</script>
 <script>
 (function() {
   const profileData = {{ elevation_profile_json | safe }};
