@@ -10,13 +10,19 @@ Best method if you know your lactate threshold HR from a field test or lab.
 
 Zones are set as percentages of LTHR:
 
-| Zone | Name | % of LTHR | Purpose |
-|------|------|-----------|---------|
-| Z1 | Recovery | < 85% | Active recovery |
-| Z2 | Aerobic | 85–89% | Base building, long runs |
-| Z3 | Tempo | 90–94% | Comfortably hard, marathon pace |
-| Z4 | Threshold | 95–99% | Lactate threshold work |
-| Z5 | VO2max | ≥ 100% | High-intensity intervals |
+| Zone | Name | Range | Purpose |
+|------|------|-------|---------|
+| Z1 | Recovery | < 85% LTHR | Active recovery |
+| Z2 | Aerobic | 85% LTHR → LT1 (≈92% LTHR) | Base building, long runs |
+| Z3 | Tempo | LT1 → 100% LTHR | Comfortably hard, marathon pace |
+| Z4 | Threshold | 100% → 106% LTHR | Lactate threshold work (LT2) |
+| Z5 | VO2max | > 106% LTHR | High-intensity intervals |
+
+**LT1 and LT2** are explicit thresholds in the `zones` output:
+- **LT1** (top of Z2): the aerobic threshold — approximately 92% of LTHR, or 72% of HRR if resting HR is known
+- **LT2** (top of Z3): the lactate threshold — equal to your LTHR (100%)
+
+When resting HR is available, LT1 uses a heart rate reserve (HRR) formula instead of the fixed 92% ratio, which is more accurate for athletes with large cardiac reserves.
 
 Set your LTHR:
 ```bash

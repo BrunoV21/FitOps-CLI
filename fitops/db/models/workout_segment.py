@@ -52,6 +52,17 @@ class WorkoutSegment(Base):
         Text, nullable=True
     )  # JSON: {"z1": 0.05, "z2": 0.60, ...}
 
+    # Pace / speed actuals (extended)
+    avg_speed_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    avg_cadence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)   # spm
+    avg_gap_per_km: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # s/km
+
+    # Target bounds for hr_range / pace_range segments
+    target_hr_min_bpm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    target_hr_max_bpm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    target_pace_min_s_per_km: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    target_pace_max_s_per_km: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Power actuals
     avg_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     normalized_power: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -92,6 +103,7 @@ class WorkoutSegment(Base):
         result: "SegmentCompliance",  # fitops.workouts.compliance.SegmentCompliance
     ) -> "WorkoutSegment":
         seg = result.segment
+        scored = result.has_heartrate or result.has_pace
         return cls(
             workout_id=workout_id,
             activity_id=activity_id,
@@ -100,32 +112,72 @@ class WorkoutSegment(Base):
             step_type=seg.step_type,
             start_index=result.start_index,
             end_index=result.end_index,
-            target_focus_type="hr_zone" if seg.target_zone else None,
+            target_focus_type=seg.target_focus_type if seg.target_focus_type != "hr_zone" or seg.target_zone else None,
             target_zone=seg.target_zone,
+            # Target bounds
+            target_hr_min_bpm=seg.target_hr_min_bpm,
+            target_hr_max_bpm=seg.target_hr_max_bpm,
+            target_pace_min_s_per_km=seg.target_pace_min_s_per_km,
+            target_pace_max_s_per_km=seg.target_pace_max_s_per_km,
+            # HR actuals
             avg_heartrate=result.avg_heartrate,
             hr_zone_distribution=json.dumps(result.hr_zone_distribution) if result.hr_zone_distribution else None,
-            target_achieved=int(result.target_achieved) if result.has_heartrate else None,
-            deviation_pct=result.deviation_pct if result.has_heartrate else None,
-            time_in_target_pct=result.time_in_target_pct if result.has_heartrate else None,
-            time_above_pct=result.time_above_pct if result.has_heartrate else None,
-            time_below_pct=result.time_below_pct if result.has_heartrate else None,
-            compliance_score=result.compliance_score if result.has_heartrate else None,
+            # Pace / speed actuals
+            avg_pace_per_km=result.avg_pace_per_km,
+            avg_speed_ms=result.avg_speed_ms,
+            avg_cadence=result.avg_cadence,
+            avg_gap_per_km=result.avg_gap_per_km,
+            # Compliance
+            target_achieved=int(result.target_achieved) if scored else None,
+            deviation_pct=result.deviation_pct if scored else None,
+            time_in_target_pct=result.time_in_target_pct if scored else None,
+            time_above_pct=result.time_above_pct if scored else None,
+            time_below_pct=result.time_below_pct if scored else None,
+            compliance_score=result.compliance_score if scored else None,
             has_heartrate=int(result.has_heartrate),
             has_power=0,
             has_gps=0,
             data_completeness=result.data_completeness,
         )
 
+    def _fmt_pace(self, pace_s: Optional[float]) -> Optional[str]:
+        if pace_s is None:
+            return None
+        m, s = divmod(int(pace_s), 60)
+        return f"{m}:{s:02d}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "segment_index": self.segment_index,
             "segment_name": self.segment_name,
             "step_type": self.step_type,
+            "target_focus_type": self.target_focus_type,
             "target_zone": self.target_zone,
+            "target_hr_range": (
+                {"min_bpm": self.target_hr_min_bpm, "max_bpm": self.target_hr_max_bpm}
+                if self.target_hr_min_bpm is not None or self.target_hr_max_bpm is not None
+                else None
+            ),
+            "target_pace_range": (
+                {
+                    "min_s_per_km": self.target_pace_min_s_per_km,
+                    "max_s_per_km": self.target_pace_max_s_per_km,
+                    "min_formatted": self._fmt_pace(self.target_pace_min_s_per_km),
+                    "max_formatted": self._fmt_pace(self.target_pace_max_s_per_km),
+                }
+                if self.target_pace_min_s_per_km is not None or self.target_pace_max_s_per_km is not None
+                else None
+            ),
             "stream_slice": {"start_index": self.start_index, "end_index": self.end_index},
             "actuals": {
                 "avg_heartrate_bpm": self.avg_heartrate,
-                "actual_zone": None,  # re-derived at query time if needed
+                "avg_pace_per_km": self.avg_pace_per_km,
+                "avg_pace_formatted": self._fmt_pace(self.avg_pace_per_km),
+                "avg_speed_ms": self.avg_speed_ms,
+                "avg_speed_kmh": round(self.avg_speed_ms * 3.6, 2) if self.avg_speed_ms else None,
+                "avg_cadence": self.avg_cadence,
+                "avg_gap_per_km": self.avg_gap_per_km,
+                "avg_gap_formatted": self._fmt_pace(self.avg_gap_per_km),
                 "hr_zone_distribution": self.get_hr_zone_distribution(),
             },
             "compliance": {

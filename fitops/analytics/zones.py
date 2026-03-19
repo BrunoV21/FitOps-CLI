@@ -42,9 +42,19 @@ class ZoneResult:
         }
 
 
-def compute_lthr_zones(lthr: int) -> ZoneResult:
+def compute_lthr_zones(
+    lthr: int,
+    resting_hr: Optional[int] = None,
+    max_hr: Optional[int] = None,
+) -> ZoneResult:
+    # LT1 (Z2/Z3 boundary): use HRR-corrected formula at 72% HRR when resting HR is
+    # known, because the fixed 92%-LTHR ratio over-shoots LT1 for athletes with large
+    # cardiac reserves (HRR > ~100 bpm). Falls back to 92% LTHR when resting HR is absent.
+    if resting_hr is not None and max_hr is not None:
+        z2_max = int(resting_hr + 0.72 * (max_hr - resting_hr))
+    else:
+        z2_max = int(lthr * 0.92)
     z1_max = int(lthr * 0.85)
-    z2_max = int(lthr * 0.92)
     z3_max = lthr
     z4_max = int(lthr * 1.06)
     zones = [
@@ -54,7 +64,7 @@ def compute_lthr_zones(lthr: int) -> ZoneResult:
         Zone(4, "Threshold", z3_max, z4_max, "LT2 — lactate threshold work"),
         Zone(5, "VO2max",    z4_max, 999,    "Above threshold — high intensity intervals"),
     ]
-    return ZoneResult(method="lthr", lthr_bpm=lthr, max_hr_bpm=None, resting_hr_bpm=None,
+    return ZoneResult(method="lthr", lthr_bpm=lthr, max_hr_bpm=max_hr, resting_hr_bpm=resting_hr,
                       zones=zones, lt1_bpm=z2_max, lt2_bpm=lthr)
 
 
@@ -88,7 +98,7 @@ def compute_hrr_zones(max_hr: int, resting_hr: int) -> ZoneResult:
 def compute_zones(method: str, lthr: Optional[int] = None, max_hr: Optional[int] = None,
                   resting_hr: Optional[int] = None) -> Optional[ZoneResult]:
     if method == "lthr":
-        return compute_lthr_zones(lthr) if lthr else None
+        return compute_lthr_zones(lthr, resting_hr=resting_hr, max_hr=max_hr) if lthr else None
     elif method == "max-hr":
         return compute_max_hr_zones(max_hr) if max_hr else None
     elif method == "hrr":

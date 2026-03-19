@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Performance — FitOps{% endblock %}
+{% block page_name %}Performance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Performance</p>
+    <p class="page-subtitle">VO₂max estimates from recent runs</p>
+  </div>
+  <form method="get" class="filter-bar" style="margin-bottom:0;">
+    <select name="days" class="select-ctrl">
+      {% for d in [90, 180, 365] %}
+      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Update</button>
+  </form>
+</div>
+
+{% if best_vo2max %}
+<!-- Best estimate panels -->
+{% set current_rolling = history[-1].rolling_vo2max if history and history[-1].rolling_vo2max else best_vo2max.estimate %}
+<div class="grid-3" style="margin-bottom:1px;">
+  <div class="panel panel--accent-purple" style="--delay:0ms">
+    <p class="panel-label">Current VO₂max</p>
+    <p class="panel-metric c-purple">{{ current_rolling }}</p>
+    <p class="panel-sub">ml/kg/min · rolling estimate
+      {% if current_rolling != best_vo2max.estimate %}
+      · peak {{ best_vo2max.estimate }}
+      {% endif %}
+    </p>
+  </div>
+  <div class="panel" style="--delay:40ms">
+    <p class="panel-label">From Activity</p>
+    <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-top:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+      {{ best_vo2max.activity_name }}
+    </p>
+    <p class="panel-sub" style="margin-top:4px;">{{ best_vo2max.activity_date }} · {{ best_vo2max.distance_km }} km · {{ best_vo2max.pace_per_km }}/km</p>
+  </div>
+  <div class="panel" style="--delay:80ms">
+    <p class="panel-label">Algorithm Breakdown</p>
+    {% if best_vo2max.vdot %}
+    <div class="stat-row">
+      <span class="stat-key">Daniels VDOT</span>
+      <span class="stat-val">{{ best_vo2max.vdot }}</span>
+    </div>
+    {% endif %}
+    {% if best_vo2max.cooper %}
+    <div class="stat-row">
+      <span class="stat-key">Cooper extrapolation</span>
+      <span class="stat-val">{{ best_vo2max.cooper }}</span>
+    </div>
+    {% endif %}
+    <p class="panel-sub" style="margin-top:8px;">60% VDOT + 40% Cooper (≥5 km)</p>
+  </div>
+</div>
+
+<!-- Fitness classification -->
+{% set vo2 = best_vo2max.estimate %}
+<div class="panel" style="margin-top:1px;--delay:120ms">
+  <p class="panel-label">Fitness Classification</p>
+  <div class="fitness-class-row">
+    {% set classes = [("Poor",35,"dim"),("Fair",42,"blue"),("Good",50,"green"),("Excellent",58,"amber"),("Elite",999,"red")] %}
+    {% for label, threshold, color in classes %}
+    {% set active = (vo2 < threshold and (loop.first or vo2 >= classes[loop.index0 - 1][1])) %}
+    <div class="fitness-class-item {% if active %}active-{{ color }}{% endif %}">
+      {{ label }}
+      <span class="fitness-class-range">
+        {% if label == "Poor" %}&lt;35
+        {% elif label == "Elite" %}58+
+        {% else %}{{ classes[loop.index0 - 1][1] }}–{{ threshold }}
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
+<div class="panel" style="margin-top:1px;--delay:120ms">
+  <p class="panel-label">Running Intensity Thresholds
+    {% if race_predictions and race_predictions.lt2_implied_vo2max %}
+    {% set implied = race_predictions.lt2_implied_vo2max %}
+    {% set diff = (implied - current_rolling) | abs %}
+    {% if diff > 3 %}
+    <span class="badge badge-amber" style="margin-left:8px;font-size:10px;vertical-align:middle;"
+          title="LT2 pace implies VO₂max {{ implied }} — differs from rolling estimate {{ current_rolling }}. Re-run --infer to recalibrate.">
+      LT2 implies {{ implied }} ml/kg/min
+    </span>
+    {% else %}
+    <span class="badge badge-green" style="margin-left:8px;font-size:10px;vertical-align:middle;">consistent with VO₂max</span>
+    {% endif %}
+    {% endif %}
+  </p>
+  <div style="display:flex;gap:32px;margin-top:12px;flex-wrap:wrap;">
+    {% if lt1_pace_fmt %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">LT1 &mdash; Aerobic Threshold</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-green);">{{ lt1_pace_fmt }}</p>
+    </div>
+    {% endif %}
+    {% if lt2_pace_fmt %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">LT2 &mdash; Lactate Threshold</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-amber);">{{ lt2_pace_fmt }}</p>
+    </div>
+    {% endif %}
+    {% if vo2max_pace_fmt %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">vVO&#8322;max &mdash; Speed Reserve</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-red);">{{ vo2max_pace_fmt }}</p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces from HR streams &middot; run <code>fitops analytics zones --infer</code> to update</p>
+</div>
+{% endif %}
+
+{% if race_predictions %}
+<div class="panel" style="margin-top:1px;--delay:140ms">
+  <p class="panel-label">Race Time Predictions</p>
+
+  {% if race_predictions.lt2_predictions %}
+  <!-- Primary: LT2-anchored -->
+  <div style="margin-bottom:16px;">
+    <p class="panel-sub" style="margin-bottom:8px;">
+      <span class="badge badge-green" style="font-size:10px;">LT2-anchored</span>
+      &nbsp;From your measured threshold pace {{ race_predictions.lt2_source_pace }}/km &middot; consistent regardless of daily training intensity
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      {% for label, pred in race_predictions.lt2_predictions.items() %}
+      <div style="text-align:center;padding:12px 8px;background:var(--surface-2);border-radius:6px;">
+        <p class="panel-sub" style="margin-bottom:6px;">{{ label }}</p>
+        <p style="font-size:18px;font-weight:700;color:var(--accent-green);">{{ pred.hms }}</p>
+        <p class="panel-sub">{{ pred.predicted_pace }}/km</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if race_predictions.riegel_predictions %}
+  <!-- Secondary: Riegel from best effort -->
+  <div>
+    <p class="panel-sub" style="margin-bottom:8px;">
+      <span class="badge badge-dim" style="font-size:10px;">Riegel</span>
+      &nbsp;From best recorded effort ({{ race_predictions.riegel_source_distance_km }} km @ {{ race_predictions.riegel_source_pace }}/km · {{ race_predictions.riegel_source_confidence }} confidence)
+      {% if race_predictions.riegel_source_confidence == 'Low' %}
+      &nbsp;<span style="color:var(--accent-amber);">&#9888; low-confidence source — treat as estimate only</span>
+      {% endif %}
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      {% for label, pred in race_predictions.riegel_predictions.items() %}
+      <div style="text-align:center;padding:10px 8px;background:var(--surface-2);border-radius:6px;opacity:0.65;">
+        <p class="panel-sub" style="margin-bottom:4px;">{{ label }}</p>
+        <p style="font-size:15px;font-weight:600;color:var(--text-muted);">{{ pred.hms }}</p>
+        <p class="panel-sub">{{ pred.predicted_pace }}/km</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if history %}
+<!-- VO2max history chart -->
+<div class="panel" style="margin-top:1px;--delay:160ms">
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">VO₂max Over Time</p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <p class="panel-sub" style="margin-bottom:8px;">
+    <span style="color:var(--accent-green);">&#9644;</span> Rolling estimate &nbsp;&middot;&nbsp;
+    <span style="color:#aa55ff;">&#9679;</span> Qualifying effort (≥5 km) &nbsp;&middot;&nbsp;
+    <span style="color:#555;">&#9679;</span> Easy / short run (does not update estimate)
+  </p>
+  <canvas id="vo2maxChart" height="70"></canvas>
+</div>
+
+<!-- Pace threshold evolution chart -->
+<div class="panel" style="margin-top:1px;--delay:180ms">
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">Pace Thresholds Over Time</p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <p class="panel-sub" style="margin-bottom:8px;">LT1 · LT2 · vVO₂max &middot; lower = faster &middot; <span style="color:#00ff87;">stream-measured</span> when available, VDOT-derived otherwise</p>
+  <canvas id="paceEvolutionChart" height="60"></canvas>
+</div>
+
+<!-- Run history table -->
+<div class="table-wrap mt-4" style="--delay:200ms">
+  <div class="panel" style="padding:14px 16px;border-bottom:1px solid var(--border);">
+    <p class="panel-label" style="margin-bottom:0;">Run History</p>
+  </div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Activity</th>
+        <th class="r">Distance</th>
+        <th class="r">Est.</th>
+        <th class="r">Rolling</th>
+        <th class="r">VDOT</th>
+        <th class="r">Cooper</th>
+        <th class="r">Signal</th>
+        <th class="r">Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in history | reverse %}
+      <tr>
+        <td>{{ row.date }}</td>
+        <td>
+          <a href="/activities/{{ row.strava_id }}"
+             style="color:var(--text-muted);transition:color 0.1s;"
+             onmouseenter="this.style.color='var(--text-primary)'"
+             onmouseleave="this.style.color=''">
+            {{ row.name }}
+          </a>
+        </td>
+        <td class="r">{{ row.distance_km }} km</td>
+        <td class="r" style="color:var(--text-muted);">{{ row.estimate }}</td>
+        <td class="r" style="color:var(--accent-green);font-weight:600;">{{ row.rolling_vo2max if row.rolling_vo2max else "—" }}</td>
+        <td class="r">{{ row.vdot if row.vdot else "—" }}</td>
+        <td class="r">{{ row.cooper if row.cooper else "—" }}</td>
+        <td class="r">
+          {% if row.is_qualifying %}
+          <span class="badge badge-green" title="Updates rolling VO₂max">qualifying</span>
+          {% else %}
+          <span class="badge badge-dim" title="Too short/easy to update estimate">easy</span>
+          {% endif %}
+        </td>
+        <td class="r">
+          {% if row.estimation_method == "streams" %}
+          <span class="badge badge-green" title="VO₂max estimated from stream segments; LT paces directly measured">streams</span>
+          {% else %}
+          <span class="badge badge-dim" title="VO₂max estimated from whole-activity summary">summary</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="empty-state mt-4">
+  No run data found. Run <code>fitops sync run</code> to import activities.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const VO2MAX_HISTORY = {{ history_json | safe }};
+if (VO2MAX_HISTORY.length > 0) {
+  renderVo2maxChart("vo2maxChart", VO2MAX_HISTORY);
+  renderPaceEvolutionChart("paceEvolutionChart", VO2MAX_HISTORY);
+}
+</script>
+{% endblock %}

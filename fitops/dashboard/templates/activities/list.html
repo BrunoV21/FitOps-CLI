@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Activities — FitOps{% endblock %}
+{% block page_name %}Activities{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Activities</p>
+    <p class="page-subtitle">{{ total }} total &middot; showing {{ activities | length }}</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="filter-bar">
+  <select name="sport" class="select-ctrl">
+    <option value="">All Sports</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {% if s == selected_sport %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="days" class="select-ctrl">
+    <option value="">All Time</option>
+    {% for d in [30, 60, 90, 180, 365] %}
+    <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+    {% endfor %}
+  </select>
+
+  <select name="limit" class="select-ctrl">
+    {% for l in [25, 50, 100, 200, 500] %}
+    <option value="{{ l }}" {% if l == selected_limit %}selected{% endif %}>{{ l }} per page</option>
+    {% endfor %}
+  </select>
+
+  <button type="submit" class="btn btn-primary">Filter</button>
+  <a href="/activities" class="btn btn-ghost">Reset</a>
+</form>
+
+{% if activities %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Activity</th>
+        <th class="r">Distance</th>
+        <th class="r">Duration</th>
+        <th class="r">Pace / Speed</th>
+        <th class="r">Avg HR</th>
+        <th class="r">Watts</th>
+        <th class="r">TSS</th>
+        <th class="r">Elev</th>
+        <th class="r">Weather</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in activities %}
+      <tr>
+        <td>{{ a.date }}</td>
+        <td>
+          <a href="/activities/{{ a.strava_id }}" style="display:flex;align-items:center;gap:8px;">
+            <span style="opacity:0.6;">{{ sport_icon(a.sport_type) }}</span>
+            <span class="w" style="font-weight:600;transition:color 0.1s;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                  onmouseenter="this.style.color='var(--accent-primary)'" onmouseleave="this.style.color=''">
+              {{ a.name }}
+            </span>
+            {% if a.is_race %}
+              <span class="badge badge-amber">Race</span>
+            {% endif %}
+            {% if a.trainer %}
+              <span class="badge badge-dim">Trainer</span>
+            {% endif %}
+          </a>
+        </td>
+        <td class="r">{% if a.distance_km %}{{ a.distance_km }} km{% else %}—{% endif %}</td>
+        <td class="r">{{ a.duration }}</td>
+        <td class="r">{{ a.pace }}</td>
+        <td class="r">{% if a.avg_hr %}{{ a.avg_hr }} bpm{% else %}—{% endif %}</td>
+        <td class="r">{% if a.avg_watts %}{{ a.avg_watts }} W{% else %}—{% endif %}</td>
+        <td class="r">{% if a.tss %}{{ a.tss }}{% else %}—{% endif %}</td>
+        <td class="r">{% if a.elevation_m %}{{ a.elevation_m }} m{% else %}—{% endif %}</td>
+        <td class="r">
+          {% if a.weather %}
+            <span class="wbgt-{{ a.weather.wbgt_flag }}" style="font-weight:600;">{{ a.weather.temp_fmt }}</span>
+            {% if a.weather.condition %}
+              <span class="text-dim" style="font-size:11px;display:block;">{{ a.weather.condition | truncate(14, True) }}</span>
+            {% endif %}
+          {% else %}
+            <span class="text-dim">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% set qs_base = "limit=" ~ selected_limit %}
+  {% if selected_sport %}{% set qs_base = qs_base ~ "&sport=" ~ selected_sport %}{% endif %}
+  {% if selected_days %}{% set qs_base = qs_base ~ "&days=" ~ selected_days %}{% endif %}
+  {% if current_page > 1 %}
+    <a href="/activities?{{ qs_base }}&page={{ current_page - 1 }}" class="btn btn-ghost">&laquo; Prev</a>
+  {% else %}
+    <span class="btn btn-ghost disabled">&laquo; Prev</span>
+  {% endif %}
+
+  <span class="pagination-info">Page {{ current_page }} of {{ total_pages }}</span>
+
+  {% if current_page < total_pages %}
+    <a href="/activities?{{ qs_base }}&page={{ current_page + 1 }}" class="btn btn-ghost">Next &raquo;</a>
+  {% else %}
+    <span class="btn btn-ghost disabled">Next &raquo;</span>
+  {% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty-state">
+  No activities found. Try adjusting the filters or run <code>fitops sync run</code>.
+</div>
+{% endif %}
+{% endblock %}

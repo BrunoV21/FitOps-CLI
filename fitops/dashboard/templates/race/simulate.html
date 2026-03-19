@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+{% block title %}{{ course.name }} — Race Simulation — FitOps{% endblock %}
+{% block page_name %}Race{% endblock %}
+
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ course.name }}</h1>
+  <p class="page-subtitle">Race Simulation — {{ "%.2f"|format(course.total_distance_km) }} km</p>
+</div>
+
+<!-- Simulation Form -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Simulation Parameters</span>
+  </div>
+  <form method="post" action="/race/{{ course.id }}/simulate" style="padding:1rem 1.25rem;">
+
+    {% if error %}
+    <div class="alert alert-red" style="margin-bottom:1rem;">
+      <strong>Error:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+      <div>
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Target Time <span style="color:#666;">(H:MM or HH:MM:SS)</span></label>
+        <input type="text" name="target_time" value="{{ form.target_time or '' }}"
+               placeholder="1:45:00"
+               style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+      </div>
+      <div>
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Strategy</label>
+        <select name="strategy" style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem; appearance:none; -webkit-appearance:none;">
+          <option value="even" {% if form.strategy == 'even' or not form.strategy %}selected{% endif %}>Even splits</option>
+          <option value="negative" {% if form.strategy == 'negative' %}selected{% endif %}>Negative split (start conservative)</option>
+          <option value="positive" {% if form.strategy == 'positive' %}selected{% endif %}>Positive split (start fast)</option>
+        </select>
+      </div>
+    </div>
+
+    <details {% if form.pacer_pace %}open{% endif %} style="margin-bottom:1rem;">
+      <summary style="cursor:pointer; font-size:0.82rem; color:#888; margin-bottom:0.5rem;">Pacer Mode (optional)</summary>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:0.5rem;">
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Pacer Pace (MM:SS per km)</label>
+          <input type="text" name="pacer_pace" value="{{ form.pacer_pace or '' }}"
+                 placeholder="5:00"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Drop Pacer at km</label>
+          <input type="number" name="drop_at_km" value="{{ form.drop_at_km or '' }}"
+                 placeholder="{{ (course.total_distance_km * 0.7) | round(0) | int }}"
+                 min="1" step="1"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+      </div>
+    </details>
+
+    <details {% if form.race_date or form.temp %}open{% endif %} style="margin-bottom:1.25rem;">
+      <summary style="cursor:pointer; font-size:0.82rem; color:#888; margin-bottom:0.5rem;">Weather (optional)</summary>
+      <p style="font-size:0.78rem; color:#666; margin:0.4rem 0 0.75rem;">Enter a race date to auto-fetch forecast (up to 16 days) or historical conditions. Manual fields below override auto-fetch.</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:0.75rem;">
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Race Date</label>
+          <input type="date" name="race_date" value="{{ form.race_date or '' }}"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Start Hour (local)</label>
+          <input type="number" name="race_hour" value="{{ form.race_hour or '9' }}" min="0" max="23" step="1" placeholder="9"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:1rem; margin-top:0.5rem;">
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Temperature (°C) — override</label>
+          <input type="number" name="temp" value="{{ form.temp or '' }}" step="0.5" placeholder="auto"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Humidity (%) — override</label>
+          <input type="number" name="humidity" value="{{ form.humidity or '' }}" min="0" max="100" step="1" placeholder="auto"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Wind Speed (m/s)</label>
+          <input type="number" name="wind" value="{{ form.wind or '' }}" min="0" step="0.5" placeholder="0"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Wind Direction (°)</label>
+          <input type="number" name="wind_dir" value="{{ form.wind_dir or '' }}" min="0" max="360" step="1" placeholder="0"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+      </div>
+    </details>
+
+    <button type="submit" class="btn" style="min-width:120px;">Run Simulation</button>
+    <a href="/race/{{ course.id }}" class="btn" style="margin-left:0.5rem;">Back to Profile</a>
+  </form>
+</div>
+
+{% if splits %}
+
+{% if weather_info %}
+<div class="panel" style="margin-bottom:1rem;">
+  <div class="panel-header">
+    <span class="panel-title">Weather Used</span>
+    <span class="panel-meta">
+      {% if weather_info.source == 'forecast' %}🌤 Open-Meteo forecast
+      {% elif weather_info.source == 'archive' %}📜 Open-Meteo historical
+      {% elif weather_info.source == 'manual' %}✏️ Manual override
+      {% else %}⚪ Neutral defaults
+      {% endif %}
+    </span>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem; padding:0.75rem 1.25rem;">
+    <div><span style="font-size:0.75rem; color:#888;">Temp</span><br><strong>{{ "%.1f"|format(weather_info.temperature_c) }}°C</strong></div>
+    <div><span style="font-size:0.75rem; color:#888;">Humidity</span><br><strong>{{ weather_info.humidity_pct | int }}%</strong></div>
+    <div><span style="font-size:0.75rem; color:#888;">Wind</span><br><strong>{{ weather_info.wind_speed_kmh }} km/h</strong></div>
+    <div><span style="font-size:0.75rem; color:#888;">Wind Dir</span><br><strong>{{ weather_info.wind_direction_deg | int }}°</strong></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Results Summary -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ "%.2f"|format(course.total_distance_km) }}</div>
+    <div class="stat-label">Distance (km)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ splits[-1].cumulative_time_fmt }}</div>
+    <div class="stat-label">Target Finish</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ form.strategy | capitalize }}</div>
+    <div class="stat-label">Strategy</div>
+  </div>
+  {% if pacer_data %}
+  <div class="stat-card">
+    <div class="stat-value">{{ pacer_data.sit_phase.pacer_pace_fmt }}/km</div>
+    <div class="stat-label">Pacer Pace</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Two-column charts: Elevation + Wind -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+  <div class="panel" style="margin-bottom:0;">
+    <div class="panel-header">
+      <span class="panel-title">Elevation Profile</span>
+      <span class="panel-meta">{{ "%.0f"|format(course.total_elevation_gain_m) }} m gain</span>
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    </div>
+    <div class="chart-wrap" style="height:200px;">
+      <canvas id="elevationChart"></canvas>
+    </div>
+  </div>
+  <div class="panel" style="margin-bottom:0;">
+    <div class="panel-header">
+      <span class="panel-title">Wind Profile</span>
+      {% if weather_info %}
+      <span class="panel-meta">{{ weather_info.wind_speed_kmh }} km/h at {{ weather_info.wind_direction_deg | int }}°</span>
+      {% endif %}
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    </div>
+    <div class="chart-wrap" style="height:200px;">
+      <canvas id="windChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Pace Bar Chart -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Per-km Target Pace</span>
+    <span class="panel-meta">lower = faster &middot; avg {{ avg_pace_fmt }}/km</span>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <div class="chart-wrap" style="height:260px;">
+    <canvas id="paceChart"></canvas>
+  </div>
+</div>
+
+<!-- Split Table -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Split Detail</span>
+    <span class="panel-meta">{{ splits|length }} km segments</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>km</th>
+          <th>Elev (m)</th>
+          <th>Grade</th>
+          <th>Wind</th>
+          <th>Effects</th>
+          <th style="text-align:right;">Target Pace</th>
+          <th style="text-align:right;">Elapsed</th>
+          {% if pacer_data %}<th>Phase</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for sp in splits %}
+        {% if pacer_data and sp.phase == 'push' and loop.previtem and loop.previtem.phase == 'sit' %}
+        <tr style="background:rgba(239,68,68,0.08);">
+          <td colspan="{{ 8 if pacer_data else 7 }}" style="text-align:center; font-size:0.78rem; color:#f59e0b; font-weight:600; padding:0.3rem;">
+            — BREAK FROM PACER at km {{ pacer_data.push_phase.from_km }} &nbsp;·&nbsp; push pace needed: {{ pacer_data.push_phase.required_avg_pace_fmt }}/km —
+          </td>
+        </tr>
+        {% endif %}
+        <tr {% if pacer_data and sp.phase == 'sit' %}style="color:#94a3b8;"{% endif %}>
+          <td class="text-muted">{{ sp.km }}</td>
+          <td style="font-size:0.82rem;">
+            {%- set eg = sp.elevation_gain_m if sp.elevation_gain_m is defined else 0 -%}
+            {%- if eg > 0.5 %}<span style="color:#f87171;">+{{ "%.0f"|format(eg) }}</span>
+            {%- elif eg < -0.5 %}<span style="color:#4ade80;">{{ "%.0f"|format(eg) }}</span>
+            {%- else %}<span style="color:#666;">0</span>
+            {%- endif %}
+          </td>
+          <td style="font-size:0.82rem; color:#888;">
+            {%- if sp.grade_pct is defined -%}{{ "%.1f"|format(sp.grade_pct) }}%{%- else %}—{%- endif %}
+          </td>
+          <td style="font-size:0.82rem;">
+            {%- if sp.wind is defined and sp.wind -%}
+              <span class="wind-badge wind-badge--{{ sp.wind.css_class }}">{{ sp.wind.label }}</span>
+            {%- else %}—{%- endif %}
+          </td>
+          <td style="font-size:0.78rem; white-space:nowrap;">
+            {%- set gap_pct = ((sp.gap_factor - 1) * 100) if sp.gap_factor is defined else 0 -%}
+            {%- set wap = ((sp.wap_factor - 1) * 100) if sp.wap_factor is defined else 0 -%}
+            {%- if gap_pct > 0.5 %}<span style="color:#f87171;" title="Grade penalty">hill +{{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
+            {%- if gap_pct < -0.5 %}<span style="color:#4ade80;" title="Grade bonus">hill {{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
+            {%- if wap > 0.5 %}<span style="color:#f87171; margin-left:4px;" title="Wind penalty">wind +{{ "%.1f"|format(wap) }}%</span>{%- endif -%}
+            {%- if wap < -0.5 %}<span style="color:#4ade80; margin-left:4px;" title="Wind bonus">wind {{ "%.1f"|format(wap) }}%</span>{%- endif -%}
+            {%- if gap_pct|abs <= 0.5 and wap|abs <= 0.5 %}<span style="color:#555;">—</span>{%- endif -%}
+          </td>
+          <td style="text-align:right;"><strong style="font-size:1rem; letter-spacing:0.01em;">{{ sp.target_pace_fmt }}</strong><span style="color:#555; font-size:0.75rem;">/km</span></td>
+          <td style="text-align:right; color:#888; font-size:0.88rem;">{{ sp.cumulative_time_fmt }}</td>
+          {% if pacer_data %}<td style="font-size:0.72rem; color:#888;">{{ sp.phase | upper }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if splits %}
+<script>
+(function() {
+  const labels = {{ chart_labels_json | safe }};
+  const paces = {{ chart_paces_json | safe }};
+  const avgPace = {{ avg_pace_s }};
+  {% if pacer_pace_s %}
+  const pacerPaceS = {{ pacer_pace_s }};
+  const dropAtKm = {{ drop_at_km }};
+  {% else %}
+  const pacerPaceS = null;
+  const dropAtKm = null;
+  {% endif %}
+
+  // ── Elevation profile ──────────────────────────────────────
+  const elevData = {{ elevation_profile_json | safe }};
+  const elevLabels = elevData.map(d => d.km);
+  const elevValues = elevData.map(d => d.elevation_m);
+  new Chart(document.getElementById('elevationChart'), {
+    type: 'line',
+    data: {
+      labels: elevLabels,
+      datasets: [{
+        label: 'Elevation (m)',
+        data: elevValues,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.15)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'km' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { title: { display: true, text: 'm' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // ── Wind profile ───────────────────────────────────────────
+  const windValues = {{ wind_profile_json | safe }};
+  const windColors = windValues.map(v =>
+    v > 5.4  ? '#ef4444' :
+    v > 1.8  ? '#fb923c' :
+    v > -1.8 ? '#facc15' :
+    v > -5.4 ? '#4ade80' :
+               '#22c55e'
+  );
+  new Chart(document.getElementById('windChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Headwind (km/h)',
+        data: windValues,
+        backgroundColor: windColors,
+        borderWidth: 0,
+        borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'km' }, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: {
+          title: { display: true, text: '← tailwind  |  headwind →' },
+          ticks: { color: '#888', callback: v => (v > 0 ? '+' : '') + v.toFixed(1) + ' km/h' },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              const dir = v > 1.8 ? 'Headwind' : v < -1.8 ? 'Tailwind' : 'Crosswind';
+              return `${dir}: ${Math.abs(v).toFixed(1)} km/h`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  function fmtPace(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.round(s % 60);
+    return `${m}:${sec.toString().padStart(2,'0')}/km`;
+  }
+
+  const _paceMin = Math.min(...paces);
+  const _paceMax = Math.max(...paces);
+  const _buf = Math.max((_paceMax - _paceMin) * 0.15, 12);
+  const yMin = Math.floor(_paceMin - _buf);
+  const yMax = Math.ceil(_paceMax + _buf);
+
+  const colors = paces.map(s =>
+    s < avgPace * 0.95 ? '#22c55e' :
+    s > avgPace * 1.05 ? '#ef4444' :
+    '#f59e0b'
+  );
+
+  const cumPaces = {{ cum_pace_profile_json | safe }};
+
+  const datasets = [
+    {
+      label: 'Target Pace',
+      data: paces,
+      backgroundColor: colors,
+      borderWidth: 0,
+      borderRadius: 2,
+      order: 3,
+    },
+    {
+      label: 'Average Pace',
+      data: labels.map(() => avgPace),
+      type: 'line',
+      borderColor: 'rgba(248,250,252,0.55)',
+      borderWidth: 1.5,
+      borderDash: [8, 4],
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      order: 1,
+    },
+    {
+      label: 'Cumulative Avg',
+      data: cumPaces,
+      type: 'line',
+      borderColor: 'rgba(148,163,184,0.8)',
+      borderWidth: 1.5,
+      borderDash: [4, 3],
+      pointRadius: 0,
+      fill: false,
+      tension: 0.4,
+      order: 2,
+    },
+  ];
+
+  if (pacerPaceS !== null) {
+    datasets.push({
+      label: 'Pacer Pace',
+      data: labels.map(km => km <= dropAtKm ? pacerPaceS : null),
+      type: 'line',
+      borderColor: '#a855f7',
+      borderWidth: 2,
+      borderDash: [6, 3],
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      order: 0,
+    });
+  }
+
+  const barLabels = labels.map(km => km - 1);
+
+  new Chart(document.getElementById('paceChart'), {
+    type: 'bar',
+    data: { labels: barLabels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Kilometre' },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#888' },
+          barPercentage: 1.0,
+          categoryPercentage: 0.92,
+        },
+        y: {
+          min: yMin,
+          max: yMax,
+          title: { display: true, text: 'Pace' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          ticks: { color: '#888', callback: val => fmtPace(val) },
+        }
+      },
+      plugins: {
+        legend: { display: true, labels: { color: '#888', boxWidth: 16, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            title: ctx => `km ${parseInt(ctx[0].label) + 1}`,
+            label: ctx => ctx.raw === null ? null : `${ctx.dataset.label}: ${fmtPace(ctx.raw)}`,
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

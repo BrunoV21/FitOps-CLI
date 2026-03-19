@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Workouts — FitOps{% endblock %}
+{% block page_name %}Workouts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Workouts</p>
+    <p class="page-subtitle">Linked workout definitions and compliance scores</p>
+  </div>
+  <a href="/workouts/simulate" class="btn">Simulate on Route</a>
+</div>
+
+{% if workouts %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Workout</th>
+        <th>Sport</th>
+        <th>Linked</th>
+        <th>Status</th>
+        <th class="r">Compliance</th>
+        <th class="r">Segments</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in workouts %}
+      <tr style="cursor:pointer;" onclick="toggleSegments({{ loop.index }})">
+        <td class="w" style="font-weight:600;">
+          <a href="/workouts/{{ w.id }}" class="panel-link" style="color:var(--text-primary);" onclick="event.stopPropagation();">{{ w.name }}</a>
+        </td>
+        <td>
+          <span style="display:flex;align-items:center;gap:6px;opacity:0.8;">
+            {{ sport_icon(w.sport_type) }} {{ w.sport_type }}
+          </span>
+        </td>
+        <td>{{ w.linked_at }}</td>
+        <td>
+          <span class="badge
+            {% if w.status == 'completed' %}badge-green
+            {% elif w.status == 'planned' %}badge-dim
+            {% else %}badge-blue{% endif %}">
+            {{ w.status | capitalize }}
+          </span>
+        </td>
+        <td class="r">
+          {% if w.compliance_pct is not none %}
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+            <div class="compliance-bar-track">
+              <div class="compliance-bar-fill"
+                   style="width:{{ w.compliance_pct }}%;background:{% if w.compliance_pct >= 80 %}var(--accent-primary){% elif w.compliance_pct >= 50 %}var(--accent-amber){% else %}var(--accent-red){% endif %};">
+              </div>
+            </div>
+            <span class="w" style="font-weight:600;min-width:40px;text-align:right;">{{ w.compliance_score }}</span>
+          </div>
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td class="r">{{ w.segment_count }}</td>
+      </tr>
+      {% if w.segments %}
+      <tr id="segments-{{ loop.index }}" class="hidden">
+        <td colspan="6" style="padding:0;">
+          <div style="background:var(--surface);border-top:1px solid var(--border);">
+            <p style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);padding:12px 16px 8px;">
+              Segment Breakdown
+            </p>
+            {% for seg in w.segments %}
+            <div class="segment-row">
+              <div>
+                <span style="font-size:12px;font-weight:600;color:var(--text-primary);">
+                  {{ seg.segment_name or ("Segment " ~ seg.segment_index) }}
+                </span>
+                {% if seg.step_type %}<span style="margin-left:8px;font-size:11px;color:var(--text-dim);">{{ seg.step_type }}</span>{% endif %}
+                {% if seg.target_zone %}<span style="margin-left:8px;" class="zone-badge z{{ seg.target_zone }}">Z{{ seg.target_zone }}</span>{% endif %}
+              </div>
+              <div style="display:flex;align-items:center;gap:16px;font-size:11px;color:var(--text-muted);">
+                {% if seg.actuals.avg_heartrate_bpm %}
+                <span>{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm avg</span>
+                {% endif %}
+                {% if seg.compliance.time_in_target_pct is not none %}
+                <span>{{ "%.0f%%" | format(seg.compliance.time_in_target_pct) }} in zone</span>
+                {% endif %}
+                {% if seg.compliance.compliance_score is not none %}
+                <span style="font-weight:700;color:
+                  {% if seg.compliance.compliance_score >= 0.8 %}var(--accent-primary)
+                  {% elif seg.compliance.compliance_score >= 0.5 %}var(--accent-amber)
+                  {% else %}var(--accent-red){% endif %};">
+                  {{ "%.0f%%" | format(seg.compliance.compliance_score * 100) }}
+                </span>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  No workouts found. Link workouts to activities with <code>fitops workouts link</code>.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSegments(idx) {
+  const row = document.getElementById(`segments-${idx}`);
+  if (row) row.classList.toggle('hidden');
+}
+</script>
+{% endblock %}

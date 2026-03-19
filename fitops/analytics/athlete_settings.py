@@ -57,8 +57,38 @@ class AthleteSettings:
     def threshold_pace_per_km_s(self) -> Optional[float]:
         return self._data.get("threshold_pace_per_km_s")
 
+    @property
+    def lt1_pace_s(self) -> Optional[float]:
+        return self._data.get("lt1_pace_s")
+
+    @property
+    def vo2max_pace_s(self) -> Optional[float]:
+        return self._data.get("vo2max_pace_s")
+
+    @property
+    def lt1_hr(self) -> Optional[int]:
+        return self._data.get("lt1_hr")
+
+    @property
+    def lt2_hr(self) -> Optional[int]:
+        return self._data.get("lt2_hr")
+
+    @property
+    def age(self) -> Optional[int]:
+        return self._data.get("age")
+
+    @property
+    def vo2max_override(self) -> Optional[float]:
+        return self._data.get("vo2max_override")
+
     def set(self, **kwargs) -> None:
         self._data.update({k: v for k, v in kwargs.items() if v is not None})
+        _save(self._data)
+        self.reload()
+
+    def clear(self, *keys: str) -> None:
+        for k in keys:
+            self._data.pop(k, None)
         _save(self._data)
         self.reload()
 

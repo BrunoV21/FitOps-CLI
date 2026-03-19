@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Weather — FitOps{% endblock %}
+{% block page_name %}Weather{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Weather-Adjusted Pace</h1>
+  <p class="page-subtitle">True Pace normalised for temperature, humidity, and wind.</p>
+</div>
+
+<!-- Filters -->
+<form method="get" action="/weather" class="filter-bar">
+  <select name="days" onchange="this.form.submit()">
+    <option value="90"  {% if days == 90  %}selected{% endif %}>90 days</option>
+    <option value="180" {% if days == 180 %}selected{% endif %}>180 days</option>
+    <option value="365" {% if days == 365 %}selected{% endif %}>365 days</option>
+  </select>
+  <select name="sport" onchange="this.form.submit()">
+    <option value="">All sports</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {% if sport == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<!-- Data coverage banner -->
+{% if missing_count > 0 %}
+<div class="alert alert-amber">
+  <strong>{{ missing_count }}</strong> activit{{ 'y' if missing_count == 1 else 'ies' }} missing weather data.
+  Run <code>fitops weather fetch --all</code> to backfill.
+</div>
+{% endif %}
+
+{% if history %}
+
+<!-- True Pace Trend chart -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">True Pace Trend</span>
+    <span class="panel-meta">lower = faster</span>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <div class="chart-wrap" style="height:260px;">
+    <canvas id="wapChart"></canvas>
+  </div>
+</div>
+
+<!-- WAP Breakdown Table -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">WAP Breakdown</span>
+    <span class="panel-meta">{{ history|length }} activit{{ 'y' if history|length == 1 else 'ies' }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Activity</th>
+          <th>Dist</th>
+          <th>Actual</th>
+          <th>°C</th>
+          <th>RH%</th>
+          <th>Wind (km/h)</th>
+          <th>WBGT</th>
+          <th>Factor</th>
+          <th>WAP</th>
+          <th>Condition</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in history %}
+        <tr>
+          <td class="text-muted">{{ row.date }}</td>
+          <td>
+            <a href="/activities/{{ row.strava_id }}" class="activity-link">
+              {{ row.name | truncate(32, True) }}
+            </a>
+          </td>
+          <td class="text-muted">{{ "%.1f"|format(row.distance_km) if row.distance_km else "—" }} km</td>
+          <td class="text-muted">{{ row.actual_pace_fmt }}/km</td>
+          <td>
+            {% if row.temp_c is not none %}
+              <span class="wbgt-{{ row.wbgt_flag }}">{{ "%.0f"|format(row.temp_c) }}°</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-muted">{{ "%.0f"|format(row.humidity_pct) if row.humidity_pct is not none else "—" }}%</td>
+          <td class="text-muted">{{ "%.1f"|format(row.wind_speed_ms * 3.6) if row.wind_speed_ms is not none else "—" }} km/h</td>
+          <td>
+            {% if row.wbgt_c is not none %}
+              <span class="wbgt-{{ row.wbgt_flag }}">{{ "%.1f"|format(row.wbgt_c) }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <span class="{% if row.factor_pct > 3 %}wap-factor-bad{% elif row.factor_pct > 0 %}wap-factor-warm{% else %}wap-factor-good{% endif %}">
+              {% if row.factor_pct > 0 %}+{% endif %}{{ "%.1f"|format(row.factor_pct) }}%
+            </span>
+          </td>
+          <td class="text-primary">{{ row.wap_fmt }}/km</td>
+          <td class="text-muted">{{ row.condition }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+  <p>No activities with weather data in the last {{ days }} days.</p>
+  <p class="text-muted">Run <code>fitops weather fetch --all</code> to start backfilling.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if history %}
+<script>
+(function () {
+  const raw = {{ history | tojson }};
+
+  // Sort ascending by date for chart
+  const sorted = [...raw].sort((a, b) => a.date.localeCompare(b.date));
+
+  const labels      = sorted.map(r => r.date);
+  const actualPaces = sorted.map(r => r.actual_pace_s ? parseFloat((r.actual_pace_s / 60).toFixed(3)) : null);
+  const wapPaces    = sorted.map(r => r.wap_s        ? parseFloat((r.wap_s        / 60).toFixed(3)) : null);
+
+  const ctx = document.getElementById('wapChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Actual Pace',
+          data: actualPaces,
+          borderColor: 'rgba(255,255,255,0.20)',
+          backgroundColor: 'transparent',
+          pointRadius: 2,
+          borderWidth: 1,
+          tension: 0.3,
+          spanGaps: true,
+        },
+        {
+          label: 'WAP (weather adjusted)',
+          data: wapPaces,
+          borderColor: '#00aaff',
+          backgroundColor: 'rgba(0,170,255,0.08)',
+          pointRadius: 3,
+          borderWidth: 1.5,
+          tension: 0.3,
+          spanGaps: true,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          ticks: { color: '#888', font: { family: 'monospace', size: 11 }, maxTicksLimit: 10 },
+          grid: { color: '#1a1a1a' },
+        },
+        y: {
+          reverse: true,
+          title: { display: true, text: 'min/km', color: '#555', font: { size: 11 } },
+          ticks: {
+            color: '#888',
+            font: { family: 'monospace', size: 11 },
+            callback: v => {
+              const m = Math.floor(v);
+              const s = Math.round((v - m) * 60);
+              return `${m}:${String(s).padStart(2,'0')}`;
+            },
+          },
+          grid: { color: '#1a1a1a' },
+        },
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#888', font: { family: 'monospace', size: 11 }, boxWidth: 12 },
+        },
+        tooltip: {
+          backgroundColor: '#111',
+          borderColor: '#2e2e2e',
+          borderWidth: 1,
+          titleColor: '#fff',
+          bodyColor: '#888',
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v == null) return '';
+              const m = Math.floor(v);
+              const s = Math.round((v - m) * 60);
+              return `${ctx.dataset.label}: ${m}:${String(s).padStart(2,'0')}/km`;
+            },
+          },
+        },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
