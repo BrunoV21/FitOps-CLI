@@ -53,11 +53,14 @@ def detect_source(arg: str) -> tuple[str, str]:
     """
     Classify *arg* and return (source_type, value).
 
+    - Strava URL    → ("strava_url", url)
     - MapMyRun URL  → ("mapmyrun", url)
     - .gpx file     → ("gpx", path)
     - .tcx file     → ("tcx", path)
-    - numeric ID    → ("strava", id_str)
+    - numeric ID    → ("strava", id_str)   # legacy: fetch from local DB streams
     """
+    if "strava.com/activities/" in arg:
+        return ("strava_url", arg)
     if arg.startswith("https://www.mapmyrun.com"):
         return ("mapmyrun", arg)
     if os.path.isfile(arg):
@@ -71,7 +74,7 @@ def detect_source(arg: str) -> tuple[str, str]:
         return ("strava", arg)
     raise ValueError(
         f"Cannot determine source for {arg!r}. "
-        "Provide a MapMyRun URL, a .gpx/.tcx file path, or a numeric Strava activity ID."
+        "Provide a Strava URL, MapMyRun URL, .gpx/.tcx file path, or numeric Strava activity ID."
     )
 
 
@@ -241,6 +244,105 @@ async def parse_mapmyrun_url(url: str) -> list[CoursePoint]:
         raise ValueError("Route requires login — redirected to auth page")
 
     return parse_mapmyrun_html(resp.text)
+
+
+# ---------------------------------------------------------------------------
+# Strava URL importer (async) — for dashboard use
+# ---------------------------------------------------------------------------
+
+_STRAVA_ACTIVITY_RE = re.compile(r"strava\.com/activities/(\d+)")
+
+
+async def parse_strava_url(url: str) -> list[CoursePoint]:
+    """
+    Import a course from a Strava activity URL.
+
+    Strategy:
+      1. Extract activity ID from URL.
+      2. Try downloading GPX via /export_gpx with the stored Bearer token.
+      3. On failure, fall back to Strava API streams (latlng + altitude + distance).
+
+    Raises ValueError if authentication is missing or data cannot be retrieved.
+    """
+    m = _STRAVA_ACTIVITY_RE.search(url)
+    if not m:
+        raise ValueError(f"Cannot extract a Strava activity ID from URL: {url!r}")
+    activity_id = int(m.group(1))
+
+    # Get access token from stored settings
+    from fitops.strava.oauth import StravaOAuth
+    from fitops.config.settings import get_settings
+    settings = get_settings()
+    if not settings.access_token:
+        raise ValueError("No Strava access token found. Run `fitops auth login` first.")
+    oauth = StravaOAuth(settings)
+    token = await oauth.ensure_valid_token()
+
+    # 1. Try GPX export
+    try:
+        gpx_url = f"https://www.strava.com/activities/{activity_id}/export_gpx"
+        async with httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {token}"},
+            follow_redirects=False,
+            timeout=30.0,
+        ) as client:
+            resp = await client.get(gpx_url)
+
+        if resp.status_code == 200 and resp.content:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
+                tmp.write(resp.content)
+                tmp_path = tmp.name
+            try:
+                points = parse_gpx(tmp_path)
+            finally:
+                os.unlink(tmp_path)
+            if points:
+                return points
+    except Exception:
+        pass  # fall through to API streams
+
+    # 2. Fall back to Strava API streams
+    api_url = f"https://www.strava.com/api/v3/activities/{activity_id}/streams"
+    async with httpx.AsyncClient(
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30.0,
+    ) as client:
+        resp = await client.get(api_url, params={
+            "keys": "latlng,altitude,distance",
+            "key_by_type": "true",
+        })
+
+    if resp.status_code == 401:
+        raise ValueError("Strava token expired — run `fitops auth refresh`.")
+    if resp.status_code == 403:
+        raise ValueError(
+            f"Activity {activity_id} is private or you don't have access to it."
+        )
+    if resp.status_code == 404:
+        raise ValueError(f"Activity {activity_id} not found on Strava.")
+    if resp.status_code >= 400:
+        raise ValueError(f"Strava API error {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    latlng    = data.get("latlng",    {}).get("data", [])
+    altitudes = data.get("altitude",  {}).get("data", [])
+    distances = data.get("distance",  {}).get("data", [])
+
+    if not latlng:
+        raise ValueError(
+            f"Activity {activity_id} has no GPS data (latlng stream empty)."
+        )
+
+    points: list[CoursePoint] = []
+    for i, (lat, lon) in enumerate(latlng):
+        points.append({
+            "lat": float(lat),
+            "lon": float(lon),
+            "elevation_m": float(altitudes[i]) if i < len(altitudes) else 0.0,
+            "distance_from_start_m": float(distances[i]) if i < len(distances) else 0.0,
+        })
+    return points
 
 
 # ---------------------------------------------------------------------------

@@ -65,6 +65,9 @@ def import_course(
         points = parse_tcx(source_value)
     elif source_type == "mapmyrun":
         points = asyncio.run(parse_mapmyrun_url(source_value))
+    elif source_type == "strava_url":
+        from fitops.race.course_parser import parse_strava_url
+        points = asyncio.run(parse_strava_url(source_value))
     elif source_type == "strava":
         async def _from_strava() -> list[dict]:
             async with get_async_session() as session:
@@ -82,7 +85,7 @@ def import_course(
     total_dist = points[-1]["distance_from_start_m"]
     elev_gain = compute_total_elevation_gain(points)
     file_format = source_type if source_type in ("gpx", "tcx") else None
-    source_ref = source_value if source_type in ("mapmyrun", "strava") else None
+    source_ref = source_value if source_type in ("mapmyrun", "strava", "strava_url") else None
 
     result = asyncio.run(save_course(
         name=name,
@@ -206,9 +209,9 @@ def simulate(
 
         if parsed_date > today:
             # Future: use forecast API
-            fetched = fetch_forecast_weather(
+            fetched = asyncio.run(fetch_forecast_weather(
                 course.start_lat, course.start_lon, race_date, race_hour
-            )
+            ))
             if fetched is None:
                 typer.echo(
                     json.dumps({"warning": "Forecast unavailable (beyond 16-day window). Using neutral conditions."}, indent=2),
