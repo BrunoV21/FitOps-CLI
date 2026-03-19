@@ -53,5 +53,5 @@ Plans:
 - [x] 08-02-PLAN.md — RaceCourse DB model and migration
 - [x] 08-03-PLAN.md — Course parser module (GPX, TCX, MapMyRun, Strava streams)
 - [x] 08-04-PLAN.md — Simulation engine (GAP factor, even/negative/pacer strategies)
-- [ ] 08-05-PLAN.md — CLI race commands and DB query layer
+- [x] 08-05-PLAN.md — CLI race commands and DB query layer
 - [ ] 08-06-PLAN.md — Dashboard routes and Chart.js templates
