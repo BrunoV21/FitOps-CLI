@@ -462,37 +462,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
             for sp in splits:
                 sp["wind"] = _wind_label(sp.get("bearing_deg", 0.0), wind_speed, wind_dir)
 
-        # Compute avg pace for color coding
+        # Compute avg pace for subtitle
+        avg_pace_fmt = "—"
         if splits:
             total_time = sum(s["segment_time_s"] for s in splits)
             total_dist_km = sum(s["distance_m"] for s in splits) / 1000.0
-            avg_pace_s = total_time / total_dist_km if total_dist_km > 0 else 0
-        else:
-            avg_pace_s = 0
-
-        chart_labels = [s["km"] for s in splits] if splits else []
-        chart_paces = [s["target_pace_s"] for s in splits] if splits else []
-
-        # Cumulative average pace at each km (for dashed overlay line)
-        cum_pace_profile: list[float] = []
-        if splits:
-            cum_time = 0.0
-            cum_dist_m = 0.0
-            for sp in splits:
-                cum_time += sp["segment_time_s"]
-                cum_dist_m += sp["distance_m"]
-                cum_pace_profile.append(round(cum_time / (cum_dist_m / 1000.0), 1))
-
-        # Elevation profile (same as course detail page)
-        elevation_profile = _build_elevation_profile(course)
-
-        # Per-km headwind component for wind profile chart (km/h)
-        # positive = headwind (penalty), negative = tailwind (bonus)
-        wind_profile = []
-        if splits:
-            for sp in splits:
-                hw = headwind_ms(wind_speed, wind_dir, sp.get("bearing_deg", 0.0))
-                wind_profile.append(round(hw * 3.6, 1))
+            if total_dist_km > 0:
+                from fitops.race.course_parser import _fmt_duration
+                avg_s = total_time / total_dist_km
+                avg_pace_fmt = _fmt_duration(avg_s)
 
         return templates.TemplateResponse(
             "race/simulate.html",
@@ -503,15 +481,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "pacer_data": pacer_data,
                 "error": None,
                 "form": form_vals,
-                "avg_pace_s": round(avg_pace_s, 1),
-                "chart_labels_json": json.dumps(chart_labels),
-                "chart_paces_json": json.dumps(chart_paces),
-                "cum_pace_profile_json": json.dumps(cum_pace_profile),
-                "pacer_pace_s": pacer_pace_s_for_chart,
-                "drop_at_km": drop_km_for_chart,
-                "elevation_profile_json": json.dumps(elevation_profile),
-                "wind_profile_json": json.dumps(wind_profile),
-                "wind_speed_kmh": round(wind_speed * 3.6, 1),
+                "avg_pace_fmt": avg_pace_fmt,
                 "weather_info": {
                     "source": weather_source,
                     "temperature_c": weather["temperature_c"],
