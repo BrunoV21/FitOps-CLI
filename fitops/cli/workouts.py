@@ -740,6 +740,215 @@ def create_workout(
     )
 
 
+@app.command("simulate")
+def simulate_workout(
+    name: str = typer.Argument(..., help="Workout name or filename (e.g. threshold-tuesday)."),
+    course_id: Optional[int] = typer.Option(None, "--course", help="RaceCourse ID (from `fitops race courses`)."),
+    activity_id: Optional[int] = typer.Option(None, "--activity", help="Strava activity ID — build course on the fly from cached streams."),
+    base_pace: Optional[str] = typer.Option(None, "--base-pace", help="Base pace MM:SS/km for HR-zone segments with no pace target."),
+    temp: Optional[float] = typer.Option(None, "--temp", help="Temperature °C (manual override)."),
+    humidity: Optional[float] = typer.Option(None, "--humidity", help="Relative humidity % (manual override)."),
+    wind: Optional[float] = typer.Option(None, "--wind", help="Wind speed m/s."),
+    wind_dir: Optional[float] = typer.Option(None, "--wind-dir", help="Wind direction degrees (0=N)."),
+    sim_date: Optional[str] = typer.Option(None, "--date", help="Date YYYY-MM-DD for weather fetch."),
+    sim_hour: int = typer.Option(9, "--hour", help="Start hour local time (0-23) for weather fetch."),
+) -> None:
+    """Simulate a workout on a course: per-segment terrain + weather adjusted paces."""
+    import datetime as _dt
+
+    from fitops.race.course_parser import (
+        _parse_time as _parse_pace_time,
+        build_km_segments,
+        compute_total_elevation_gain,
+        parse_strava_activity,
+    )
+    from fitops.workouts.json_parser import parse_segments_from_json
+    from fitops.workouts.simulate import (
+        result_to_dict,
+        simulate_workout_on_course,
+        validate_distance_mismatch,
+    )
+    from fitops.dashboard.queries.race import get_course
+
+    init_db()
+
+    # --- validate options ---
+    if course_id is None and activity_id is None:
+        typer.echo(json.dumps({"error": "Provide --course <id> or --activity <strava_id>."}, indent=2))
+        raise typer.Exit(1)
+    if course_id is not None and activity_id is not None:
+        typer.echo(json.dumps({"error": "Provide only one of --course or --activity, not both."}, indent=2))
+        raise typer.Exit(1)
+    if (temp is None) != (humidity is None):
+        typer.echo(json.dumps({"error": "--temp and --humidity must be used together."}, indent=2))
+        raise typer.Exit(1)
+
+    # --- load workout ---
+    wf = get_workout_file(name)
+    if wf is None:
+        typer.echo(json.dumps({"error": f"Workout {name!r} not found in ~/.fitops/workouts/."}, indent=2))
+        raise typer.Exit(1)
+
+    if wf.meta.get("training"):
+        segments = parse_segments_from_json(wf.meta)
+    else:
+        segments = parse_segments_from_body(wf.body)
+
+    if not segments:
+        typer.echo(json.dumps({"error": f"No segments found in workout {name!r}."}, indent=2))
+        raise typer.Exit(1)
+
+    # --- base pace ---
+    base_pace_s: Optional[float] = None
+    if base_pace is not None:
+        try:
+            base_pace_s = _parse_pace_time(base_pace)
+        except (ValueError, IndexError):
+            typer.echo(json.dumps({"error": f"Invalid --base-pace format: {base_pace!r}. Use MM:SS."}, indent=2))
+            raise typer.Exit(1)
+
+    # --- load / build course km-segments ---
+    course_summary: dict = {}
+    km_segs: list[dict] = []
+    course_start_lat: Optional[float] = None
+    course_start_lon: Optional[float] = None
+
+    if course_id is not None:
+        course = asyncio.run(get_course(course_id))
+        if course is None:
+            typer.echo(json.dumps({"error": f"Course {course_id} not found."}, indent=2))
+            raise typer.Exit(1)
+        km_segs = course.get_km_segments()
+        if not km_segs:
+            typer.echo(json.dumps({"error": "Course has no segments. Re-import the course."}, indent=2))
+            raise typer.Exit(1)
+        course_start_lat = course.start_lat
+        course_start_lon = course.start_lon
+        course_summary = course.to_summary_dict()
+
+    else:
+        # Build course on the fly from Strava activity streams
+        async def _build_from_activity() -> tuple[list[dict], Optional[float], Optional[float]]:
+            async with get_async_session() as session:
+                try:
+                    points = await parse_strava_activity(activity_id, session)  # type: ignore[arg-type]
+                except ValueError as exc:
+                    raise exc
+                segs = build_km_segments(points)
+                lat = points[0]["lat"] if points else None
+                lon = points[0]["lon"] if points else None
+                total_m = points[-1]["distance_from_start_m"] if points else 0.0
+                elev_gain = compute_total_elevation_gain(points)
+                return segs, lat, lon, total_m, elev_gain
+
+        try:
+            km_segs, course_start_lat, course_start_lon, _total_m, _elev_gain = asyncio.run(_build_from_activity())
+        except ValueError as exc:
+            typer.echo(json.dumps({"error": str(exc)}, indent=2))
+            raise typer.Exit(1)
+
+        if not km_segs:
+            typer.echo(json.dumps({"error": f"No course points found for activity {activity_id}."}, indent=2))
+            raise typer.Exit(1)
+
+        course_summary = {
+            "activity_strava_id": activity_id,
+            "source": "activity_streams",
+            "total_distance_km": round(_total_m / 1000, 2),
+            "total_elevation_gain_m": round(_elev_gain, 1),
+        }
+
+    # --- resolve weather (same pattern as race.py simulate) ---
+    _NEUTRAL_WEATHER = {
+        "temperature_c": 15.0,
+        "humidity_pct": 40.0,
+        "wind_speed_ms": 0.0,
+        "wind_direction_deg": 0.0,
+    }
+
+    weather_source = "neutral"
+    weather = dict(_NEUTRAL_WEATHER)
+
+    if temp is not None and humidity is not None:
+        weather = {
+            "temperature_c": temp,
+            "humidity_pct": humidity,
+            "wind_speed_ms": wind if wind is not None else 0.0,
+            "wind_direction_deg": wind_dir if wind_dir is not None else 0.0,
+        }
+        weather_source = "manual"
+
+    elif sim_date is not None and course_start_lat is not None and course_start_lon is not None:
+        from fitops.weather.client import fetch_forecast_weather, fetch_activity_weather
+
+        try:
+            parsed_date = _dt.date.fromisoformat(sim_date)
+        except ValueError:
+            typer.echo(json.dumps({"error": f"Invalid date format: {sim_date!r}. Use YYYY-MM-DD."}, indent=2))
+            raise typer.Exit(1)
+
+        today = _dt.date.today()
+
+        if parsed_date > today:
+            fetched = asyncio.run(fetch_forecast_weather(
+                course_start_lat, course_start_lon, sim_date, sim_hour
+            ))
+            if fetched is None:
+                typer.echo(
+                    json.dumps({"warning": "Forecast unavailable (beyond 16-day window). Using neutral conditions."}, indent=2),
+                    err=True,
+                )
+            else:
+                weather = {
+                    "temperature_c": fetched.get("temperature_c", 15.0),
+                    "humidity_pct": fetched.get("humidity_pct", 40.0),
+                    "wind_speed_ms": fetched.get("wind_speed_ms", 0.0),
+                    "wind_direction_deg": fetched.get("wind_direction_deg", 0.0),
+                }
+                weather_source = "forecast"
+        else:
+            sim_datetime = _dt.datetime(
+                parsed_date.year, parsed_date.month, parsed_date.day,
+                sim_hour, 0, 0, tzinfo=_dt.timezone.utc
+            )
+            fetched = asyncio.run(fetch_activity_weather(course_start_lat, course_start_lon, sim_datetime))
+            if fetched is None:
+                typer.echo(
+                    json.dumps({"warning": "Historical weather unavailable, using neutral conditions."}, indent=2),
+                    err=True,
+                )
+            else:
+                weather = {
+                    "temperature_c": fetched.get("temperature_c", 15.0),
+                    "humidity_pct": fetched.get("humidity_pct", 40.0),
+                    "wind_speed_ms": fetched.get("wind_speed_ms", 0.0),
+                    "wind_direction_deg": fetched.get("wind_direction_deg", 0.0),
+                }
+                weather_source = "archive"
+
+    # --- simulate ---
+    results = simulate_workout_on_course(segments, km_segs, weather, base_pace_s)
+
+    course_total_m = sum(s["distance_m"] for s in km_segs)
+    mismatch_warning = validate_distance_mismatch(results, course_total_m)
+
+    total_est_km = round(sum(r.est_distance_m for r in results) / 1000, 2)
+    total_est_s = sum(r.est_segment_time_s for r in results)
+
+    from fitops.race.course_parser import _fmt_duration
+    typer.echo(json.dumps({
+        "_meta": make_meta(),
+        "workout_name": wf.name,
+        "course": course_summary,
+        "weather": weather,
+        "weather_source": weather_source,
+        "total_est_workout_distance_km": total_est_km,
+        "total_est_workout_time_fmt": _fmt_duration(total_est_s),
+        "distance_mismatch_warning": mismatch_warning,
+        "segments": [result_to_dict(r) for r in results],
+    }, indent=2, default=str))
+
+
 @app.command("unlink")
 def unlink_workout(
     activity_id: int = typer.Argument(..., help="Strava activity ID to unlink from."),
