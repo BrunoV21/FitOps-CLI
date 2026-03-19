@@ -117,12 +117,18 @@
 
 <!-- Training Load Chart -->
 <div class="panel" style="margin-top:1px;--delay:160ms">
+  <div class="panel-header" style="justify-content:flex-end;padding-bottom:4px;">
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
   <canvas id="trainingLoadChart" height="80"></canvas>
 </div>
 
 <!-- Weekly Volume Chart -->
 <div class="panel" style="margin-top:1px;--delay:200ms">
-  <p class="panel-label">Weekly Volume (km)</p>
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">Weekly Volume (km)</p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
   <canvas id="weeklyVolumeChart" height="60"></canvas>
 </div>
 
