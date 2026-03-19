@@ -351,16 +351,47 @@ async def parse_strava_url(url: str) -> list[CoursePoint]:
 
 async def parse_strava_activity(activity_strava_id: int, session) -> list[CoursePoint]:
     """
-    Build CoursePoints from cached Strava activity streams.
+    Build CoursePoints from Strava activity streams.
 
-    Requires latlng, altitude, and distance streams to have been synced via
-    ``fitops activities streams <activity_id>``.
+    Looks up the activity in the local DB by Strava ID, then queries its
+    cached streams.  If streams have not been fetched yet, they are
+    downloaded from the Strava API automatically.
     """
+    from fitops.db.models.activity import Activity
     from fitops.db.models.activity_stream import ActivityStream  # local import to avoid circular
     from sqlalchemy import select
 
+    # Resolve the DB primary key (activity_streams.activity_id is the PK, not the Strava ID)
+    activity_result = await session.execute(
+        select(Activity).where(Activity.strava_id == activity_strava_id)
+    )
+    activity = activity_result.scalar_one_or_none()
+    if activity is None:
+        raise ValueError(
+            f"Activity {activity_strava_id} not found locally. "
+            f"Run: fitops sync run"
+        )
+
+    # Auto-fetch streams if not yet cached
+    if not activity.streams_fetched:
+        from fitops.strava.client import StravaClient
+        client = StravaClient()
+        stream_data = await client.get_activity_streams(activity_strava_id)
+        for stream_type, stream_obj in stream_data.items():
+            data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+            existing = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == activity.id,
+                    ActivityStream.stream_type == stream_type,
+                )
+            )
+            if existing.scalar_one_or_none() is None:
+                session.add(ActivityStream.from_strava_stream(activity.id, stream_type, data_list))
+        activity.streams_fetched = True
+        await session.commit()
+
     stmt = select(ActivityStream).where(
-        ActivityStream.activity_id == activity_strava_id,
+        ActivityStream.activity_id == activity.id,
         ActivityStream.stream_type.in_(("latlng", "altitude", "distance")),
     )
     rows = (await session.execute(stmt)).scalars().all()
@@ -372,8 +403,8 @@ async def parse_strava_activity(activity_strava_id: int, session) -> list[Course
     latlng = streams.get("latlng", [])
     if not latlng:
         raise ValueError(
-            f"No latlng stream for activity {activity_strava_id}. "
-            f"Run: fitops activities streams {activity_strava_id}"
+            f"Activity {activity_strava_id} has no GPS data (latlng stream is empty). "
+            f"This activity may be an indoor workout with no route."
         )
 
     altitudes = streams.get("altitude", [])
