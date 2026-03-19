@@ -25,6 +25,7 @@ STREAM_KEYS = [
     "moving",
     "grade_smooth",
     "velocity_smooth",
+    "grade_adjusted_speed",
 ]
 
 

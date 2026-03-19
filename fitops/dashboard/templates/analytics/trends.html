@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Trends — FitOps{% endblock %}
+{% block page_name %}Trends{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Training Trends</p>
+    {% if trends %}
+    <p class="page-subtitle">{{ trends.summary_label }}</p>
+    {% endif %}
+  </div>
+  <form method="get" class="filter-bar" style="margin-bottom:0;">
+    <select name="days" class="select-ctrl">
+      {% for d in [90, 180, 365] %}
+      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      {% endfor %}
+    </select>
+    <select name="metric" class="select-ctrl">
+      <option value="distance" {% if selected_metric == "distance" %}selected{% endif %}>Distance</option>
+      <option value="time" {% if selected_metric == "time" %}selected{% endif %}>Time</option>
+    </select>
+    <select name="sport_group" class="select-ctrl">
+      <option value="all"   {% if selected_sport_group == "all"   %}selected{% endif %}>All Sports</option>
+      <option value="run"   {% if selected_sport_group == "run"   %}selected{% endif %}>Running</option>
+      <option value="ride"  {% if selected_sport_group == "ride"  %}selected{% endif %}>Cycling</option>
+      <option value="split" {% if selected_sport_group == "split" %}selected{% endif %}>Run + Ride</option>
+    </select>
+    <button type="submit" class="btn btn-primary">Update</button>
+  </form>
+</div>
+
+{% if trends %}
+<!-- Summary panels -->
+<div class="grid-4" style="margin-bottom:1px;">
+
+  <div class="panel panel--accent" style="--delay:0ms">
+    <p class="panel-label">Activities</p>
+    <p class="panel-metric">{{ trends.activity_count }}</p>
+  </div>
+
+  {% if trends.consistency %}
+  <div class="panel" style="--delay:40ms">
+    <p class="panel-label">Per Week</p>
+    <p class="panel-metric">{{ "%.1f" | format(trends.consistency.activities_per_week) }}</p>
+    <p class="panel-sub">Regularity {{ "%.0f%%" | format(trends.consistency.regularity_score * 100) }}</p>
+  </div>
+  {% endif %}
+
+  {% if trends.volume_trend %}
+  <div class="panel panel--accent-{% if trends.volume_trend.direction == 'increasing' %}green{% elif trends.volume_trend.direction == 'decreasing' %}red{% else %}amber{% endif %}" style="--delay:80ms">
+    <p class="panel-label">Volume Trend</p>
+    <p class="panel-metric--md
+      {% if trends.volume_trend.direction == 'increasing' %}c-green
+      {% elif trends.volume_trend.direction == 'decreasing' %}c-red
+      {% else %}c-muted{% endif %}">
+      {{ trends.volume_trend.direction | capitalize }}
+    </p>
+    <p class="panel-sub">{{ trends.volume_trend.strength | capitalize }}</p>
+  </div>
+  {% endif %}
+
+  {% if trends.performance_trend %}
+  <div class="panel panel--accent-{% if trends.performance_trend.pace_trend == 'improving' %}green{% elif trends.performance_trend.pace_trend == 'declining' %}red{% else %}amber{% endif %}" style="--delay:120ms">
+    <p class="panel-label">Performance</p>
+    <p class="panel-metric--md
+      {% if trends.performance_trend.pace_trend == 'improving' %}c-green
+      {% elif trends.performance_trend.pace_trend == 'declining' %}c-red
+      {% else %}c-muted{% endif %}">
+      {{ trends.performance_trend.pace_trend | capitalize }}
+    </p>
+    <p class="panel-sub">{{ trends.performance_trend.pace_strength | capitalize }}</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- VO2max Trend -->
+{% if vo2max_trend %}
+<div class="panel" style="margin-top:1px;--delay:140ms">
+  <p class="panel-label">VO&#8322;max Trend
+    <span class="badge
+      {% if vo2max_trend.direction == 'improving' %}badge-green
+      {% elif vo2max_trend.direction == 'declining' %}badge-red
+      {% else %}badge-dim{% endif %}"
+      style="margin-left:8px;font-size:10px;vertical-align:middle;">
+      {{ vo2max_trend.direction | capitalize }}
+    </span>
+  </p>
+  <div style="display:flex;gap:32px;align-items:baseline;margin-top:10px;flex-wrap:wrap;">
+    <div>
+      <p class="panel-sub">Latest estimate</p>
+      <p style="font-size:20px;font-weight:700;color:var(--accent-purple);">{{ vo2max_trend.latest_estimate }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">ml/kg/min</span></p>
+    </div>
+    <div>
+      <p class="panel-sub">Change over period</p>
+      <p style="font-size:18px;font-weight:600;
+        color:{% if vo2max_trend.change > 0 %}var(--accent-green){% elif vo2max_trend.change < 0 %}var(--accent-red){% else %}var(--text-muted){% endif %};">
+        {% if vo2max_trend.change > 0 %}+{% endif %}{{ vo2max_trend.change }}
+      </p>
+    </div>
+    <div>
+      <p class="panel-sub">From &rarr; to</p>
+      <p style="font-size:15px;font-weight:500;color:var(--text-muted);">{{ vo2max_trend.first_estimate }} &rarr; {{ vo2max_trend.latest_estimate }}</p>
+    </div>
+  </div>
+  <p class="panel-sub" style="margin-top:8px;">From {{ vo2max_trend.data_points }} activities &middot; <a href="/analytics/performance" style="color:var(--accent-purple);">View full history</a></p>
+</div>
+{% endif %}
+
+<!-- Weekly volume chart -->
+<div class="panel" style="margin-top:1px;--delay:160ms">
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">
+      Weekly Volume
+      {% if selected_metric == "time" %}(hours){% else %}(km){% endif %}
+      {% if selected_sport_group == "run" %}&mdash; Running
+      {% elif selected_sport_group == "ride" %}&mdash; Cycling
+      {% elif selected_sport_group == "split" %}&mdash; Running &amp; Cycling
+      {% endif %}
+    </p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <canvas id="weeklyVolumeChart" height="60"></canvas>
+</div>
+
+{% else %}
+<div class="empty-state">
+  No trend data found. Run <code>fitops sync run</code> first.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const WEEKLY_DATA = {{ weekly_json | default('[]') | safe }};
+const WEEKLY_RUN  = {{ weekly_run_json | default('[]') | safe }};
+const WEEKLY_RIDE = {{ weekly_ride_json | default('[]') | safe }};
+const METRIC      = {{ (selected_metric | default('distance')) | tojson }};
+const SPORT_GROUP = {{ (selected_sport_group | default('all')) | tojson }};
+
+if (WEEKLY_DATA.length > 0 || WEEKLY_RUN.length > 0) {
+  const opts = { metric: METRIC };
+  if (SPORT_GROUP === 'split' && WEEKLY_RUN.length > 0 && WEEKLY_RIDE.length > 0) {
+    opts.runData  = WEEKLY_RUN;
+    opts.rideData = WEEKLY_RIDE;
+  }
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, opts);
+}
+</script>
+{% endblock %}

@@ -88,12 +88,18 @@ async def compute_performance_metrics(
             1000 / a.average_speed_ms / 60
             for a in activities if a.average_speed_ms and a.average_speed_ms > 0
         ]
-        all_hr = [
-            float(a.max_heartrate) for a in activities if a.max_heartrate
-        ] + [a.average_heartrate for a in activities if a.average_heartrate]
+        # Only use peak HR (max_heartrate field), not average HR — pooling them biases 98th percentile low
+        all_hr = [float(a.max_heartrate) for a in activities if a.max_heartrate]
 
         avg_pace = sum(paces) / len(paces) if paces else None
-        economy = round(200 + (avg_pace - 4.0) * 10, 1) if avg_pace else None
+        # Proper running economy: VO2 demand (ml/kg/min) / speed (km/min) = ml/kg/km
+        # Uses Daniels VO2 demand quadratic, same formula as VDOT calculation
+        if avg_pace and avg_pace > 0:
+            v_mpm = 1000.0 / avg_pace  # m/min (avg_pace is min/km)
+            vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm ** 2
+            economy = round(max(100.0, min(350.0, vo2_demand / (v_mpm / 1000))), 1)  # ml/kg/km
+        else:
+            economy = None
         pace_cv = _cv(paces)
         efficiency = round(max(0.0, 100 - pace_cv * 100), 1) if paces else None
         variability = round(pace_cv, 4) if paces else None

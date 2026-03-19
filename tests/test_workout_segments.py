@@ -198,7 +198,7 @@ def _make_seg(index=0, name="Main Set", step_type="interval", target_zone=4, dur
 def test_score_segment_no_hr_data():
     zones = compute_lthr_zones(165)
     seg = _make_seg(target_zone=4)
-    result = _score_segment(seg, [], 0, 100, zones)
+    result = _score_segment(seg, {}, 0, 100, zones)
     assert result.has_heartrate is False
     assert result.compliance_score == 0.0
     assert result.avg_heartrate is None
@@ -207,7 +207,7 @@ def test_score_segment_no_hr_data():
 def test_score_segment_no_zones():
     seg = _make_seg(target_zone=4)
     hr = [165.0] * 100
-    result = _score_segment(seg, hr, 0, 100, None)
+    result = _score_segment(seg, {"heartrate": hr}, 0, 100, None)
     # HR data exists but zones are required to compute compliance
     assert result.has_heartrate is True
     assert result.avg_heartrate is None   # cannot classify without zones
@@ -219,7 +219,7 @@ def test_score_segment_perfect_compliance():
     # Z4 for lthr=165: 165–175 BPM
     seg = _make_seg(target_zone=4)
     hr = [168.0] * 480  # all solidly in Z4
-    result = _score_segment(seg, hr, 0, 480, zones)
+    result = _score_segment(seg, {"heartrate": hr}, 0, 480, zones)
     assert result.has_heartrate is True
     assert result.target_achieved is True
     assert result.time_in_target_pct > 0.9
@@ -230,7 +230,7 @@ def test_score_segment_all_below_target():
     zones = compute_lthr_zones(165)
     seg = _make_seg(target_zone=4)
     hr = [130.0] * 480  # all in Z2 when target is Z4
-    result = _score_segment(seg, hr, 0, 480, zones)
+    result = _score_segment(seg, {"heartrate": hr}, 0, 480, zones)
     assert result.target_achieved is False
     assert result.time_below_pct > 0.9
     assert result.deviation_pct < 0
@@ -241,7 +241,7 @@ def test_score_segment_no_target_zone():
     seg = WorkoutSegmentDef(index=0, name="Free Run", step_type="main",
                             target_zone=None, duration_min=10.0)
     hr = [145.0] * 300
-    result = _score_segment(seg, hr, 0, 300, zones)
+    result = _score_segment(seg, {"heartrate": hr}, 0, 300, zones)
     # No target → cannot fail
     assert result.compliance_score == 1.0
     assert result.avg_heartrate is not None
@@ -252,7 +252,7 @@ def test_score_segment_zone_distribution_sums_to_one():
     seg = _make_seg(target_zone=3)
     # Mix of zones
     hr = [130.0] * 100 + [155.0] * 100 + [170.0] * 100
-    result = _score_segment(seg, hr, 0, 300, zones)
+    result = _score_segment(seg, {"heartrate": hr}, 0, 300, zones)
     total = sum(result.hr_zone_distribution.values())
     assert abs(total - 1.0) < 0.01
 
@@ -266,7 +266,7 @@ def test_compute_compliance_proportional_slicing():
     segs = parse_segments_from_body(SAMPLE_BODY)  # 10+32+2+8 = 52 min planned
     # 52 min = 3120s of HR data
     hr = [130.0] * 600 + [168.0] * 1920 + [120.0] * 120 + [125.0] * 480
-    results = compute_compliance(segs, hr, 3120, zones)
+    results = compute_compliance(segs, {"heartrate": hr}, 3120, zones)
     assert len(results) == 4
 
 
@@ -277,7 +277,7 @@ def test_compute_compliance_even_split_when_no_durations():
         WorkoutSegmentDef(1, "Part B", "main", 4, None),
     ]
     hr = [150.0] * 200 + [168.0] * 200
-    results = compute_compliance(segs, hr, 400, zones)
+    results = compute_compliance(segs, {"heartrate": hr}, 400, zones)
     assert len(results) == 2
     # Even split: each gets 200 samples
     assert results[0].end_index == 200
@@ -287,7 +287,7 @@ def test_compute_compliance_even_split_when_no_durations():
 def test_compute_compliance_empty_hr_stream():
     zones = compute_lthr_zones(165)
     segs = parse_segments_from_body(SAMPLE_BODY)
-    results = compute_compliance(segs, [], 3000, zones)
+    results = compute_compliance(segs, {}, 3000, zones)
     for r in results:
         assert r.has_heartrate is False
 
@@ -300,7 +300,7 @@ def test_overall_compliance_no_scored_segments():
     segs = [
         WorkoutSegmentDef(0, "Free", "main", None, 10.0),
     ]
-    results = compute_compliance(segs, [], 600, None)
+    results = compute_compliance(segs, {}, 600, None)
     assert overall_compliance_score(results) is None
 
 
@@ -316,7 +316,7 @@ def test_overall_compliance_weighted_average():
     hr_bad = [130.0] * 600
     hr = hr_good + hr_bad
 
-    results = compute_compliance(segs, hr, 1200, zones)
+    results = compute_compliance(segs, {"heartrate": hr}, 1200, zones)
     overall = overall_compliance_score(results)
     assert overall is not None
     # Good segment pulls score up, bad pulls down → somewhere in middle

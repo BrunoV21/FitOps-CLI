@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Training Load — FitOps{% endblock %}
+{% block page_name %}Training Load{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Training Load</p>
+    <p class="page-subtitle">CTL (Fitness) · ATL (Fatigue) · TSB (Form)</p>
+  </div>
+  <form method="get" class="filter-bar" style="margin-bottom:0;">
+    <select name="days" class="select-ctrl">
+      {% for d in [30, 60, 90, 180, 365] %}
+      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Update</button>
+  </form>
+</div>
+
+{% if current_load %}
+<!-- Metric panels -->
+<div class="grid-4" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:0ms">
+    <p class="panel-label">Fitness (CTL)</p>
+    <p class="panel-metric c-blue">{{ current_load.ctl }}</p>
+    <p class="panel-sub">Chronic Training Load</p>
+  </div>
+  <div class="panel panel--accent-amber" style="--delay:40ms">
+    <p class="panel-label">Fatigue (ATL)</p>
+    <p class="panel-metric c-amber">{{ current_load.atl }}</p>
+    <p class="panel-sub">Acute Training Load</p>
+  </div>
+  <div class="panel panel--accent{% if current_load.tsb > 5 %}-green{% elif current_load.tsb < -10 %}-red{% else %}-amber{% endif %}" style="--delay:80ms">
+    <p class="panel-label">Form (TSB)</p>
+    <p class="panel-metric
+      {% if current_load.tsb > 5 %}c-green
+      {% elif current_load.tsb < -10 %}c-red
+      {% else %}c-amber{% endif %}">{{ current_load.tsb }}</p>
+    <p class="panel-sub">Training Stress Balance</p>
+  </div>
+  <div class="panel" style="--delay:120ms">
+    <p class="panel-label">Status</p>
+    <div style="margin-top:12px;">
+      <span class="badge
+        {% if 'Fresh' in current_load.form_label %}badge-green
+        {% elif 'Productive' in current_load.form_label %}badge-blue
+        {% elif 'Overreaching' in current_load.form_label or 'risk' in current_load.form_label %}badge-red
+        {% else %}badge-dim{% endif %}" style="font-size:11px;padding:4px 10px;">
+        {{ current_load.form_label }}
+      </span>
+    </div>
+    {% if current_load.ramp_rate_pct is not none %}
+    <p class="panel-sub" style="margin-top:10px;">Ramp: {{ current_load.ramp_rate_pct }}% · {{ current_load.ramp_label }}</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Overtraining warnings -->
+{% if overtraining %}
+{% set warnings = [] %}
+{% if overtraining.sma7_alert %}{% set _ = warnings.append("7-day SMA above baseline") %}{% endif %}
+{% if overtraining.atl_sustained_high %}{% set _ = warnings.append("ATL sustained high") %}{% endif %}
+{% if overtraining.tsb_negative_sustained %}{% set _ = warnings.append("TSB negative for 7+ days") %}{% endif %}
+{% if warnings %}
+<div class="alert alert-red mt-4">
+  <p class="alert-title">Overtraining Indicators</p>
+  <ul>
+    {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- Volume W-o-W / M-o-M -->
+{% if volume_summary %}
+<div class="grid-4" style="margin-top:1px;">
+
+  <div class="panel" style="--delay:140ms">
+    <p class="panel-label">This Week</p>
+    <p class="panel-metric">{{ "%.1f" | format(volume_summary.this_week.distance_km) }} km</p>
+    {% set wpct = volume_summary.pct_change_week.distance %}
+    {% if wpct is not none %}
+    <p class="panel-sub {% if wpct > 0 %}c-green{% elif wpct < 0 %}c-red{% endif %}">
+      {% if wpct > 0 %}+{% endif %}{{ "%.0f%%" | format(wpct) }} vs last week
+    </p>
+    {% endif %}
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.this_week.duration_h) }} h &middot; {{ volume_summary.this_week.activity_count }} activities</p>
+  </div>
+
+  <div class="panel" style="--delay:180ms">
+    <p class="panel-label">Last Week</p>
+    <p class="panel-metric c-muted">{{ "%.1f" | format(volume_summary.last_week.distance_km) }} km</p>
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.last_week.duration_h) }} h &middot; {{ volume_summary.last_week.activity_count }} activities</p>
+  </div>
+
+  <div class="panel" style="--delay:220ms">
+    <p class="panel-label">This Month</p>
+    <p class="panel-metric">{{ "%.0f" | format(volume_summary.this_month.distance_km) }} km</p>
+    {% set mpct = volume_summary.pct_change_month.distance %}
+    {% if mpct is not none %}
+    <p class="panel-sub {% if mpct > 0 %}c-green{% elif mpct < 0 %}c-red{% endif %}">
+      {% if mpct > 0 %}+{% endif %}{{ "%.0f%%" | format(mpct) }} vs same period last month
+    </p>
+    {% endif %}
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.this_month.duration_h) }} h &middot; {{ volume_summary.this_month.activity_count }} activities</p>
+  </div>
+
+  <div class="panel" style="--delay:260ms">
+    <p class="panel-label">Last Month</p>
+    <p class="panel-metric c-muted">{{ "%.0f" | format(volume_summary.last_month.distance_km) }} km</p>
+    <p class="panel-sub">{{ "%.1f" | format(volume_summary.last_month.duration_h) }} h &middot; {{ volume_summary.last_month.activity_count }} activities</p>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- Training Load Chart -->
+<div class="panel" style="margin-top:1px;--delay:160ms">
+  <div class="panel-header" style="justify-content:flex-end;padding-bottom:4px;">
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <canvas id="trainingLoadChart" height="80"></canvas>
+</div>
+
+<!-- Weekly Volume Chart -->
+<div class="panel" style="margin-top:1px;--delay:200ms">
+  <div class="panel-header">
+    <p class="panel-label" style="margin:0;">Weekly Volume (km)</p>
+    <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+  </div>
+  <canvas id="weeklyVolumeChart" height="60"></canvas>
+</div>
+
+{% else %}
+<div class="empty-state">
+  No training data found. Run <code>fitops sync run</code> first.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CHART_DATA = {{ chart_data_json | safe }};
+if (CHART_DATA.length > 0) {
+  renderTrainingLoadChart("trainingLoadChart", CHART_DATA.map(d => d.date), {
+    ctl: CHART_DATA.map(d => d.ctl),
+    atl: CHART_DATA.map(d => d.atl),
+    tsb: CHART_DATA.map(d => d.tsb),
+  });
+}
+const WEEKLY_DATA = {{ weekly_json | default('[]') | safe }};
+if (WEEKLY_DATA.length > 0) {
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, { metric: "distance" });
+}
+</script>
+{% endblock %}

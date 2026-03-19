@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+{% block title %}Profile — FitOps{% endblock %}
+{% block page_name %}Profile{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <p class="page-title">Profile</p>
+  {% if saved %}
+  <span class="flash flash-success">Settings saved</span>
+  {% elif error == 'no_changes' %}
+  <span class="flash flash-warn">No changes provided</span>
+  {% elif error == 'invalid_zones' %}
+  <span class="flash flash-warn">Invalid zone boundaries — values must be in order</span>
+  {% endif %}
+</div>
+
+<!-- Identity + Physiological Estimates -->
+<div class="grid-2" style="margin-bottom:1px;">
+
+  <!-- Strava identity -->
+  <div class="panel" style="--delay:0ms">
+    <p class="panel-label">Identity</p>
+    {% if athlete %}
+    <div>
+      <div class="stat-row">
+        <span class="stat-key">Name</span>
+        <span class="stat-val">{{ athlete.firstname }} {{ athlete.lastname }}</span>
+      </div>
+      {% if athlete.username %}
+      <div class="stat-row">
+        <span class="stat-key">Username</span>
+        <span class="stat-val">{{ athlete.username }}</span>
+      </div>
+      {% endif %}
+      {% if athlete.city or athlete.country %}
+      <div class="stat-row">
+        <span class="stat-key">Location</span>
+        <span class="stat-val">{{ [athlete.city, athlete.country] | select | join(', ') }}</span>
+      </div>
+      {% endif %}
+      {% if athlete.sex %}
+      <div class="stat-row">
+        <span class="stat-key">Sex</span>
+        <span class="stat-val">{{ "Male" if athlete.sex == "M" else ("Female" if athlete.sex == "F" else athlete.sex) }}</span>
+      </div>
+      {% endif %}
+      {% if athlete.age %}
+      <div class="stat-row">
+        <span class="stat-key">Age</span>
+        <span class="stat-val">{{ athlete.age }} years</span>
+      </div>
+      {% endif %}
+      {% if athlete.birthday %}
+      <div class="stat-row">
+        <span class="stat-key">Birthday</span>
+        <span class="stat-val">{{ athlete.birthday }}</span>
+      </div>
+      {% endif %}
+      {% if athlete.weight_kg %}
+      <div class="stat-row">
+        <span class="stat-key">Weight</span>
+        <span class="stat-val">{{ athlete.weight_kg }} kg</span>
+      </div>
+      {% endif %}
+      {% if settings.height_cm %}
+      <div class="stat-row">
+        <span class="stat-key">Height</span>
+        <span class="stat-val">{{ settings.height_cm }} cm</span>
+      </div>
+      {% endif %}
+      {% if athlete.premium %}
+      <div class="stat-row">
+        <span class="stat-key">Plan</span>
+        <span class="stat-val c-amber">Strava Premium</span>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <p style="font-size:12px;color:var(--text-dim);">No profile data. Run <code>fitops sync run</code> first.</p>
+    {% endif %}
+  </div>
+
+  <!-- Physiological Estimates -->
+  <div class="panel panel--accent-purple" style="--delay:40ms">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <p class="panel-label" style="margin-bottom:0;">Physiological Estimates</p>
+      <button type="button" onclick="toggleZoneEdit('estimates')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;">Edit</button>
+    </div>
+    {% set display_vo2max = vo2max_override_val if vo2max_override_val else (vo2max.estimate if vo2max else None) %}
+    {% set vo2max_conf = "manual override" if vo2max_override_val else (vo2max.confidence_label if vo2max else None) %}
+    {% if display_vo2max %}
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
+      <p class="panel-metric--md c-purple">{{ display_vo2max }}</p>
+      <div>
+        <p style="font-size:12px;color:var(--text-muted);">
+          VO₂max (ml/kg/min)
+          {% if vo2max_override_val %}<span style="font-size:9px;font-weight:700;letter-spacing:0.08em;background:var(--accent-amber);color:#000;padding:1px 5px;margin-left:6px;vertical-align:middle;">OVERRIDE</span>{% endif %}
+        </p>
+        <p style="font-size:11px;color:var(--text-dim);">
+          {{ vo2max_conf }} confidence ·
+          <a href="/analytics/performance" class="panel-link">full history →</a>
+        </p>
+        {% if vo2max_override_val and vo2max %}
+        <p style="font-size:11px;color:var(--text-dim);">Computed: {{ vo2max.estimate }} ml/kg/min</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if lt1_bpm or lt2_bpm %}
+    <hr class="divider">
+    <div class="grid-2" style="margin-top:8px;">
+      {% if lt1_bpm %}
+      <div style="background:var(--bg);padding:0;">
+        <p class="panel-label" style="margin-bottom:4px;">
+          LT1
+          {% if lt1_is_override %}<span style="font-size:9px;font-weight:700;letter-spacing:0.08em;background:var(--accent-amber);color:#000;padding:1px 5px;margin-left:4px;vertical-align:middle;">OVERRIDE</span>{% endif %}
+        </p>
+        <p class="panel-metric--sm c-blue">{{ lt1_bpm }}<span class="panel-unit">bpm</span></p>
+        <p class="panel-sub">Aerobic threshold</p>
+      </div>
+      {% endif %}
+      {% if lt2_bpm %}
+      <div style="background:var(--bg);padding:0;">
+        <p class="panel-label" style="margin-bottom:4px;">
+          LT2 (LTHR)
+          {% if lt2_is_override %}<span style="font-size:9px;font-weight:700;letter-spacing:0.08em;background:var(--accent-amber);color:#000;padding:1px 5px;margin-left:4px;vertical-align:middle;">OVERRIDE</span>{% endif %}
+        </p>
+        <p class="panel-metric--sm c-red">{{ lt2_bpm }}<span class="panel-unit">bpm</span></p>
+        <p class="panel-sub">Lactate threshold</p>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p style="font-size:12px;color:var(--text-dim);">No VO₂max estimate yet. Sync some run activities and set HR/pace settings below.</p>
+    {% endif %}
+
+    <!-- Estimates edit panel -->
+    <div id="estimates-edit" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <form method="POST" action="/profile/estimates">
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Override individual values. Leave blank to keep existing. Use Clear to revert to computed.</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label">LT1 (bpm)</label>
+            <input type="number" name="lt1_hr" min="80" max="230" step="1"
+                   value="{{ settings.lt1_hr or '' }}" placeholder="{{ lt1_bpm or 'e.g. 152' }}" class="input-ctrl">
+            {% if settings.lt1_hr %}<button type="submit" name="clear_lt1" value="1" class="btn btn-ghost" style="font-size:10px;padding:2px 8px;margin-top:4px;">Clear</button>{% endif %}
+          </div>
+          <div class="form-group">
+            <label class="form-label">LT2 (bpm)</label>
+            <input type="number" name="lt2_hr" min="80" max="230" step="1"
+                   value="{{ settings.lt2_hr or '' }}" placeholder="{{ lt2_bpm or 'e.g. 168' }}" class="input-ctrl">
+            {% if settings.lt2_hr %}<button type="submit" name="clear_lt2" value="1" class="btn btn-ghost" style="font-size:10px;padding:2px 8px;margin-top:4px;">Clear</button>{% endif %}
+          </div>
+          <div class="form-group">
+            <label class="form-label">VO₂max (ml/kg/min)</label>
+            <input type="number" name="vo2max_override" min="20" max="90" step="0.1"
+                   value="{{ vo2max_override_val or '' }}" placeholder="{{ vo2max.estimate if vo2max else 'e.g. 52.5' }}" class="input-ctrl">
+            {% if vo2max_override_val %}<button type="submit" name="clear_vo2max" value="1" class="btn btn-ghost" style="font-size:10px;padding:2px 8px;margin-top:4px;">Clear</button>{% endif %}
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">Save Overrides</button>
+      </form>
+
+      {% if vo2max_computed %}
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">Recalculate VO₂max using a specific estimation method and save as override.</p>
+        <form method="POST" action="/profile/recalculate-vo2max" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <select name="method" class="input-ctrl" style="width:auto;padding:5px 10px;">
+            <option value="composite">Composite (Daniels 50% + Cooper 40%+)</option>
+            <option value="daniels">Daniels VDOT only — {{ vo2max_computed.vdot }} ml/kg/min</option>
+            <option value="cooper">Cooper estimate only — {{ vo2max_computed.cooper }} ml/kg/min</option>
+          </select>
+          <button type="submit" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">Recalculate &amp; Save</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Settings form -->
+<div class="panel" style="margin-top:1px;--delay:80ms">
+  <p class="panel-label">Physiological Settings</p>
+  <form method="POST" action="/profile/settings">
+    <div class="form-grid-4" style="margin-bottom:16px;">
+      <div class="form-group">
+        <label class="form-label">Weight (kg)</label>
+        <input type="number" name="weight_kg" step="0.1" min="30" max="200"
+               value="{{ settings.weight_kg or '' }}" placeholder="70.0" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Height (cm)</label>
+        <input type="number" name="height_cm" step="0.1" min="100" max="250"
+               value="{{ settings.height_cm or '' }}" placeholder="175" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date of Birth</label>
+        <input type="date" name="birthday"
+               value="{{ settings.birthday or (athlete.birthday if athlete else '') }}" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">FTP (watts)</label>
+        <input type="number" name="ftp" step="1" min="50" max="600"
+               value="{{ settings.ftp or '' }}" placeholder="250" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Max HR (bpm)</label>
+        <input type="number" name="max_hr" step="1" min="100" max="230"
+               value="{{ settings.max_hr or '' }}" placeholder="190" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Resting HR (bpm)</label>
+        <input type="number" name="resting_hr" step="1" min="30" max="100"
+               value="{{ settings.resting_hr or '' }}" placeholder="55" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          LTHR (bpm)
+          {% if settings.lthr_source %}<span style="color:var(--text-dim);font-weight:400;text-transform:none;">({{ settings.lthr_source }})</span>{% endif %}
+        </label>
+        <input type="number" name="lthr" step="1" min="100" max="220"
+               value="{{ settings.lthr or '' }}" placeholder="170" class="input-ctrl">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Threshold Pace (MM:SS)</label>
+        <input type="text" name="threshold_pace" pattern="\d+:\d{2}"
+               value="{{ threshold_pace_fmt or '' }}" placeholder="4:30" class="input-ctrl">
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:16px;">
+      <button type="submit" class="btn btn-primary">Save Settings</button>
+      <p style="font-size:11px;color:var(--text-dim);">
+        Zone method:
+        {% if zone_method == 'lthr' %}<span class="c-green">LTHR-based (best)</span>
+        {% elif zone_method == 'hrr' %}<span class="c-blue">Heart Rate Reserve</span>
+        {% elif zone_method == 'max-hr' %}<span class="c-amber">Max HR %</span>
+        {% else %}<span>None — set LTHR or Max HR above</span>{% endif %}
+      </p>
+    </div>
+  </form>
+</div>
+
+<!-- HR Zones + Pace Zones -->
+<div class="grid-2" style="margin-top:1px;">
+
+  <div class="panel" style="--delay:120ms">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <p class="panel-label" style="margin-bottom:0;">Heart Rate Zones
+        {% if hr_zones_custom %}<span style="font-size:9px;font-weight:700;letter-spacing:0.08em;background:var(--accent-amber);color:#000;padding:1px 5px;margin-left:8px;vertical-align:middle;">CUSTOM</span>{% endif %}
+      </p>
+      <button type="button" onclick="toggleZoneEdit('hr')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;">Edit</button>
+    </div>
+    {% set zone_colors = ["var(--text-dim)","var(--accent-blue)","var(--accent-primary)","var(--accent-amber)","var(--accent-red)"] %}
+    {% if hr_zones %}
+    <table class="data-table" style="border:none;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th>Zone</th>
+          <th class="r">Min</th>
+          <th class="r">Max</th>
+          <th style="padding-left:16px;">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for z in hr_zones %}
+        <tr>
+          <td>
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              <span style="width:8px;height:8px;background:{{ zone_colors[loop.index0] }};display:inline-block;flex-shrink:0;"></span>
+              <span class="w" style="font-weight:600;">Z{{ z.zone }} {{ z.name }}</span>
+            </span>
+          </td>
+          <td class="r">{{ z.min_bpm }}</td>
+          <td class="r">{{ z.max_bpm or "—" }}</td>
+          <td style="padding-left:16px;font-size:11px;color:var(--text-dim);">
+            {{ z.description.split('—')[1].strip() if '—' in z.description else '' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if lt1_bpm or lt2_bpm %}
+    <div style="display:flex;gap:24px;font-size:11px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      {% if lt1_bpm %}<span>LT1: <span class="c-blue" style="font-weight:600;">{{ lt1_bpm }} bpm</span>{% if lt1_is_override %} <span style="font-size:9px;font-weight:700;color:var(--accent-amber);">OVERRIDE</span>{% endif %}</span>{% endif %}
+      {% if lt2_bpm %}<span>LT2: <span class="c-red" style="font-weight:600;">{{ lt2_bpm }} bpm</span>{% if lt2_is_override %} <span style="font-size:9px;font-weight:700;color:var(--accent-amber);">OVERRIDE</span>{% endif %}</span>{% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p style="font-size:12px;color:var(--text-dim);">Set LTHR, Max HR, or Resting HR above to compute zones, or edit manually below.</p>
+    {% endif %}
+    <!-- Custom HR zones edit form -->
+    <div id="hr-edit" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <form method="POST" action="/profile/hr-zones">
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Set the upper boundary (bpm) for Z1–Z4. Z5 covers everything above Z4.</p>
+        <div class="form-grid-4" style="margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label">Z1 upper (bpm)</label>
+            <input type="number" name="z1_max" min="50" max="220" step="1"
+                   value="{{ hr_edit_bounds[0] or '' }}" placeholder="130" class="input-ctrl" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Z2 upper (bpm)</label>
+            <input type="number" name="z2_max" min="50" max="220" step="1"
+                   value="{{ hr_edit_bounds[1] or '' }}" placeholder="147" class="input-ctrl" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Z3 upper (bpm)</label>
+            <input type="number" name="z3_max" min="50" max="220" step="1"
+                   value="{{ hr_edit_bounds[2] or '' }}" placeholder="162" class="input-ctrl" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Z4 upper (bpm)</label>
+            <input type="number" name="z4_max" min="50" max="220" step="1"
+                   value="{{ hr_edit_bounds[3] or '' }}" placeholder="175" class="input-ctrl" required>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="submit" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">Save Custom</button>
+          {% if hr_zones_custom %}
+          <button type="submit" name="reset" value="1" class="btn btn-ghost" style="font-size:12px;padding:6px 14px;">Reset to Computed</button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel" style="--delay:160ms">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <p class="panel-label" style="margin-bottom:0;">Pace Zones
+        {% if pace_zones_custom %}<span style="font-size:9px;font-weight:700;letter-spacing:0.08em;background:var(--accent-amber);color:#000;padding:1px 5px;margin-left:8px;vertical-align:middle;">CUSTOM</span>{% endif %}
+      </p>
+      <button type="button" onclick="toggleZoneEdit('pace')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;">Edit</button>
+    </div>
+    {% set zone_colors = ["var(--text-dim)","var(--accent-blue)","var(--accent-primary)","var(--accent-amber)","var(--accent-red)"] %}
+    {% if pace_zones %}
+    <table class="data-table" style="border:none;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th>Zone</th>
+          <th class="r">Faster</th>
+          <th class="r">Slower</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for z in pace_zones %}
+        <tr>
+          <td>
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              <span style="width:8px;height:8px;background:{{ zone_colors[loop.index0] }};display:inline-block;flex-shrink:0;"></span>
+              <span class="w" style="font-weight:600;">Z{{ z.zone }} {{ z.name }}</span>
+            </span>
+          </td>
+          <td class="r">{{ z.min_pace_fmt or "—" }}</td>
+          <td class="r">{{ z.max_pace_fmt or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not pace_zones_custom %}
+    <p style="font-size:11px;color:var(--text-dim);margin-top:12px;">Based on threshold pace {{ threshold_pace_fmt }}/km</p>
+    {% endif %}
+    {% else %}
+    <p style="font-size:12px;color:var(--text-dim);">Set a threshold pace above (e.g. <code>4:30</code>) to compute pace zones, or edit manually below.</p>
+    {% endif %}
+    {% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+      <p style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Threshold Paces (GAP)</p>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        {% if lt1_pace_fmt %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-dim);">LT1 — Aerobic threshold</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-blue);font-variant-numeric:tabular-nums;">{{ lt1_pace_fmt }}</span>
+        </div>
+        {% endif %}
+        {% if lt2_pace_fmt %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-dim);">LT2 — Lactate threshold</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-amber);font-variant-numeric:tabular-nums;">{{ lt2_pace_fmt }}</span>
+        </div>
+        {% endif %}
+        {% if vo2max_pace_fmt %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--text-dim);">vVO₂max — from VDOT</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent-red);font-variant-numeric:tabular-nums;">{{ vo2max_pace_fmt }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <p style="font-size:10px;color:var(--text-dim);margin-top:6px;">Run <code>fitops analytics zones --infer</code> to update</p>
+    </div>
+    {% endif %}
+    <!-- Custom pace zones edit form -->
+    <div id="pace-edit" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <form method="POST" action="/profile/pace-zones">
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Enter zone boundaries (MM:SS/km) from slowest (Z1/Z2) to fastest (Z4/Z5). Z1 goes slower, Z5 goes faster.</p>
+        <div class="form-grid-4" style="margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label">Z1/Z2 boundary</label>
+            <input type="text" name="b1" pattern="\d+:\d{2}"
+                   value="{{ pace_edit_bounds[0] or '' }}" placeholder="5:30" class="input-ctrl" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Z2/Z3 boundary</label>
+            <input type="text" name="b2" pattern="\d+:\d{2}"
+                   value="{{ pace_edit_bounds[1] or '' }}" placeholder="5:00" class="input-ctrl" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Z3/Z4 boundary</label>
+            <input type="text" name="b3" pattern="\d+:\d{2}"
+                   value="{{ pace_edit_bounds[2] or '' }}" placeholder="4:40" class="input-ctrl" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Z4/Z5 boundary</label>
+            <input type="text" name="b4" pattern="\d+:\d{2}"
+                   value="{{ pace_edit_bounds[3] or '' }}" placeholder="4:20" class="input-ctrl" required>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="submit" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">Save Custom</button>
+          {% if pace_zones_custom %}
+          <button type="submit" name="reset" value="1" class="btn btn-ghost" style="font-size:12px;padding:6px 14px;">Reset to Computed</button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<!-- Race Predictions + Equipment -->
+<div class="grid-2" style="margin-top:1px;">
+
+  <!-- Race Predictions -->
+  <div class="panel" style="--delay:160ms">
+    <p class="panel-label">Race Predictions
+      {% if vo2max %}
+      <span style="font-size:10px;font-weight:400;text-transform:none;color:var(--text-dim);margin-left:6px;">VDOT {{ vo2max.vdot }}</span>
+      {% endif %}
+    </p>
+    {% if race_predictions %}
+    <table class="data-table" style="border:none;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th>Distance</th>
+          <th class="r">Pace</th>
+          <th class="r">Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in race_predictions %}
+        <tr {% if r.label == '12 K' %}style="background:color-mix(in srgb,var(--accent-primary) 6%,transparent);font-weight:600;"{% endif %}>
+          <td>{{ r.label }}</td>
+          <td class="r" style="font-variant-numeric:tabular-nums;">{{ r.pace }}</td>
+          <td class="r" style="font-variant-numeric:tabular-nums;">{{ r.time }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p style="font-size:10px;color:var(--text-dim);margin-top:10px;">Daniels VDOT · 12K row highlighted</p>
+    {% else %}
+    <p style="font-size:12px;color:var(--text-dim);">Sync run activities to generate race predictions.</p>
+    {% endif %}
+  </div>
+
+  <!-- Equipment Mileage -->
+  {% if shoes or bikes %}
+  <div class="panel" style="--delay:200ms">
+  <p class="panel-label">Equipment Mileage</p>
+  <div>
+
+    {% if shoes %}
+    <div style="background:var(--bg);padding:0 16px 16px 0;">
+      <p style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:14px;">Shoes</p>
+      {% for shoe in shoes %}
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:12px;font-weight:600;color:var(--text-primary);">
+            {{ shoe.name }}
+            {% if shoe.primary %}<span class="c-green" style="font-size:10px;margin-left:6px;font-weight:700;">PRIMARY</span>{% endif %}
+          </span>
+          <span style="font-size:11px;color:var(--text-muted);">{{ shoe.strava_distance_km }} km</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          {% set pct = [(shoe.strava_distance_km / 700 * 100), 100] | min %}
+          <div class="mileage-bar-track" style="flex:1;">
+            <div class="mileage-bar-fill"
+                 style="width:{{ pct }}%;background:{% if pct > 85 %}var(--accent-red){% elif pct > 60 %}var(--accent-amber){% else %}var(--accent-primary){% endif %};">
+            </div>
+          </div>
+          <span style="font-size:11px;color:var(--text-dim);flex-shrink:0;">{{ shoe.local_activity_count }} runs</span>
+        </div>
+        <p style="font-size:10px;color:var(--text-dim);margin-top:3px;">{{ shoe.strava_distance_km }} / 700 km</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if bikes %}
+    <div style="background:var(--bg);padding:0 0 16px {% if shoes %}16px{% else %}0{% endif %};">
+      <p style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:14px;">Bikes</p>
+      {% for bike in bikes %}
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:12px;font-weight:600;color:var(--text-primary);">
+            {{ bike.name }}
+            {% if bike.primary %}<span class="c-green" style="font-size:10px;margin-left:6px;font-weight:700;">PRIMARY</span>{% endif %}
+          </span>
+          <span style="font-size:11px;color:var(--text-muted);">{{ bike.strava_distance_km }} km</span>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);">{{ bike.local_activity_count }} activities in local DB</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+function toggleZoneEdit(type) {
+  const el = document.getElementById(type + '-edit');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

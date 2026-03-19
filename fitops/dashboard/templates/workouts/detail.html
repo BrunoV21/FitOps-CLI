@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}{{ workout.name if workout else "Workout Not Found" }} — FitOps{% endblock %}
+{% block page_name %}Workout{% endblock %}
+
+{% block content %}
+{% if not workout %}
+<div class="empty-state">
+  Workout not found.
+  <a href="/workouts" class="panel-link" style="display:block;margin-top:8px;">← Back to workouts</a>
+</div>
+{% else %}
+
+{# ── Header ──────────────────────────────────────────────────── #}
+<div class="mb-4">
+  <a href="/workouts" class="back-link">← Workouts</a>
+  <div class="activity-title-row" style="margin-top:10px;">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <h1 style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;">{{ workout.name }}</h1>
+        <span class="badge
+          {% if workout.status == 'completed' %}badge-green
+          {% elif workout.status == 'planned' %}badge-dim
+          {% else %}badge-blue{% endif %}">
+          {{ workout.status | capitalize }}
+        </span>
+      </div>
+      <div class="activity-title-meta">
+        <span>{{ workout.sport_type }}</span>
+        {% if workout.linked_at %}
+        <span style="color:var(--border-hover);">·</span>
+        <span>Linked {{ workout.linked_at }}</span>
+        {% endif %}
+        {% if linked_activity %}
+        <span style="color:var(--border-hover);">·</span>
+        <span>
+          <a href="/activities/{{ linked_activity.strava_id }}" class="panel-link">
+            {{ linked_activity.name }} ({{ linked_activity.date }})
+          </a>
+        </span>
+        {% endif %}
+      </div>
+      {% if workout.notes %}
+      <p class="activity-description">{{ workout.notes }}</p>
+      {% endif %}
+    </div>
+    {% if workout.compliance_pct is not none %}
+    <div style="text-align:right;flex-shrink:0;">
+      <p class="panel-label" style="margin:0 0 4px;">Overall Score</p>
+      <p style="font-size:28px;font-weight:700;color:
+        {% if workout.compliance_pct >= 80 %}var(--accent-primary)
+        {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
+        {% else %}var(--accent-red){% endif %};line-height:1;">
+        {{ workout.compliance_pct }}%
+      </p>
+      <div class="compliance-bar-track" style="width:120px;margin-top:6px;">
+        <div class="compliance-bar-fill" style="width:{{ workout.compliance_pct }}%;background:
+          {% if workout.compliance_pct >= 80 %}var(--accent-primary)
+          {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
+          {% else %}var(--accent-red){% endif %};"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Physiology snapshot ──────────────────────────────────────── #}
+{% if physiology %}
+<div class="metric-row" style="--delay:40ms">
+  {% if physiology.ctl is not none %}
+  <div class="panel" style="--delay:0ms">
+    <p class="panel-label">Fitness (CTL)</p>
+    <p class="panel-metric--md">{{ "%.1f" | format(physiology.ctl) }}</p>
+    <p class="panel-sub">at link time</p>
+  </div>
+  {% endif %}
+  {% if physiology.atl is not none %}
+  <div class="panel" style="--delay:40ms">
+    <p class="panel-label">Fatigue (ATL)</p>
+    <p class="panel-metric--md">{{ "%.1f" | format(physiology.atl) }}</p>
+  </div>
+  {% endif %}
+  {% if physiology.tsb is not none %}
+  <div class="panel" style="--delay:80ms">
+    <p class="panel-label">Form (TSB)</p>
+    <p class="panel-metric--md {% if physiology.tsb >= 0 %}c-green{% else %}c-amber{% endif %}">
+      {% if physiology.tsb >= 0 %}+{% endif %}{{ "%.1f" | format(physiology.tsb) }}
+    </p>
+    {% if physiology.form_label %}<p class="panel-sub">{{ physiology.form_label }}</p>{% endif %}
+  </div>
+  {% endif %}
+  {% if physiology.vo2max is not none %}
+  <div class="panel" style="--delay:120ms">
+    <p class="panel-label">VO₂max</p>
+    <p class="panel-metric--md">{{ "%.1f" | format(physiology.vo2max) }}</p>
+    {% if physiology.vo2max_confidence %}<p class="panel-sub">{{ physiology.vo2max_confidence }}</p>{% endif %}
+  </div>
+  {% endif %}
+  {% if physiology.lt2_hr %}
+  <div class="panel" style="--delay:160ms">
+    <p class="panel-label">Zones Method</p>
+    <p class="panel-metric--md" style="font-size:14px;">{{ physiology.zones_method or "—" }}</p>
+    <p class="panel-sub">LT2 {{ physiology.lt2_hr }} bpm{% if physiology.lt1_hr %} · LT1 {{ physiology.lt1_hr }} bpm{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── Segment performance table ────────────────────────────────── #}
+{% if segments %}
+<div class="table-wrap" style="--delay:200ms;margin-bottom:1px;">
+  <div class="splits-header">
+    <p class="panel-label" style="margin:0;">Segment Performance</p>
+    <span style="font-size:11px;color:var(--text-dim);">{{ segments | length }} segments</span>
+  </div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Segment</th>
+        <th>Type</th>
+        <th>Target</th>
+        <th class="r">Avg Pace</th>
+        <th class="r">Avg HR</th>
+        <th class="r">Avg Speed</th>
+        <th class="r">Avg GAP</th>
+        <th class="r">Avg Cadence</th>
+        <th class="r">In Target</th>
+        <th class="r">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for seg in segments %}
+      <tr>
+        <td style="font-weight:600;color:var(--text-primary);">
+          {{ seg.segment_name or ("Segment " ~ seg.segment_index) }}
+        </td>
+        <td style="font-size:11px;color:var(--text-dim);">{{ seg.step_type or "—" }}</td>
+        <td style="font-size:11px;color:var(--text-muted);">{{ seg.target_label }}</td>
+        <td class="r">
+          {% if seg.actuals.avg_pace_formatted %}
+            {{ seg.actuals.avg_pace_formatted }}/km
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.actuals.avg_heartrate_bpm %}
+            {{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.actuals.avg_speed_kmh %}
+            {{ "%.1f" | format(seg.actuals.avg_speed_kmh) }} km/h
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.actuals.avg_gap_formatted %}
+            {{ seg.actuals.avg_gap_formatted }}/km
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.actuals.avg_cadence %}
+            {{ "%.0f" | format(seg.actuals.avg_cadence) }} spm
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.compliance.time_in_target_pct is not none %}
+            {{ "%.0f%%" | format(seg.compliance.time_in_target_pct * 100) }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.compliance_pct is not none %}
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+            <div class="compliance-bar-track" style="width:48px;">
+              <div class="compliance-bar-fill" style="width:{{ seg.compliance_pct }}%;background:
+                {% if seg.compliance_pct >= 80 %}var(--accent-primary)
+                {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+                {% else %}var(--accent-red){% endif %};"></div>
+            </div>
+            <span style="font-weight:700;min-width:34px;text-align:right;color:
+              {% if seg.compliance_pct >= 80 %}var(--accent-primary)
+              {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+              {% else %}var(--accent-red){% endif %};">
+              {{ seg.compliance_pct }}%
+            </span>
+          </div>
+          {% else %}
+          <span style="color:var(--text-dim);">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state" style="--delay:200ms">
+  {% if linked_activity %}
+  No compliance data yet. Run:<br>
+  <code style="font-size:12px;color:var(--accent-primary);">fitops workouts compliance {{ linked_activity.strava_id }}</code>
+  {% else %}
+  No compliance data. Link this workout to an activity first.
+  {% endif %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

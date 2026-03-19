@@ -107,9 +107,11 @@ def _estimate_tss(activity: Activity) -> float:
         if lthr:
             hr_ratio = avg_hr / lthr
         elif max_hr:
-            hr_ratio = avg_hr / (max_hr * 0.88)
+            hr_ratio = avg_hr / (max_hr * 0.88)  # LTHR ≈ 88% max HR (Karvonen standard)
         else:
-            hr_ratio = avg_hr / 185.0
+            age = settings.age
+            estimated_max_hr = (220 - age) if age else 185
+            hr_ratio = avg_hr / estimated_max_hr
 
         intensity_factor = min(hr_ratio, 2.0)
         return round(duration_h * (intensity_factor ** 2) * 100, 2)
@@ -170,24 +172,29 @@ def _compute_overtraining_indicators(history: list) -> dict:
         return {}
 
     current = history[-1]
-    acwr = round(current.atl / current.ctl, 2) if current.ctl > 0 else None
 
-    if acwr is None:
-        acwr_label = "Unknown"
-    elif acwr < 0.8:
-        acwr_label = "Detraining"
-    elif acwr <= 1.3:
-        acwr_label = "Optimal"
-    elif acwr <= 1.5:
-        acwr_label = "Caution — elevated injury risk"
+    # Require 21+ days of history before ACWR is meaningful (CTL takes ~42 days to converge)
+    if len(history) < 21:
+        acwr = None
+        acwr_label = "Insufficient history"
     else:
-        acwr_label = "Danger — high injury risk"
+        acwr = round(current.atl / current.ctl, 2) if current.ctl > 0 else None
+        if acwr is None:
+            acwr_label = "Unknown"
+        elif acwr < 0.8:
+            acwr_label = "Detraining"
+        elif acwr <= 1.3:
+            acwr_label = "Optimal"
+        elif acwr <= 1.5:
+            acwr_label = "Caution — elevated injury risk"
+        else:
+            acwr_label = "Danger — high injury risk"
 
     # Training monotony from last 7 days of TSS
     recent_tss = [d.daily_tss for d in history[-7:]]
     monotony = None
     strain = None
-    if len(recent_tss) >= 2:
+    if len(recent_tss) >= 5:  # require 5 data points to avoid meaningless monotony
         mean_tss = sum(recent_tss) / len(recent_tss)
         if mean_tss > 0:
             try:

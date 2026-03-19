@@ -82,6 +82,7 @@ async def compute_trends(
     athlete_id: int,
     days: int = 180,
     sport_filter: Optional[str] = None,
+    sport_types: Optional[frozenset] = None,
 ) -> Optional[TrendResult]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -92,6 +93,8 @@ async def compute_trends(
         )
         if sport_filter:
             stmt = stmt.where(Activity.sport_type == sport_filter)
+        elif sport_types:
+            stmt = stmt.where(Activity.sport_type.in_(list(sport_types)))
         stmt = stmt.order_by(Activity.start_date)
         result = await session.execute(stmt)
         activities = result.scalars().all()
@@ -117,13 +120,13 @@ async def compute_trends(
             "activity_count": len(acts),
         })
 
-    if len(weekly_data) >= 2:
+    if len(weekly_data) >= 6:
         x = list(range(len(weekly_data)))
         y = [w["distance_km"] for w in weekly_data]
         vol_slope, _ = _linear_regression(x, y)
         vol_direction = "increasing" if vol_slope > 0.5 else ("decreasing" if vol_slope < -0.5 else "stable")
     else:
-        vol_slope, vol_direction = 0.0, "stable"
+        vol_slope, vol_direction = 0.0, "insufficient_data"
 
     volume_trend = {
         "slope_km_per_week": round(vol_slope, 3),
@@ -139,7 +142,7 @@ async def compute_trends(
             (dated[i].start_date - dated[i - 1].start_date).total_seconds() / 86400
             for i in range(1, len(dated))
         ]
-        gap_std = statistics.stdev(gaps) if len(gaps) >= 2 else 0.0
+        gap_std = statistics.stdev(gaps) if len(gaps) >= 5 else 0.0
         consistency_score = max(0.0, min(1.0, 1.0 - gap_std / 7.0))
         avg_gap = sum(gaps) / len(gaps)
     else:
@@ -149,9 +152,12 @@ async def compute_trends(
     weeks_active = len([w for w in weekly_data if w["activity_count"] > 0])
     weekly_consistency = weeks_active / total_weeks
 
+    activities_per_week = len(activities) / max(1, days / 7)
     consistency = {
         "consistency_score": round(consistency_score, 3),
         "weekly_consistency": round(weekly_consistency, 3),
+        "regularity_score": round(weekly_consistency, 3),
+        "activities_per_week": round(activities_per_week, 1),
         "avg_days_between_activities": round(avg_gap, 1) if avg_gap else None,
     }
 
@@ -164,14 +170,17 @@ async def compute_trends(
     season_stats: dict[str, dict] = {}
     for season, acts in seasonal_acts.items():
         total_km = sum((a.distance_m or 0) / 1000 for a in acts)
-        paces = [
-            1000 / a.average_speed_ms / 60
-            for a in acts if a.average_speed_ms and a.average_speed_ms > 0
-        ]
+        # Distance-weighted mean: long runs shouldn't count same as strides
+        total_dist = sum(a.distance_m or 0 for a in acts if a.average_speed_ms and a.average_speed_ms > 0)
+        avg_pace = (
+            sum((1000 / a.average_speed_ms / 60) * (a.distance_m or 0)
+                for a in acts if a.average_speed_ms and a.average_speed_ms > 0)
+            / total_dist
+        ) if total_dist > 0 else None
         season_stats[season] = {
             "activity_count": len(acts),
             "total_distance_km": round(total_km, 2),
-            "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else None,
+            "avg_pace_min_per_km": round(avg_pace, 2) if avg_pace else None,
         }
 
     peak_season = (
@@ -182,27 +191,38 @@ async def compute_trends(
     seasonal = {"seasons": season_stats, "peak_season": peak_season}
 
     # --- Performance trends (monthly) ---
+    # Store (pace, distance) tuples so we can compute distance-weighted average
     monthly_pace: dict[tuple, list] = defaultdict(list)
     monthly_hr: dict[tuple, list] = defaultdict(list)
     for act in activities:
         if act.start_date:
             key = (act.start_date.year, act.start_date.month)
             if act.average_speed_ms and act.average_speed_ms > 0:
-                monthly_pace[key].append(1000 / act.average_speed_ms / 60)
+                monthly_pace[key].append((1000 / act.average_speed_ms / 60, act.distance_m or 0))
             if act.average_heartrate:
                 monthly_hr[key].append(act.average_heartrate)
 
     pace_slope = hr_slope = None
     pace_direction = hr_direction = improvement_rate = None
 
-    if len(monthly_pace) >= 2:
+    if len(monthly_pace) >= 4:
         sm = sorted(monthly_pace.keys())
         x = list(range(len(sm)))
-        y = [sum(monthly_pace[m]) / len(monthly_pace[m]) for m in sm]
+        # Distance-weighted average pace per month
+        y = []
+        for m in sm:
+            entries = monthly_pace[m]
+            total_d = sum(d for _, d in entries)
+            if total_d > 0:
+                y.append(sum(p * d for p, d in entries) / total_d)
+            else:
+                y.append(sum(p for p, _ in entries) / len(entries))
         pace_slope, _ = _linear_regression(x, y)
         pace_direction = _pace_direction(pace_slope)
         if len(y) >= 2:
-            improvement_rate = (y[-1] - y[0]) / max(y[0], 0.01) * 100 / max(1, len(y) - 1)
+            improvement_rate = (y[-1] - y[0]) / max(y[0], 1.0) * 100 / max(1, len(y) - 1)
+    elif len(monthly_pace) >= 2:
+        pace_direction = "insufficient_data"
 
     if len(monthly_hr) >= 2:
         sh = sorted(monthly_hr.keys())
@@ -214,6 +234,8 @@ async def compute_trends(
     performance_trend = {
         "pace_slope": round(pace_slope, 4) if pace_slope is not None else None,
         "pace_direction": pace_direction,
+        "pace_trend": pace_direction,
+        "pace_strength": _trend_strength(pace_slope) if pace_slope is not None else "weak",
         "hr_slope": round(hr_slope, 3) if hr_slope is not None else None,
         "hr_direction": hr_direction,
         "improvement_rate_pct_per_month": round(improvement_rate, 2) if improvement_rate is not None else None,

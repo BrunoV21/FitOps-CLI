@@ -1,23 +1,39 @@
 # FitOps-CLI
 
-A local, async-first Python CLI that connects your Strava account to a local SQLite database and exposes your training data in **LLM-friendly JSON** — designed so an AI agent can analyze your fitness, spot patterns, and guide your training.
+Your fitness data is yours. FitOps gives you **two first-class ways to work with it**: a local dashboard for human exploration and a structured CLI for AI agents — both reading from the same SQLite database on your machine.
 
-## Why FitOps-CLI?
+```
+You (human)  →  Dashboard (browser)  ─┐
+                                       ├─  ~/.fitops/fitops.db
+AI Agent     →  CLI + JSON           ─┘
+```
 
-Most Strava dashboards are built for humans browsing graphs. FitOps-CLI is built for **AI-assisted coaching**:
+Sync your Strava activities once, then explore them however you like — visually in the browser or programmatically through an agent. No cloud, no subscriptions. Your data never leaves your machine.
 
+## Why FitOps?
+
+Most fitness tools are built for one audience. FitOps is built for two:
+
+- **For humans:** A local dashboard with charts, period filters, and training analytics you can browse at `http://localhost:5000`.
+- **For agents:** Every data view is also a CLI command that outputs richly annotated JSON — explicit units, resolved IDs, `_meta` context blocks, and `data_availability` hints so an LLM always knows what to fetch next.
+- **Same data, always.** The dashboard and the CLI are two views into the same truth. There is no separate "agent API" — if you can see it in the browser, an agent can query it from the terminal.
 - **Everything is local.** Your data lives in `~/.fitops/fitops.db`. No cloud, no subscriptions.
-- **Structured JSON output.** Every command outputs richly annotated JSON with human-readable labels, explicit units, and a `_meta` context block — exactly what an LLM needs.
 - **Incremental sync.** Authenticate once, then run `fitops sync run` whenever you want fresh data. Only new activities are fetched.
 - **Async-first.** Built on `httpx` and `aiosqlite` for non-blocking I/O throughout.
+
+See [AGENTS.md](AGENTS.md) for guidelines on how new functionality should maintain parity across both surfaces.
 
 ## Roadmap
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | 1 — Foundation | ✅ Done | Auth, sync, activities, athlete profile |
-| 2 — Analytics | 🔜 Next | CTL/ATL/TSB, VO2max, LT1/LT2 thresholds |
-| 3 — Workouts | 🔜 Future | Workout plans, scheduling, compliance scoring |
+| 2 — Analytics | ✅ Done | CTL/ATL/TSB, VO2max, LT1/LT2 thresholds, dashboard |
+| 3 — Workouts | 🔜 Planned | Workout plans, scheduling, compliance scoring |
+| 4 — More providers | 🔜 Planned | Direct sync from Garmin, Coros, Samsung Health, Apple Health, Huawei Health |
+| 5 — Cloud backup | 🔜 Planned | Back up your local database to Google Drive, OneDrive, Dropbox, or Mega |
+
+Phases 4 and 5 are about making FitOps device-agnostic and resilient: connect whichever platform your watch syncs to, and keep your data safe with automated cloud backups to the storage provider you already use. See the [full roadmap](docs/customerfacing/roadmap.md) for details.
 
 ## Installation
 
@@ -30,6 +46,15 @@ pip install -e .
 ```
 
 ## Quick Start
+
+### Start the Dashboard
+
+```bash
+fitops dashboard start
+# → Opens http://localhost:5000
+```
+
+The dashboard shows an overview of recent training, activity history, analytics (training load, trends, performance), and your athlete profile — all sourced from the local database.
 
 ### 1. Create a Strava API Application
 

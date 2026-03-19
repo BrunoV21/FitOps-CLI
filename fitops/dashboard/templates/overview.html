@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Overview — FitOps{% endblock %}
+{% block page_name %}Overview{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div class="page-header">
+  <div>
+    <p class="page-title">Overview</p>
+    {% if athlete %}
+    <p class="page-subtitle">
+      {{ athlete.firstname }} {{ athlete.lastname }}
+      {% if athlete.city %} · {{ athlete.city }}{% endif %}
+      {% if athlete.country %} · {{ athlete.country }}{% endif %}
+      {% if athlete.weight_kg %} · {{ athlete.weight_kg }} kg{% endif %}
+    </p>
+    {% endif %}
+  </div>
+  <div class="period-tabs">
+    {% for p, lbl in [('week','This Week'),('month','This Month'),('year','This Year'),('all','All Time')] %}
+    <a href="/?period={{ p }}" class="period-tab {% if period == p %}active{% endif %}">{{ lbl }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Row 1: 3 stat panels -->
+<div class="grid-3 mb-6" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:0ms">
+    <p class="panel-label">Activities — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_count | default(0) }}</p>
+  </div>
+  <div class="panel panel--accent" style="--delay:40ms">
+    <p class="panel-label">Distance — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_distance_km | default(0) }}<span class="panel-unit">km</span></p>
+  </div>
+  <div class="panel panel--accent-amber" style="--delay:80ms">
+    <p class="panel-label">Elevation — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_elevation_m | default(0) }}<span class="panel-unit">m</span></p>
+  </div>
+</div>
+
+<!-- Row 2: Today's Weather -->
+{% if today_weather %}
+<div class="grid-4 mb-6" style="margin-bottom:1px;">
+
+  <!-- Temperature -->
+  <div class="panel panel--accent-blue" style="--delay:100ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Temperature · Now</p>
+    <p style="font-size:22px;font-weight:700;color:var(--text-primary);line-height:1;letter-spacing:-0.02em;">
+      {% if today_weather.temperature_c is not none %}{{ today_weather.temperature_c }}{% else %}—{% endif %}<span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:3px;">°C</span>
+    </p>
+    <p class="panel-sub" style="margin-top:6px;">
+      Feels {{ today_weather.apparent_temp_c if today_weather.apparent_temp_c is not none else '—' }} °C
+      · {{ today_weather.humidity_pct if today_weather.humidity_pct is not none else '—' }}% RH
+    </p>
+  </div>
+
+  <!-- Conditions -->
+  <div class="panel" style="--delay:120ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Conditions</p>
+    <p style="font-size:14px;font-weight:700;color:var(--text-primary);line-height:1.2;margin-bottom:6px;">{{ today_weather.condition }}</p>
+    <p class="panel-sub">
+      {% if today_weather.precipitation_mm is not none and today_weather.precipitation_mm > 0 %}Precip {{ today_weather.precipitation_mm }} mm{% else %}No precipitation{% endif %}
+      · <span style="color:var(--text-dim);font-size:10px;">{{ today_weather.lat | round(2) }}, {{ today_weather.lng | round(2) }}</span>
+    </p>
+  </div>
+
+  <!-- Wind -->
+  <div class="panel panel--accent-amber" style="--delay:140ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Wind</p>
+    <p style="font-size:22px;font-weight:700;color:var(--text-primary);line-height:1;letter-spacing:-0.02em;">
+      {% if today_weather.wind_speed_kmh is not none %}{{ today_weather.wind_speed_kmh }}{% else %}—{% endif %}<span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:3px;">km/h</span>
+    </p>
+    <p class="panel-sub" style="margin-top:6px;">
+      {{ today_weather.wind_direction_compass or '—' }}
+      {% if today_weather.wind_gusts_kmh and today_weather.wind_gusts_kmh > 0 %}· gusts {{ today_weather.wind_gusts_kmh }} km/h{% endif %}
+    </p>
+  </div>
+
+  <!-- Race Factors -->
+  <div class="panel panel--accent" style="--delay:160ms;padding:12px 16px;">
+    <p class="panel-label" style="margin-bottom:6px;">Race Factors</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      {% if today_weather.wbgt_flag %}
+      <span class="badge
+        {% if today_weather.wbgt_flag == 'green' %}badge-green
+        {% elif today_weather.wbgt_flag == 'yellow' %}badge-amber
+        {% else %}badge-red{% endif %}">{{ today_weather.wbgt_flag | upper }}</span>
+      {% endif %}
+      {% if today_weather.wbgt_c is not none %}
+      <span style="font-size:13px;font-weight:700;color:var(--text-primary);">WBGT {{ today_weather.wbgt_c }} °C</span>
+      {% endif %}
+    </div>
+    <p class="panel-sub">
+      Heat penalty:
+      <span class="
+        {% if today_weather.pace_heat_factor <= 1.01 %}c-green
+        {% elif today_weather.pace_heat_factor <= 1.05 %}c-amber
+        {% else %}c-red{% endif %}">
+        {% if today_weather.pace_heat_factor is not none %}
+          {% if today_weather.pace_heat_factor <= 1.0 %}none
+          {% else %}+{{ "%.1f"|format((today_weather.pace_heat_factor - 1) * 100) }}%{% endif %}
+        {% else %}—{% endif %}
+      </span>
+    </p>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- Row 3: Recent activities + Training status -->
+<div class="grid-12" style="margin-bottom:1px;">
+
+  <!-- Recent Activities (col 1-8) -->
+  <div class="panel col-8" style="--delay:120ms">
+    <div class="panel-header">
+      <span class="panel-label">Recent Activities — {{ period_label }}</span>
+      <a href="/activities" class="panel-link">All activities →</a>
+    </div>
+    {% if recent_activities %}
+    <div class="activity-list">
+      {% for a in recent_activities %}
+      <a href="/activities/{{ a.strava_id }}" class="activity-row">
+        <div class="activity-row-left">
+          <span class="activity-row-icon">{{ sport_icon(a.sport_type) }}</span>
+          <div>
+            <p class="activity-row-name">{{ a.name }}</p>
+            <p class="activity-row-date">{{ a.date }}</p>
+          </div>
+        </div>
+        <div class="activity-row-stats">
+          {% if a.distance_km %}<span>{{ a.distance_km }} km</span>{% endif %}
+          <span>{{ a.duration }}</span>
+          {% if a.avg_hr %}<span>{{ a.avg_hr }} bpm</span>{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:var(--text-dim);font-size:12px;">No activities synced yet. Run <code>fitops sync run</code> first.</p>
+    {% endif %}
+  </div>
+
+  <!-- Training Status (col 9-12) -->
+  <div class="panel col-4 panel--accent-purple" style="--delay:160ms">
+    <div class="panel-header">
+      <span class="panel-label">Training Status</span>
+      <a href="/analytics/training-load" class="panel-link">Chart →</a>
+    </div>
+    {% if current_load %}
+    <div>
+      <p class="panel-label" style="margin-bottom:4px;">Fitness (CTL)</p>
+      <p class="panel-metric--md c-blue">{{ current_load.ctl }}</p>
+      <div class="divider"></div>
+
+      <p class="panel-label" style="margin-bottom:4px;">Fatigue (ATL)</p>
+      <p class="panel-metric--sm c-amber">{{ current_load.atl }}</p>
+      <div class="divider"></div>
+
+      <p class="panel-label" style="margin-bottom:4px;">Form (TSB)</p>
+      <p class="panel-metric--sm
+        {% if current_load.tsb > 5 %}c-green
+        {% elif current_load.tsb < -10 %}c-red
+        {% else %}c-amber{% endif %}">
+        {{ current_load.tsb }}
+      </p>
+      <div class="divider"></div>
+
+      <span class="badge
+        {% if 'Fresh' in current_load.form_label %}badge-green
+        {% elif 'Productive' in current_load.form_label %}badge-blue
+        {% elif 'Overreaching' in current_load.form_label or 'risk' in current_load.form_label %}badge-red
+        {% else %}badge-dim{% endif %}">
+        {{ current_load.form_label }}
+      </span>
+    </div>
+    {% else %}
+    <p style="color:var(--text-dim);font-size:12px;">No training data.<br>Run <code>fitops sync run</code> first.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Row 4: Activity Heatmap -->
+<div class="panel col-12" style="--delay:200ms">
+  <div class="panel-header">
+    <span class="panel-label">Activity History</span>
+    <div class="heatmap-legend">
+      Shorter
+      <span class="heatmap-swatch" style="background:#1a1a1a;"></span>
+      <span class="heatmap-swatch" style="background:rgba(0,255,135,0.15);"></span>
+      <span class="heatmap-swatch" style="background:rgba(0,255,135,0.4);"></span>
+      <span class="heatmap-swatch" style="background:rgba(0,255,135,0.7);"></span>
+      <span class="heatmap-swatch" style="background:#00ff87;"></span>
+      Longer
+    </div>
+  </div>
+  <div id="activity-heatmap" style="width:100%;padding-bottom:4px;"></div>
+  <p id="heatmap-tooltip" style="font-size:11px;color:var(--text-dim);margin-top:8px;min-height:16px;"></p>
+  <div id="heatmap-day-detail"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const HEATMAP_DATA = {{ heatmap_json | safe }};
+const HEATMAP_PERIOD = "{{ period }}";
+renderActivityHeatmap("activity-heatmap", HEATMAP_DATA, HEATMAP_PERIOD, "heatmap-tooltip", "heatmap-day-detail");
+</script>
+{% endblock %}

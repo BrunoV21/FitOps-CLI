@@ -1,0 +1,591 @@
+{% extends "base.html" %}
+{% block title %}{{ activity.name if activity else "Not Found" }} — FitOps{% endblock %}
+{% block page_name %}Activity{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if not activity %}
+<div class="empty-state">
+  Activity not found.
+  <a href="/activities" class="panel-link" style="display:block;margin-top:8px;">← Back to activities</a>
+</div>
+{% else %}
+
+{# ── Header ──────────────────────────────────────────────────── #}
+<div class="mb-4">
+  <a href="/activities" class="back-link">← Activities</a>
+  <div class="activity-title-row">
+    <span style="opacity:0.55;color:var(--text-muted);width:22px;height:22px;display:flex;align-items:center;flex-shrink:0;margin-top:2px;">{{ sport_icon(activity.sport_type) }}</span>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <h1 style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;">{{ activity.name }}</h1>
+        {% if activity.is_race %}<span class="badge badge-amber">Race</span>{% endif %}
+        {% if activity.trainer %}<span class="badge badge-dim">Trainer</span>{% endif %}
+        {% if activity.commute %}<span class="badge badge-dim">Commute</span>{% endif %}
+      </div>
+      <div class="activity-title-meta">
+        <span>{{ activity.sport_type }}</span>
+        <span style="color:var(--border-hover);">·</span>
+        <span>{{ activity.date_pretty }}</span>
+        {% if activity.device_name %}
+        <span style="color:var(--border-hover);">·</span>
+        <span>{{ activity.device_name }}</span>
+        {% endif %}
+      </div>
+      {% if activity.description %}
+      <p class="activity-description">{{ activity.description }}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── Primary metrics ─────────────────────────────────────────── #}
+<div class="metric-row">
+  {% if activity.distance_km %}
+  <div class="panel panel--accent" style="--delay:0ms">
+    <p class="panel-label">Distance</p>
+    <p class="panel-metric--md">{{ activity.distance_km }}<span class="panel-unit">km</span></p>
+  </div>
+  {% endif %}
+  <div class="panel" style="--delay:40ms">
+    <p class="panel-label">Moving Time</p>
+    <p class="panel-metric--md">{{ activity.duration }}</p>
+    {% if activity.elapsed and activity.efficiency_pct and activity.efficiency_pct < 97 %}
+    <p class="panel-sub">{{ activity.elapsed }} elapsed · {{ activity.efficiency_pct }}% moving</p>
+    {% endif %}
+  </div>
+  <div class="panel" style="--delay:80ms">
+    <p class="panel-label">Pace / Speed</p>
+    <p class="panel-metric--md">{{ activity.pace }}</p>
+  </div>
+  {% if activity.elevation_m %}
+  <div class="panel" style="--delay:120ms">
+    <p class="panel-label">Elevation Gain</p>
+    <p class="panel-metric--md">{{ activity.elevation_m }}<span class="panel-unit">m</span></p>
+  </div>
+  {% endif %}
+  {% if activity.tss %}
+  <div class="panel panel--accent-blue" style="--delay:160ms">
+    <p class="panel-label">Training Stress</p>
+    <p class="panel-metric--md c-blue">{{ activity.tss }}</p>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Secondary metrics ───────────────────────────────────────── #}
+{% set has_secondary = activity.avg_hr or avg_gap or activity.avg_cadence or activity.avg_watts or activity.calories or activity.suffer_score %}
+{% if has_secondary %}
+<div class="metric-row" style="margin-bottom:1px;">
+  {% if activity.avg_hr %}
+  <div class="panel panel--accent-red" style="--delay:200ms">
+    <p class="panel-label">Avg Heart Rate</p>
+    <p class="panel-metric--md c-red">{{ activity.avg_hr }}<span class="panel-unit">bpm</span></p>
+    {% if activity.max_hr %}<p class="panel-sub">Max {{ activity.max_hr }} bpm</p>{% endif %}
+  </div>
+  {% endif %}
+  {% if avg_gap %}
+  <div class="panel panel--accent" style="--delay:240ms">
+    <p class="panel-label">Avg Grade-Adj Pace</p>
+    <p class="panel-metric--md c-green">{{ avg_gap }}</p>
+    <p class="panel-sub">vs {{ activity.pace }} actual</p>
+  </div>
+  {% endif %}
+  {% if activity.avg_cadence %}
+  <div class="panel panel--accent-amber" style="--delay:280ms">
+    <p class="panel-label">Avg Cadence</p>
+    <p class="panel-metric--md c-amber">{{ activity.avg_cadence }}<span class="panel-unit">{{ activity.cadence_unit }}</span></p>
+  </div>
+  {% endif %}
+  {% if activity.avg_watts %}
+  <div class="panel panel--accent-amber" style="--delay:320ms">
+    <p class="panel-label">{% if activity.weighted_avg_watts %}Avg / NP Power{% else %}Avg Power{% endif %}</p>
+    <p class="panel-metric--md c-amber">{{ activity.avg_watts }}<span class="panel-unit">W</span></p>
+    {% if activity.weighted_avg_watts %}<p class="panel-sub">NP {{ activity.weighted_avg_watts }} W</p>{% endif %}
+  </div>
+  {% endif %}
+  {% if activity.calories %}
+  <div class="panel" style="--delay:360ms">
+    <p class="panel-label">Calories</p>
+    <p class="panel-metric--md">{{ activity.calories }}<span class="panel-unit">kcal</span></p>
+  </div>
+  {% endif %}
+  {% if activity.suffer_score %}
+  <div class="panel" style="--delay:400ms">
+    <p class="panel-label">Suffer Score</p>
+    <p class="panel-metric--md">{{ activity.suffer_score }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── Weather Panel ────────────────────────────────────────────── #}
+{% if weather %}
+<div class="panel" style="--delay:440ms;margin-bottom:1px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <p class="panel-label" style="margin:0;">
+      Conditions
+      {% if weather.source == 'manual' %}<span class="badge badge-dim" style="margin-left:6px;">manual</span>{% endif %}
+    </p>
+    {% if weather.true_pace_fmt or weather.wap_fmt %}
+    <span style="font-size:11px;color:var(--text-dim);">
+      {% if weather.true_pace_fmt %}
+      True Pace
+      <span style="color:var(--accent-primary);font-weight:700;margin-left:4px;">{{ weather.true_pace_fmt }}</span>
+      {% else %}
+      WAP
+      <span style="color:var(--accent-blue);font-weight:700;margin-left:4px;">{{ weather.wap_fmt }}</span>
+      {% endif %}
+      {% if weather.wap_factor_pct != 0 %}
+      <span class="{% if weather.wap_factor_pct > 3 %}wap-factor-bad{% elif weather.wap_factor_pct > 0 %}wap-factor-warm{% else %}wap-factor-good{% endif %}" style="margin-left:4px;">
+        ({% if weather.wap_factor_pct > 0 %}+{% endif %}{{ "%.1f"|format(weather.wap_factor_pct) }}%)
+      </span>
+      {% endif %}
+    </span>
+    {% endif %}
+  </div>
+  <div class="effort-grid">
+    {% if weather.temperature_c is not none %}
+    <div class="effort-item">
+      <p class="effort-label">Temperature</p>
+      <p class="effort-val">
+        <span class="wbgt-{{ weather.wbgt_flag }}" style="font-weight:700;">{{ "%.0f"|format(weather.temperature_c) }}°C</span>
+        {% if weather.apparent_temp_c is not none and (weather.apparent_temp_c - weather.temperature_c) | abs > 1 %}
+        <span style="color:var(--text-dim);font-size:11px;margin-left:4px;">feels {{ "%.0f"|format(weather.apparent_temp_c) }}°</span>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.humidity_pct is not none %}
+    <div class="effort-item">
+      <p class="effort-label">Humidity</p>
+      <p class="effort-val">{{ "%.0f"|format(weather.humidity_pct) }}%</p>
+    </div>
+    {% endif %}
+    {% if weather.wind_speed_kmh is not none %}
+    <div class="effort-item">
+      <p class="effort-label">Wind</p>
+      <p class="effort-val">{{ weather.wind_speed_kmh }} km/h
+        {% if weather.wind_dir_compass %}
+        <span style="color:var(--text-dim);font-size:11px;">from {{ weather.wind_dir_compass }}</span>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.wbgt_c is not none %}
+    <div class="effort-item">
+      <p class="effort-label"><abbr title="Wet Bulb Globe Temperature — combines temperature, humidity and radiant heat into a single heat stress index">WBGT</abbr></p>
+      <p class="effort-val">
+        <span class="wbgt-{{ weather.wbgt_flag }}">{{ "%.1f"|format(weather.wbgt_c) }}°C</span>
+        <span class="badge wbgt-{{ weather.wbgt_flag }}" style="margin-left:6px;border-color:currentColor;">{{ weather.wbgt_flag }}</span>
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.hr_heat_pct and weather.hr_heat_pct > 0 %}
+    <div class="effort-item">
+      <p class="effort-label"><abbr title="Estimated HR elevation at the same pace due to reduced VO₂max capacity from heat and humidity (Sawka/Kenefick)">Heat HR Effect</abbr></p>
+      <p class="effort-val">
+        <span class="wap-factor-warm">+{{ "%.1f"|format(weather.hr_heat_pct) }}%</span>
+        {% if weather.hr_heat_bpm %}
+        <span style="color:var(--text-dim);font-size:11px;margin-left:4px;">≈ +{{ weather.hr_heat_bpm }} bpm</span>
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+    {% if weather.precipitation_mm is not none and weather.precipitation_mm > 0 %}
+    <div class="effort-item">
+      <p class="effort-label">Precipitation</p>
+      <p class="effort-val">{{ "%.1f"|format(weather.precipitation_mm) }} mm</p>
+    </div>
+    {% endif %}
+    {% if weather.condition %}
+    <div class="effort-item">
+      <p class="effort-label">Condition</p>
+      <p class="effort-val">{{ weather.condition }}</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Activity Analysis: map + stream chart ──────────────────── #}
+{% if has_streams %}
+<div class="analysis-section" style="--delay:440ms;margin-bottom:1px;">
+  <div class="analysis-header">
+    <p class="panel-label" style="margin:0;">Activity Analysis</p>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div id="metric-toggles" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      <div class="xaxis-toggle">
+        <button id="xaxis-distance" class="xaxis-btn active" onclick="setXAxis('distance')">Distance</button>
+        <button id="xaxis-time"     class="xaxis-btn"        onclick="setXAxis('time')">Time</button>
+      </div>
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    </div>
+  </div>
+  <div class="analysis-body">
+    <div class="analysis-map">
+      <div id="activity-map" style="height:100%;min-height:380px;"></div>
+    </div>
+    <div class="analysis-chart">
+      <canvas id="stream-chart"></canvas>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── HR Zones + Pace Zones ───────────────────────────────────── #}
+{% if analytics %}
+{% set zone_colors = ["var(--text-dim)","var(--accent-blue)","var(--accent-primary)","var(--accent-amber)","var(--accent-red)"] %}
+
+{% if analytics.hr_zones or analytics.pace_zones %}
+<div class="zones-row {% if analytics.hr_zones and analytics.pace_zones %}dual{% else %}solo{% endif %}" style="--delay:480ms">
+
+  {% if analytics.hr_zones %}
+  <div class="panel">
+    <p class="panel-label">Heart Rate Zones</p>
+    {% for z in analytics.hr_zones %}
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px;">
+        <span style="color:{{ zone_colors[loop.index0] }};">
+          Z{{ z.zone }} {{ z.name }}
+          {% if z.min_bpm and z.max_bpm %}
+            <span style="color:var(--text-dim);">({{ z.min_bpm }}–{{ z.max_bpm }} bpm)</span>
+          {% elif z.min_bpm %}
+            <span style="color:var(--text-dim);">({{ z.min_bpm }}+ bpm)</span>
+          {% endif %}
+        </span>
+        <span style="color:var(--text-muted);">{{ z.time_fmt }} <span style="color:var(--text-dim);">({{ z.pct }}%)</span></span>
+      </div>
+      <div class="zone-bar-track">
+        <div class="zone-bar-fill" style="width:{{ z.pct }}%;background:{{ zone_colors[loop.index0] }};{% if z.pct == 0 %}min-width:0;{% endif %}"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if analytics.pace_zones %}
+  <div class="panel">
+    <p class="panel-label">Pace Zones</p>
+    {% for z in analytics.pace_zones %}
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px;">
+        <span style="color:{{ zone_colors[loop.index0] }};">
+          Z{{ z.zone }} {{ z.name }}
+          {% if z.max_pace and z.min_pace %}
+            <span style="color:var(--text-dim);">({{ z.max_pace }}–{{ z.min_pace }})</span>
+          {% elif z.max_pace %}
+            <span style="color:var(--text-dim);">(≤ {{ z.max_pace }})</span>
+          {% elif z.min_pace %}
+            <span style="color:var(--text-dim);">(≥ {{ z.min_pace }})</span>
+          {% endif %}
+        </span>
+        <span style="color:var(--text-muted);">{{ z.time_fmt }} <span style="color:var(--text-dim);">({{ z.pct }}%)</span></span>
+      </div>
+      <div class="zone-bar-track">
+        <div class="zone-bar-fill" style="width:{{ z.pct }}%;background:{{ zone_colors[loop.index0] }};{% if z.pct == 0 %}min-width:0;{% endif %}"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% endif %}
+
+
+{% elif activity_raw and not activity_raw.streams_fetched %}
+<div class="panel" style="--delay:480ms;margin-bottom:1px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+  <p style="font-size:12px;color:var(--text-dim);margin:0;">
+    No stream data for this activity yet.
+  </p>
+  <button id="fetch-streams-btn" class="btn btn-primary" style="flex-shrink:0;" onclick="fetchActivityStreams({{ activity.strava_id }})">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px;">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+    Fetch Streams
+  </button>
+</div>
+{% endif %}
+
+{# ── Effort details panel ─────────────────────────────────────── #}
+{% set has_effort_details = activity.elapsed or gear_name or activity.gear_id %}
+{% if has_effort_details %}
+<div class="panel" style="--delay:560ms;margin-bottom:1px;">
+  <p class="panel-label">Activity Details</p>
+  <div class="effort-grid">
+    {% if activity.elapsed %}
+    <div class="effort-item">
+      <p class="effort-label">Elapsed Time</p>
+      <p class="effort-val">{{ activity.elapsed }}</p>
+    </div>
+    {% endif %}
+    {% if activity.efficiency_pct and activity.efficiency_pct < 97 %}
+    <div class="effort-item">
+      <p class="effort-label">Moving Efficiency</p>
+      <p class="effort-val">{{ activity.efficiency_pct }}%</p>
+    </div>
+    {% endif %}
+    {% if gear_name or activity.gear_id %}
+    <div class="effort-item">
+      <p class="effort-label">Gear</p>
+      <p class="effort-val">{{ gear_name or activity.gear_id }}</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Per-km Splits ────────────────────────────────────────────── #}
+{% if km_splits and km_splits | length >= 2 %}
+{# Compute pace range for color bands #}
+{% set ns = namespace(min_s=9999.0, max_s=0.0) %}
+{% for sp in km_splits %}
+  {% if sp.pace_s %}
+    {% if sp.pace_s < ns.min_s %}{% set ns.min_s = sp.pace_s %}{% endif %}
+    {% if sp.pace_s > ns.max_s %}{% set ns.max_s = sp.pace_s %}{% endif %}
+  {% endif %}
+{% endfor %}
+{% set pace_range = ns.max_s - ns.min_s %}
+
+{% set show_hr  = km_splits | selectattr('avg_hr')   | list | length > 0 %}
+{% set show_cad = km_splits | selectattr('avg_cad')  | list | length > 0 %}
+{% set show_alt = km_splits | selectattr('elev_gain') | list | length > 0 %}
+<div class="table-wrap" style="--delay:600ms;margin-bottom:1px;">
+  <div class="splits-header">
+    <p class="panel-label" style="margin:0;">Per-km Splits</p>
+    <span style="font-size:11px;color:var(--text-dim);">{{ km_splits | length }} km</span>
+  </div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>km</th>
+        <th class="r">Pace</th>
+        {% if show_hr  %}<th class="r">Avg HR</th>{% endif %}
+        {% if show_cad %}<th class="r">Cadence</th>{% endif %}
+        {% if show_alt %}<th class="r">Elev +</th>{% endif %}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sp in km_splits %}
+      {% if sp.pace_s and pace_range > 0 %}
+        {% set rel = ((sp.pace_s - ns.min_s) / pace_range * 100) | round(0) | int %}
+        {% if rel < 30 %}{% set bar_cls = "pace-fast" %}
+        {% elif rel < 65 %}{% set bar_cls = "pace-mid" %}
+        {% else %}{% set bar_cls = "pace-slow" %}{% endif %}
+        {% set bar_w = [4, [72, (rel * 0.68 + 4) | int] | min] | max %}
+      {% else %}
+        {% set bar_cls = "pace-mid" %}
+        {% set bar_w = 24 %}
+      {% endif %}
+      <tr{% if sp.partial %} style="opacity:0.65;"{% endif %}>
+        <td style="color:var(--text-dim);">{{ sp.label }}</td>
+        <td class="r" style="color:var(--text-primary);font-weight:600;">{{ sp.pace }}</td>
+        {% if show_hr  %}<td class="r">{% if sp.avg_hr %}{{ sp.avg_hr }} bpm{% else %}—{% endif %}</td>{% endif %}
+        {% if show_cad %}<td class="r">{% if sp.avg_cad %}{{ sp.avg_cad }} spm{% else %}—{% endif %}</td>{% endif %}
+        {% if show_alt %}<td class="r">{% if sp.elev_gain %}+{{ sp.elev_gain }} m{% else %}—{% endif %}</td>{% endif %}
+        <td style="width:80px;">
+          <div class="pace-bar {{ bar_cls }}" style="width:{{ bar_w }}px;"></div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ── Workout Plan Overlay ─────────────────────────────────────── #}
+{% if workout %}
+<div class="table-wrap" style="--delay:620ms;margin-bottom:1px;">
+  <div class="splits-header">
+    <p class="panel-label" style="margin:0;">
+      Workout Plan — <a href="/workouts/{{ workout.id }}" class="panel-link">{{ workout.name }}</a>
+    </p>
+    {% if workout.compliance_pct is not none %}
+    <span style="font-size:12px;font-weight:700;color:
+      {% if workout.compliance_pct >= 80 %}var(--accent-primary)
+      {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
+      {% else %}var(--accent-red){% endif %};">
+      {{ workout.compliance_pct }}% overall
+    </span>
+    {% else %}
+    <span style="font-size:11px;color:var(--text-dim);">Run <code>fitops workouts compliance {{ activity.strava_id }}</code> to score</span>
+    {% endif %}
+  </div>
+  {% if workout.segments %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Segment</th>
+        <th>Type</th>
+        <th>Target</th>
+        <th class="r">Avg Pace</th>
+        <th class="r">Avg HR</th>
+        <th class="r">Avg GAP</th>
+        <th class="r">Avg Cadence</th>
+        <th class="r">In Target</th>
+        <th class="r">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for seg in workout.segments %}
+      <tr>
+        <td style="font-weight:600;">{{ seg.segment_name or ("Segment " ~ seg.segment_index) }}</td>
+        <td style="color:var(--text-dim);font-size:11px;">{{ seg.step_type or "—" }}</td>
+        <td style="font-size:11px;color:var(--text-muted);">{{ seg.target_label }}</td>
+        <td class="r">{% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}</td>
+        <td class="r">{% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}</td>
+        <td class="r">{% if seg.actuals.avg_gap_formatted %}{{ seg.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}</td>
+        <td class="r">{% if seg.actuals.avg_cadence %}{{ "%.0f" | format(seg.actuals.avg_cadence) }} spm{% else %}—{% endif %}</td>
+        <td class="r">
+          {% if seg.compliance.time_in_target_pct is not none %}
+          {{ "%.0f%%" | format(seg.compliance.time_in_target_pct * 100) }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if seg.compliance_pct is not none %}
+          <span style="font-weight:700;color:
+            {% if seg.compliance_pct >= 80 %}var(--accent-primary)
+            {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+            {% else %}var(--accent-red){% endif %};">
+            {{ seg.compliance_pct }}%
+          </span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="padding:12px 16px;color:var(--text-dim);font-size:12px;">
+    No compliance data yet. Run <code>fitops workouts compliance {{ activity.strava_id }}</code>.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── Lap Splits ───────────────────────────────────────────────── #}
+{% if laps %}
+{# Compute pace_s range across laps for color coding #}
+{% set lns = namespace(min_s=9999.0, max_s=0.0) %}
+{% for lap in laps %}
+  {% if lap.pace_s %}
+    {% if lap.pace_s < lns.min_s %}{% set lns.min_s = lap.pace_s %}{% endif %}
+    {% if lap.pace_s > lns.max_s %}{% set lns.max_s = lap.pace_s %}{% endif %}
+  {% endif %}
+{% endfor %}
+{% set lap_pace_range = lns.max_s - lns.min_s %}
+
+<div class="table-wrap" style="--delay:640ms;margin-bottom:1px;">
+  <div class="splits-header">
+    <p class="panel-label" style="margin:0;">Lap Splits</p>
+    <span style="font-size:11px;color:var(--text-dim);">{{ laps | length }} laps</span>
+  </div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th class="r">Distance</th>
+        <th class="r">Duration</th>
+        <th class="r">Pace / Speed</th>
+        <th class="r">Avg HR</th>
+        <th class="r">Max HR</th>
+        {% if laps | selectattr('avg_watts') | list %}<th class="r">Watts</th>{% endif %}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lap in laps %}
+      {% if lap.pace_s and lap_pace_range > 0 %}
+        {% set lrel = ((lap.pace_s - lns.min_s) / lap_pace_range * 100) | round(0) | int %}
+        {% if lrel < 30 %}{% set lbar_cls = "pace-fast" %}
+        {% elif lrel < 65 %}{% set lbar_cls = "pace-mid" %}
+        {% else %}{% set lbar_cls = "pace-slow" %}{% endif %}
+        {% set lbar_w = [4, [72, (lrel * 0.68 + 4) | int] | min] | max %}
+      {% else %}
+        {% set lbar_cls = "pace-mid" %}
+        {% set lbar_w = 24 %}
+      {% endif %}
+      <tr>
+        <td style="color:var(--text-dim);">{{ lap.index }}</td>
+        <td>{{ lap.name }}</td>
+        <td class="r">{% if lap.distance_km %}{{ lap.distance_km }} km{% else %}—{% endif %}</td>
+        <td class="r">{{ lap.duration }}</td>
+        <td class="r" style="{% if lap.pace_s and lap_pace_range > 0 %}color:{% if lrel < 30 %}var(--accent-primary){% elif lrel < 65 %}var(--accent-amber){% else %}var(--accent-red){% endif %};{% endif %}font-weight:600;">{{ lap.pace }}</td>
+        <td class="r">{% if lap.avg_hr %}{{ lap.avg_hr }} bpm{% else %}—{% endif %}</td>
+        <td class="r">{% if lap.max_hr %}{{ lap.max_hr }} bpm{% else %}—{% endif %}</td>
+        {% if laps | selectattr('avg_watts') | list %}<td class="r">{% if lap.avg_watts %}{{ lap.avg_watts }} W{% else %}—{% endif %}</td>{% endif %}
+        <td style="width:80px;">
+          {% if lap.pace_s and lap_pace_range > 0 %}
+          <div class="pace-bar {{ lbar_cls }}" style="width:{{ lbar_w }}px;"></div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_streams %}
+<script>
+(function() {
+  const STREAMS    = {{ streams_json | safe }};
+  const SPORT_TYPE = {{ sport_type | tojson }};
+  const THRESHOLDS = { lt1: {{ lt1_hr | tojson }}, lt2: {{ lt2_hr | tojson }} };
+  const latlng     = STREAMS.latlng || [];
+  const _windData = {% if weather and weather.wind_direction_deg is not none %}{
+    dirDeg: {{ weather.wind_direction_deg }},
+    label: '{{ weather.wind_dir_compass or "" }} · {{ weather.wind_speed_kmh if weather.wind_speed_kmh is not none else "?" }} km/h'
+  }{% else %}null{% endif %};
+  renderActivityMap('activity-map', latlng, _windData);
+  const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE, THRESHOLDS);
+  const hasGap = (STREAMS.grade_adjusted_speed || []).length > 0
+    || ((STREAMS.grade_smooth || []).length > 0 && (STREAMS.velocity_smooth || []).length > 0);
+  initMetricToggles(chart, 'metric-toggles', {
+    hr:   (STREAMS.heartrate || []).length > 0,
+    pace: (STREAMS.velocity_smooth || []).length > 0,
+    gap:  hasGap,
+    wap:  (STREAMS.wap_pace || []).length > 0,
+    tp:   (STREAMS.true_pace || []).length > 0,
+    alt:  (STREAMS.altitude || []).length > 0,
+    cad:  (STREAMS.cadence || []).length > 0,
+    pwr:  (STREAMS.watts || []).length > 0,
+  });
+})();
+</script>
+{% endif %}
+<script>
+async function fetchActivityStreams(stravaId) {
+  const btn = document.getElementById('fetch-streams-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fetching…';
+
+  try {
+    const res  = await fetch(`/api/sync/streams/${stravaId}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    btn.textContent = 'Done — reloading…';
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    btn.textContent = 'Error: ' + err.message;
+    btn.style.background = 'var(--accent-red)';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Fetch Streams';
+      btn.style.background = '';
+    }, 4000);
+  }
+}
+</script>
+{% endblock %}
