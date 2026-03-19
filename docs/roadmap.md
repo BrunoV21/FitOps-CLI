@@ -227,7 +227,7 @@ fitops notes tags                          # list all tags with counts
 
 ---
 
-## Phase 7 — Weather-Adjusted Pace & True Pace 🔜
+## Phase 7 — Weather-Adjusted Pace & True Pace ✅
 
 **Goal:** Adjust pace for environmental conditions (temperature, humidity, wind) — similar to how GAP adjusts for elevation — and combine both into a single "True Pace" metric that strips away all external factors.
 
