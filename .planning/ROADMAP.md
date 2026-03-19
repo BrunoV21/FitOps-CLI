@@ -46,7 +46,7 @@ fitops race simulate <course_id> --strategy negative-split|even|positive-split
 fitops race splits <course_id> --target-time HH:MM:SS
 ```
 
-**Plans:** 6 plans
+**Plans:** 6/6 plans complete
 
 Plans:
 - [x] 08-01-PLAN.md — Test scaffold, fixtures, and new deps (gpxpy, tcxreader)
