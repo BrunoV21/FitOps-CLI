@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Race Courses — FitOps{% endblock %}
+{% block page_name %}Race{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Race Courses</h1>
+  <p class="page-subtitle">Imported courses for simulation and pacing.</p>
+</div>
+
+{% if courses %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Courses</span>
+    <span class="panel-meta">{{ courses|length }} course{{ 's' if courses|length != 1 else '' }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Source</th>
+          <th>Distance (km)</th>
+          <th>Elevation Gain (m)</th>
+          <th>Imported At</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in courses %}
+        <tr>
+          <td class="text-muted">{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td class="text-muted">{{ c.source }}</td>
+          <td class="text-muted">{{ "%.2f"|format(c.total_distance_km) }}</td>
+          <td class="text-muted">{{ "%.0f"|format(c.total_elevation_gain_m) }}</td>
+          <td class="text-muted">{{ c.imported_at[:10] if c.imported_at else "—" }}</td>
+          <td>
+            <a href="/race/{{ c.id }}" class="btn btn-sm">Profile</a>
+            <a href="/race/{{ c.id }}/simulate" class="btn btn-sm">Simulate</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No courses imported yet.</p>
+  <p class="text-muted">Use <code>fitops race import</code> to add a course from a GPX or TCX file.</p>
+</div>
+{% endif %}
+{% endblock %}

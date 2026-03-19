@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ course.name }} — Course Profile — FitOps{% endblock %}
+{% block page_name %}Race{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ course.name }}</h1>
+  <p class="page-subtitle">Course Profile</p>
+</div>
+
+<!-- Summary cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ "%.2f"|format(course.total_distance_km) }}</div>
+    <div class="stat-label">Distance (km)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ "%.0f"|format(course.total_elevation_gain_m) }}</div>
+    <div class="stat-label">Elevation Gain (m)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ course.source }}</div>
+    <div class="stat-label">Source</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ course.num_points }}</div>
+    <div class="stat-label">GPS Points</div>
+  </div>
+</div>
+
+<!-- Elevation Profile Chart -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Elevation Profile</span>
+    <span class="panel-meta">metres above sea level</span>
+  </div>
+  <div class="chart-wrap" style="height:280px;">
+    <canvas id="elevationChart"></canvas>
+  </div>
+</div>
+
+<!-- Per-km Segment Table -->
+{% if segments %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Per-km Segments</span>
+    <span class="panel-meta">{{ segments|length }} km</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>km</th>
+          <th>Elevation Gain (m)</th>
+          <th>Grade %</th>
+          <th>Bearing °</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for seg in segments %}
+        <tr>
+          <td class="text-muted">{{ seg.km }}</td>
+          <td>{{ "%.1f"|format(seg.elevation_gain_m) if seg.elevation_gain_m is defined else "—" }}</td>
+          <td>{{ "%.1f"|format(seg.grade * 100) if seg.grade is defined else "—" }}</td>
+          <td class="text-muted">{{ "%.0f"|format(seg.bearing) if seg.bearing is defined else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div style="margin-top:1rem;">
+  <a href="/race/{{ course.id }}/simulate" class="btn">Simulate Race</a>
+  <a href="/race" class="btn" style="margin-left:0.5rem;">Back to Courses</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const profileData = {{ elevation_profile_json | safe }};
+  const labels = profileData.map(d => d.km);
+  const elevations = profileData.map(d => d.elevation_m);
+
+  const ctx = document.getElementById('elevationChart');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Elevation (m)',
+        data: elevations,
+        fill: true,
+        tension: 0.3,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.12)',
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Kilometre' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#888' },
+        },
+        y: {
+          title: { display: true, text: 'Elevation (m)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#888' },
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return `${ctx.raw} m`;
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}
