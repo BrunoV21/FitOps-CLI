@@ -9,8 +9,17 @@ FitOps is built around one idea: your fitness data is yours. The roadmap reflect
 | Phase | Status | What it does |
 |-------|--------|-------------|
 | Foundation | ✅ Done | Strava sync, activity history, athlete profile, local dashboard |
-| Analytics | ✅ Done | Training load (CTL/ATL/TSB), VO2max estimate, zone analysis, trends |
+| Analytics | ✅ Done | Training load (CTL/ATL/TSB), VO2max estimate, zone analysis, trends, weather system |
 | Workouts | 🔜 Planned | Structured workout plans, compliance scoring, equipment mileage |
+
+### Analytics phase — what was shipped
+
+The Analytics phase included a full **weather system** alongside the core metrics:
+
+- **Race-day forecast** (`fitops weather forecast`) — fetch Open-Meteo forecast for any location up to 16 days ahead, with WBGT, heat stress flag, pace heat factor, and headwind/WAP calculation
+- **Activity weather backfill** (`fitops weather fetch --all`) — retroactively fetch historical weather for all GPS activities
+- **WAP and True Pace streams** — Weather-Adjusted Pace and True Pace (GAP + weather) are computed and surfaced in the activity detail chart
+- **Dashboard weather card** — today's conditions displayed on the local dashboard overview
 
 ---
 
