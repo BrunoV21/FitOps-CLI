@@ -77,10 +77,18 @@ fitops sync status
 - **Incremental:** fetches activities since `last_sync_at` minus a 3-day overlap window, to catch late uploads
 - **Full:** fetches all activities from the beginning of your Strava history
 - Activities are upserted — running sync twice is safe
+- **Weather auto-fetch:** for each newly synced activity that has GPS coordinates, weather conditions are automatically fetched from Open-Meteo and stored. This enables WAP, True Pace, and heat factor calculations without any extra steps.
+
+To backfill weather for older activities synced before weather support was added:
+
+```bash
+fitops weather fetch --all
+```
 
 ## See Also
 
 - [First Sync Guide](../getting-started/first-sync.md)
 - [`fitops activities list`](./activities.md) — browse synced activities
+- [`fitops weather`](./weather.md) — weather commands and backfill
 
 ← [Commands Reference](./README.md)

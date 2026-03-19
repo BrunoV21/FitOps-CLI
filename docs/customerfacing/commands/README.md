@@ -11,6 +11,7 @@ Complete reference for all FitOps-CLI commands.
 | [`activities`](./activities.md) | Browse and query activities |
 | [`athlete`](./athlete.md) | Athlete profile, stats, and zones |
 | [`analytics`](./analytics.md) | Training load, VO2max, HR zones, pace zones, trends, performance, power curves |
+| [`weather`](./weather.md) | Fetch, store, and inspect activity weather; race-day forecast; WAP factors |
 | [`workouts`](./workouts.md) | Markdown workout definitions, activity linking, segment compliance |
 
 ## Global Behavior

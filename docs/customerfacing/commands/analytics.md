@@ -251,6 +251,14 @@ fitops analytics pace-zones
 | 4 | Threshold | T × 0.96 – T × 1.02 |
 | 5 | VO2max | < T × 0.96 |
 
+**Pace signal preference:** when assigning laps or efforts to zones, FitOps uses the best available pace metric:
+
+1. **True Pace** — GAP + weather normalised, if streams and weather data are available *(most accurate on hilly or windy courses)*
+2. **GAP** (Grade-Adjusted Pace) — if streams are available but weather is missing
+3. **Raw pace** — fallback if neither streams nor weather are available
+
+This hierarchy also applies to **LT2 inference**: inferred threshold estimates are significantly more reliable when computed from True Pace rather than raw pace. See [Concepts → Weather & Pace](../concepts/weather-pace.md) for details.
+
 Threshold pace is stored in `~/.fitops/athlete_settings.json`.
 
 ---
