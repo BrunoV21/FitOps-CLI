@@ -147,16 +147,18 @@ def simulate_pacer_mode(
         raise ValueError("No segments provided.")
 
     total_dist_km = sum(s["distance_m"] for s in segments) / 1000.0
-
-    # Validate: pacer must be faster than target average pace.
-    # If pacer_pace_s >= required_avg_pace, you'd need to run faster than the pacer
-    # for the entire push phase — which defeats the purpose and may be infeasible.
     required_avg_pace_s = target_total_s / total_dist_km
-    if pacer_pace_s >= required_avg_pace_s:
+
+    # Validate: pacer pace must not exceed 20% slower than required average pace.
+    # A pacer significantly slower than your target average leaves the push phase
+    # physically infeasible (push pace would need to be faster than human capacity).
+    # 20% threshold: e.g. 300s/km target avg allows up to 360s/km pacer.
+    _PACER_SLOWNESS_LIMIT = 1.2
+    if pacer_pace_s > required_avg_pace_s * _PACER_SLOWNESS_LIMIT:
         raise ValueError(
             f"Pacer is too slow to achieve target. "
-            f"Pacer pace {_fmt_pace(pacer_pace_s)} is not faster than "
-            f"required average {_fmt_pace(required_avg_pace_s)}."
+            f"Pacer pace {_fmt_pace(pacer_pace_s)} exceeds required average "
+            f"{_fmt_pace(required_avg_pace_s)} by more than {int((_PACER_SLOWNESS_LIMIT - 1) * 100)}%."
         )
 
     sit_segs = [s for s in segments if s["km"] <= drop_at_km]
