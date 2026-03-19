@@ -20,6 +20,7 @@ def _register_subapps() -> None:
     from fitops.cli.notes import app as notes_app
     from fitops.cli.dashboard import app as dashboard_app
     from fitops.cli.weather import app as weather_app
+    from fitops.cli.race import app as race_app
 
     app.add_typer(auth_app, name="auth", help="Manage Strava authentication.")
     app.add_typer(sync_app, name="sync", help="Sync activities from Strava.")
@@ -29,6 +30,7 @@ def _register_subapps() -> None:
     app.add_typer(workouts_app, name="workouts", help="Markdown workout definitions and activity linking.")
     app.add_typer(notes_app, name="notes", help="Create and manage training notes.")
     app.add_typer(weather_app, name="weather", help="Fetch and manage activity weather data.")
+    app.add_typer(race_app, name="race", help="Race course management and simulation.")
     app.add_typer(dashboard_app, name="dashboard", help="Launch local training dashboards.")
 
 
