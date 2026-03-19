@@ -1,14 +1,29 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+current_plan: 06
+status: executing
+stopped_at: Completed 08-06-PLAN.md
+last_updated: "2026-03-19T11:31:10.600Z"
+progress:
+  total_phases: 8
+  completed_phases: 1
+  total_plans: 6
+  completed_plans: 6
+---
+
 # FitOps-CLI Planning State
 
 ## Current Position
 - **Phase:** 08-race-simulation-pacing
 - **Current Plan:** 06
-- **Plans Completed:** 5 of 6 (08-01, 08-02, 08-03, 08-04, 08-05)
-- **Status:** In Progress
+- **Plans Completed:** 6 of 6 (08-01, 08-02, 08-03, 08-04, 08-05, 08-06)
+- **Status:** Complete
 
 ## Progress
 ```
-Phase 08: [#####.] 5/6 plans complete
+Phase 08: [######] 6/6 plans complete
 ```
 
 ## Decisions
@@ -23,6 +38,8 @@ Phase 08: [#####.] 5/6 plans complete
 - Weather priority: manual flags > forecast (future dates) > archive (past dates) > neutral 15C/40%RH/0wind (08-05)
 - splits command is thin even-split wrapper for quick per-km targeting; simulate is the full command (08-05)
 - Re-fetch after flush in save_course uses separate async session to get auto-generated id (08-05)
+- [Phase 08-race-simulation-pacing]: Pacer chart line terminates at break point using null values past drop_at_km (08-06)
+- [Phase 08-race-simulation-pacing]: Pace y-axis reversed on chart so lower s/km (faster) appears at top (08-06)
 
 ## Performance Metrics
 | Phase | Plan | Duration (s) | Tasks | Files |
@@ -31,9 +48,10 @@ Phase 08: [#####.] 5/6 plans complete
 | 08-race-simulation-pacing | 03 | 200 | 2 | 3 |
 | 08-race-simulation-pacing | 04 | 618 | 2 | 1 |
 | 08-race-simulation-pacing | 05 | 1500 | 2 | 3 |
+| 08-race-simulation-pacing | 06 | 204 | 2 | 6 |
 
 ## Last Session
-- **Stopped at:** Completed 08-05-PLAN.md
+- **Stopped at:** Completed 08-06-PLAN.md
 - **Timestamp:** 2026-03-19T12:25:00Z
 
 ## Blockers
