@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Workout Simulation — FitOps{% endblock %}
+{% block page_name %}Workouts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Workout Simulation</p>
+    <p class="page-subtitle">Pre-simulate a workout on a route — per-segment terrain &amp; weather adjusted paces</p>
+  </div>
+</div>
+
+<!-- Form -->
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <span class="panel-title">Simulation Parameters</span>
+  </div>
+  <form method="post" action="/workouts/simulate" style="padding:1rem 1.25rem;">
+
+    {% if error %}
+    <div class="alert alert-red" style="margin-bottom:1rem;">
+      <strong>Error:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+      <div>
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Workout</label>
+        <select name="workout_name" style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;">
+          <option value="">— pick a workout —</option>
+          {% for wf in workout_files %}
+          <option value="{{ wf.filename }}"
+            {% if form.workout_name == wf.filename or form.workout_name == wf.name %}selected{% endif %}>
+            {{ wf.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Base Pace for HR-zone segments <span style="color:#666;">(MM:SS, optional)</span></label>
+        <input type="text" name="base_pace" value="{{ form.base_pace or '' }}" placeholder="e.g. 5:45"
+               style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+      </div>
+    </div>
+
+    <!-- Course source toggle -->
+    <div style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.4rem;">Route Source</label>
+      <div style="display:flex; gap:1.5rem;">
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; cursor:pointer;">
+          <input type="radio" name="course_source" value="course"
+                 {% if not form.course_source or form.course_source == 'course' %}checked{% endif %}
+                 onchange="toggleCourseSource(this.value)" />
+          Imported course
+        </label>
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; cursor:pointer;">
+          <input type="radio" name="course_source" value="activity"
+                 {% if form.course_source == 'activity' %}checked{% endif %}
+                 onchange="toggleCourseSource(this.value)" />
+          Strava activity streams
+        </label>
+      </div>
+    </div>
+
+    <div id="course-picker" {% if form.course_source == 'activity' %}style="display:none;"{% endif %} style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Course</label>
+      <select name="course_id" style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;">
+        <option value="">— select a course —</option>
+        {% for c in courses %}
+        <option value="{{ c.id }}" {% if form.course_id == c.id|string %}selected{% endif %}>
+          {{ c.name }} — {{ "%.1f"|format(c.total_distance_km) }} km
+        </option>
+        {% endfor %}
+      </select>
+      {% if not courses %}
+      <p style="font-size:0.78rem; color:#666; margin-top:0.4rem;">No courses imported yet. <a href="/race/import" style="color:var(--accent-primary);">Import a course →</a></p>
+      {% endif %}
+    </div>
+
+    <div id="activity-picker" {% if not form.course_source or form.course_source == 'course' %}style="display:none;"{% endif %} style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Strava Activity ID</label>
+      <input type="number" name="activity_id" value="{{ form.activity_id or '' }}" placeholder="e.g. 12345678"
+             style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+      <p style="font-size:0.78rem; color:#666; margin-top:0.3rem;">GPS streams are fetched automatically if not yet cached.</p>
+    </div>
+
+    <details {% if form.sim_date or form.temp %}open{% endif %} style="margin-bottom:1.25rem;">
+      <summary style="cursor:pointer; font-size:0.82rem; color:#888; margin-bottom:0.5rem;">Weather (optional)</summary>
+      <p style="font-size:0.78rem; color:#666; margin:0.4rem 0 0.75rem;">Enter a date to auto-fetch forecast or historical conditions. Manual fields below override auto-fetch.</p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:0.75rem;">
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Date</label>
+          <input type="date" name="sim_date" value="{{ form.sim_date or '' }}"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Start Hour (local)</label>
+          <input type="number" name="sim_hour" value="{{ form.sim_hour or '9' }}" min="0" max="23" step="1" placeholder="9"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:1rem;">
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Temperature (°C)</label>
+          <input type="number" name="temp" value="{{ form.temp or '' }}" step="0.5" placeholder="auto"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Humidity (%)</label>
+          <input type="number" name="humidity" value="{{ form.humidity or '' }}" min="0" max="100" step="1" placeholder="auto"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Wind Speed (m/s)</label>
+          <input type="number" name="wind" value="{{ form.wind or '' }}" min="0" step="0.5" placeholder="0"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Wind Direction (°)</label>
+          <input type="number" name="wind_dir" value="{{ form.wind_dir or '' }}" min="0" max="360" step="1" placeholder="0"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+      </div>
+    </details>
+
+    <button type="submit" class="btn" style="min-width:140px;">Run Simulation</button>
+  </form>
+</div>
+
+{% if segments %}
+
+{% if mismatch_warning %}
+<div class="alert alert-amber" style="margin-bottom:1rem;">
+  <strong>⚠ Distance mismatch:</strong> {{ mismatch_warning }}
+</div>
+{% endif %}
+
+<!-- Weather used -->
+{% if weather_info %}
+<div class="panel" style="margin-bottom:1rem;">
+  <div class="panel-header">
+    <span class="panel-title">Weather Used</span>
+    <span class="panel-meta">
+      {% if weather_info.source == 'forecast' %}🌤 Open-Meteo forecast
+      {% elif weather_info.source == 'archive' %}📜 Open-Meteo historical
+      {% elif weather_info.source == 'manual' %}✏️ Manual override
+      {% else %}⚪ Neutral defaults (15°C, 40% RH)
+      {% endif %}
+    </span>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem; padding:0.75rem 1.25rem;">
+    <div><span style="font-size:0.75rem; color:#888;">Temp</span><br><strong>{{ "%.1f"|format(weather_info.temperature_c) }}°C</strong></div>
+    <div><span style="font-size:0.75rem; color:#888;">Humidity</span><br><strong>{{ weather_info.humidity_pct | int }}%</strong></div>
+    <div><span style="font-size:0.75rem; color:#888;">Wind</span><br><strong>{{ weather_info.wind_speed_kmh }} km/h</strong></div>
+    <div><span style="font-size:0.75rem; color:#888;">Wind Dir</span><br><strong>{{ weather_info.wind_direction_deg | int }}°</strong></div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Summary stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ workout_name }}</div>
+    <div class="stat-label">Workout</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ course_info.name }}</div>
+    <div class="stat-label">Route</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_est_km }}</div>
+    <div class="stat-label">Est. Distance (km)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_est_time_fmt }}</div>
+    <div class="stat-label">Est. Total Time</div>
+  </div>
+</div>
+
+<!-- Segment detail table -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Segment Detail</span>
+    <span class="panel-meta">{{ segments|length }} segments · terrain &amp; weather adjusted</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Segment</th>
+          <th>Type</th>
+          <th>Duration</th>
+          <th>Est. Dist</th>
+          <th>Grade</th>
+          <th>Effects</th>
+          <th style="text-align:right;">Target Pace</th>
+          <th style="text-align:right;">Est. Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for seg in segments %}
+        <tr>
+          <td class="text-muted">{{ seg.segment_index + 1 }}</td>
+          <td style="font-weight:600;">{{ seg.segment_name }}</td>
+          <td><span class="badge badge-dim" style="font-size:0.72rem;">{{ seg.step_type }}</span></td>
+          <td>{{ seg.duration_min ~ " min" if seg.duration_min is not none else "—" }}</td>
+          <td style="color:#888; font-size:0.85rem;">{{ "%.0f"|format(seg.est_distance_m) }} m</td>
+          <td style="font-size:0.82rem;">
+            {%- set g = seg.terrain.avg_grade_pct -%}
+            {%- if g > 0.5 %}<span style="color:#f87171;">+{{ "%.1f"|format(g) }}%</span>
+            {%- elif g < -0.5 %}<span style="color:#4ade80;">{{ "%.1f"|format(g) }}%</span>
+            {%- else %}<span style="color:#555;">flat</span>
+            {%- endif %}
+          </td>
+          <td style="font-size:0.78rem; white-space:nowrap;">
+            {%- set gap_pct = (seg.terrain.gap_factor - 1) * 100 -%}
+            {%- set wap_pct = (seg.weather_adjustment.wap_factor - 1) * 100 -%}
+            {%- if gap_pct > 0.5 %}<span style="color:#f87171;" title="Grade penalty">hill +{{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
+            {%- if gap_pct < -0.5 %}<span style="color:#4ade80;" title="Grade bonus">hill {{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
+            {%- if wap_pct > 0.5 %}<span style="color:#f87171; margin-left:4px;" title="Wind/heat penalty">env +{{ "%.1f"|format(wap_pct) }}%</span>{%- endif -%}
+            {%- if wap_pct < -0.5 %}<span style="color:#4ade80; margin-left:4px;" title="Wind bonus">env {{ "%.1f"|format(wap_pct) }}%</span>{%- endif -%}
+            {%- if gap_pct|abs <= 0.5 and wap_pct|abs <= 0.5 %}<span style="color:#555;">—</span>{%- endif -%}
+          </td>
+          <td style="text-align:right;">
+            {%- if seg.pace.adjusted_min and seg.pace.adjusted_max -%}
+              <strong style="font-size:1rem;">{{ seg.pace.adjusted_min }} – {{ seg.pace.adjusted_max }}</strong><span style="color:#555; font-size:0.75rem;">/km</span>
+            {%- elif seg.pace.adjusted_min -%}
+              <strong style="font-size:1rem;">{{ seg.pace.adjusted_min }}</strong><span style="color:#555; font-size:0.75rem;">/km</span>
+            {%- else -%}
+              <span style="color:#555; font-size:0.82rem;">{{ seg.pace.pace_source }}</span>
+            {%- endif -%}
+          </td>
+          <td style="text-align:right; color:#888; font-size:0.88rem;">{{ seg.est_segment_time_fmt }}</td>
+        </tr>
+        {% if seg.warnings %}
+        <tr>
+          <td colspan="9" style="padding:0.2rem 1rem 0.4rem; background:rgba(251,191,36,0.06);">
+            {% for w in seg.warnings %}
+            <span style="font-size:0.75rem; color:#f59e0b;">⚠ {{ w }}</span>{% if not loop.last %} &nbsp;·&nbsp; {% endif %}
+            {% endfor %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleCourseSource(val) {
+  document.getElementById('course-picker').style.display  = val === 'course'   ? '' : 'none';
+  document.getElementById('activity-picker').style.display = val === 'activity' ? '' : 'none';
+}
+</script>
+{% endblock %}
