@@ -1,0 +1,40 @@
+# FitOps-CLI
+
+> FitOps is a local-first Strava analytics tool for Python 3.11+. It syncs activities to a personal SQLite database (`~/.fitops/fitops.db`) and exposes the data through two first-class interfaces: a browser dashboard at `localhost:8888` and a structured CLI designed for AI agent consumption. Every CLI command outputs either Rich-formatted tables for humans or JSON with `_meta` context blocks and `data_availability` hints for agents. No cloud, no subscriptions — your data never leaves your machine.
+
+Install with `pip install fitops-cli` or run without installing via `uvx fitops`. Requires a Strava API application (Client ID + Secret) for authentication.
+
+## Getting Started
+
+- [README](https://github.com/yourname/FitOps-CLI/blob/main/README.md): Full project overview, installation options (uvx / pip / source), quick start, and command reference.
+- [Getting Started Guide](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/getting-started/README.md): Step-by-step walkthrough from Strava app creation through first sync.
+
+## CLI Command Reference
+
+- [Auth commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops auth login/logout/status/refresh` — Strava OAuth with local callback server on port 8080.
+- [Sync commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops sync run [--full] [--after DATE]` / `fitops sync streams` / `fitops sync status` — incremental and full historical sync with 3-day overlap.
+- [Activities commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops activities list/get/streams/laps` — list, filter, and retrieve time-series GPS/HR/power streams.
+- [Athlete commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops athlete profile/stats/zones/set/equipment` — profile, cumulative stats, HR/power zones, physiology settings (max HR, FTP, LTHR).
+- [Analytics commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops analytics training-load/vo2max/zones/trends/performance/power-curve/pace-zones/snapshot` — CTL/ATL/TSB, VO2max estimates, LT1/LT2 thresholds, running economy.
+- [Workouts commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops workouts list/show/create/link/compliance/simulate` — Markdown workout files with YAML frontmatter, HR/pace compliance scoring, terrain+weather simulation.
+- [Race commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops race import/courses/course/simulate/splits` — import GPX/TCX/Strava courses, per-split pace planning with grade and wind adjustments.
+- [Weather commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops weather fetch/show/forecast/set` — historical and forecast weather via Open-Meteo (no API key), weather-adjusted pace (WAP).
+- [Notes commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops notes create/list/get/edit/delete/tags/sync` — Markdown training notes stored in `~/.fitops/notes/`, tagged and activity-linked.
+- [Dashboard command](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops dashboard serve [--port N]` — starts the local Flask dashboard.
+
+## Key Concepts
+
+- [Output format and JSON schema](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/README.md): Every JSON response has a `_meta` block (tool, version, timestamp, filters) and `data_availability` per activity so an agent knows what to fetch next. Units are explicit in field names (`_m`, `_km`, `_s`, `_bpm`). Paces are formatted as `"6:03"` strings.
+- [Storage layout](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/README.md): `~/.fitops/config.json` (credentials + physiology), `~/.fitops/sync_state.json`, `~/.fitops/fitops.db` (SQLite), `~/.fitops/workouts/` (Markdown), `~/.fitops/notes/` (Markdown). Override base dir with `FITOPS_DIR` env var.
+- [Analytics methodology](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/README.md): CTL = 42-day EWMA (α≈0.0465), ATL = 7-day EWMA (α≈0.25), TSB = CTL − ATL. VO2max is a weighted composite of VDOT (50%), McArdle (30%), and Costill (20–40%) methods. Zone boundaries derived from LTHR, max HR, or HRR.
+- [Workout file format](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/README.md): Markdown files in `~/.fitops/workouts/` with YAML frontmatter. Segments defined as time-in-zone, pace-range, or HR-range steps. Linked to Strava activities by ID for compliance scoring.
+
+## Output Examples
+
+- [JSON output examples](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/output-examples/README.md): Sample responses for activities list, activity detail, training load snapshot, race simulation splits, and streams data.
+
+## Optional
+
+- [Changelog](https://github.com/yourname/FitOps-CLI/blob/main/CHANGELOG.md): Version history and release notes.
+- [Development setup](https://github.com/yourname/FitOps-CLI/blob/main/README.md): `pip install -e ".[dev]"` and `pytest tests/ -v` — 18 tests covering sync, analytics, and output formatting.
+- [Roadmap](https://github.com/yourname/FitOps-CLI/blob/main/README.md): Planned phases — multi-provider sync (Garmin, Apple Health, Coros), cloud backup (Drive, OneDrive, Dropbox).
