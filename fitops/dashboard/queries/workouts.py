@@ -56,6 +56,30 @@ async def get_workout_for_activity(
         return workout, segments
 
 
+async def get_workout_names_for_activities(activity_ids: list[int]) -> dict[int, str]:
+    """Return {activity_id: workout_name} for a batch of internal activity IDs."""
+    if not activity_ids:
+        return {}
+    async with get_async_session() as session:
+        res = await session.execute(
+            select(Workout.activity_id, Workout.name).where(
+                Workout.activity_id.in_(activity_ids)
+            )
+        )
+        return {row.activity_id: row.name for row in res.all()}
+
+
+async def get_all_workouts(athlete_id: int) -> list[Workout]:
+    """Return all workouts for an athlete, newest first (for the assign selector)."""
+    async with get_async_session() as session:
+        res = await session.execute(
+            select(Workout)
+            .where(Workout.athlete_id == athlete_id)
+            .order_by(Workout.created_at.desc())
+        )
+        return list(res.scalars().all())
+
+
 async def get_activity_for_workout(activity_id: int) -> Optional[Activity]:
     """Fetch the Activity linked to a workout's activity_id (internal id)."""
     if activity_id is None:

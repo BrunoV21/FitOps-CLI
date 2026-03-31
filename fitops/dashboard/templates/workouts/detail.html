@@ -106,11 +106,10 @@
 {% endif %}
 
 {# ── Segment performance table ────────────────────────────────── #}
-{% if segments %}
+{% if grouped_segments %}
 <div class="table-wrap" style="--delay:200ms;margin-bottom:1px;">
   <div class="splits-header">
     <p class="panel-label" style="margin:0;">Segment Performance</p>
-    <span style="font-size:11px;color:var(--text-dim);">{{ segments | length }} segments</span>
   </div>
   <table class="data-table">
     <thead>
@@ -128,57 +127,119 @@
       </tr>
     </thead>
     <tbody>
-      {% for seg in segments %}
+      {% for item in grouped_segments %}
+
+      {# ── Interval group row ─────────────────────────────────── #}
+      {% if item.type == 'group' %}
+      <tr>
+        <td colspan="10" style="padding:0;">
+          <details style="margin:0;">
+            <summary style="padding:8px 14px; cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; background:rgba(0,255,135,0.04); border-bottom:1px solid var(--border);">
+              <span style="display:flex; align-items:center; gap:10px;">
+                <span class="badge badge-blue" style="font-size:0.7rem; flex-shrink:0;">×{{ item.rep_count }}</span>
+                <strong style="font-size:0.9rem;">{{ item.label }}</strong>
+              </span>
+              <span style="color:#555; font-size:0.75rem; flex-shrink:0;">▸ expand reps</span>
+            </summary>
+            <div style="padding:6px 12px 10px; background:rgba(0,0,0,0.15);">
+              <table class="data-table" style="width:100%; font-size:0.82rem;">
+                <thead>
+                  <tr>
+                    <th style="font-size:0.72rem;">Rep</th>
+                    <th style="font-size:0.72rem;">Type</th>
+                    <th style="font-size:0.72rem;">Target</th>
+                    <th class="r" style="font-size:0.72rem;">Avg Pace</th>
+                    <th class="r" style="font-size:0.72rem;">Avg HR</th>
+                    <th class="r" style="font-size:0.72rem;">Avg Speed</th>
+                    <th class="r" style="font-size:0.72rem;">Avg GAP</th>
+                    <th class="r" style="font-size:0.72rem;">Cadence</th>
+                    <th class="r" style="font-size:0.72rem;">In Target</th>
+                    <th class="r" style="font-size:0.72rem;">Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for seg in item.segments %}
+                  <tr style="{% if seg.step_type == 'recovery' %}opacity:0.65;{% endif %}">
+                    <td style="font-size:0.78rem; color:var(--text-muted);">{{ seg.segment_name or ("Segment " ~ seg.segment_index) }}</td>
+                    <td style="font-size:0.72rem; color:var(--text-dim);">{{ seg.step_type or "—" }}</td>
+                    <td style="font-size:0.72rem; color:var(--text-muted);">{{ seg.target_label }}</td>
+                    <td class="r">
+                      {% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.actuals.avg_speed_kmh %}{{ "%.1f" | format(seg.actuals.avg_speed_kmh) }} km/h{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.actuals.avg_gap_formatted %}{{ seg.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.actuals.avg_cadence %}{{ "%.0f" | format(seg.actuals.avg_cadence) }} spm{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.compliance.time_in_target_pct is not none %}{{ "%.0f%%" | format(seg.compliance.time_in_target_pct * 100) }}{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.compliance_pct is not none %}
+                      <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+                        <div class="compliance-bar-track" style="width:36px;">
+                          <div class="compliance-bar-fill" style="width:{{ seg.compliance_pct }}%;background:{% if seg.compliance_pct >= 80 %}var(--accent-primary){% elif seg.compliance_pct >= 60 %}var(--accent-amber){% else %}var(--accent-red){% endif %};"></div>
+                        </div>
+                        <span style="font-weight:700;min-width:30px;text-align:right;color:{% if seg.compliance_pct >= 80 %}var(--accent-primary){% elif seg.compliance_pct >= 60 %}var(--accent-amber){% else %}var(--accent-red){% endif %};">{{ seg.compliance_pct }}%</span>
+                      </div>
+                      {% else %}<span style="color:var(--text-dim);">—</span>{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </td>
+      </tr>
+
+      {# ── Single segment row ─────────────────────────────────── #}
+      {% else %}
       <tr>
         <td style="font-weight:600;color:var(--text-primary);">
-          {{ seg.segment_name or ("Segment " ~ seg.segment_index) }}
+          {{ item.segment_name or ("Segment " ~ item.segment_index) }}
         </td>
-        <td style="font-size:11px;color:var(--text-dim);">{{ seg.step_type or "—" }}</td>
-        <td style="font-size:11px;color:var(--text-muted);">{{ seg.target_label }}</td>
+        <td style="font-size:11px;color:var(--text-dim);">{{ item.step_type or "—" }}</td>
+        <td style="font-size:11px;color:var(--text-muted);">{{ item.target_label }}</td>
         <td class="r">
-          {% if seg.actuals.avg_pace_formatted %}
-            {{ seg.actuals.avg_pace_formatted }}/km
-          {% else %}—{% endif %}
+          {% if item.actuals.avg_pace_formatted %}{{ item.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}
         </td>
         <td class="r">
-          {% if seg.actuals.avg_heartrate_bpm %}
-            {{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm
-          {% else %}—{% endif %}
+          {% if item.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(item.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}
         </td>
         <td class="r">
-          {% if seg.actuals.avg_speed_kmh %}
-            {{ "%.1f" | format(seg.actuals.avg_speed_kmh) }} km/h
-          {% else %}—{% endif %}
+          {% if item.actuals.avg_speed_kmh %}{{ "%.1f" | format(item.actuals.avg_speed_kmh) }} km/h{% else %}—{% endif %}
         </td>
         <td class="r">
-          {% if seg.actuals.avg_gap_formatted %}
-            {{ seg.actuals.avg_gap_formatted }}/km
-          {% else %}—{% endif %}
+          {% if item.actuals.avg_gap_formatted %}{{ item.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}
         </td>
         <td class="r">
-          {% if seg.actuals.avg_cadence %}
-            {{ "%.0f" | format(seg.actuals.avg_cadence) }} spm
-          {% else %}—{% endif %}
+          {% if item.actuals.avg_cadence %}{{ "%.0f" | format(item.actuals.avg_cadence) }} spm{% else %}—{% endif %}
         </td>
         <td class="r">
-          {% if seg.compliance.time_in_target_pct is not none %}
-            {{ "%.0f%%" | format(seg.compliance.time_in_target_pct * 100) }}
-          {% else %}—{% endif %}
+          {% if item.compliance.time_in_target_pct is not none %}{{ "%.0f%%" | format(item.compliance.time_in_target_pct * 100) }}{% else %}—{% endif %}
         </td>
         <td class="r">
-          {% if seg.compliance_pct is not none %}
+          {% if item.compliance_pct is not none %}
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
             <div class="compliance-bar-track" style="width:48px;">
-              <div class="compliance-bar-fill" style="width:{{ seg.compliance_pct }}%;background:
-                {% if seg.compliance_pct >= 80 %}var(--accent-primary)
-                {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+              <div class="compliance-bar-fill" style="width:{{ item.compliance_pct }}%;background:
+                {% if item.compliance_pct >= 80 %}var(--accent-primary)
+                {% elif item.compliance_pct >= 60 %}var(--accent-amber)
                 {% else %}var(--accent-red){% endif %};"></div>
             </div>
             <span style="font-weight:700;min-width:34px;text-align:right;color:
-              {% if seg.compliance_pct >= 80 %}var(--accent-primary)
-              {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+              {% if item.compliance_pct >= 80 %}var(--accent-primary)
+              {% elif item.compliance_pct >= 60 %}var(--accent-amber)
               {% else %}var(--accent-red){% endif %};">
-              {{ seg.compliance_pct }}%
+              {{ item.compliance_pct }}%
             </span>
           </div>
           {% else %}
@@ -186,6 +247,8 @@
           {% endif %}
         </td>
       </tr>
+      {% endif %}
+
       {% endfor %}
     </tbody>
   </table>

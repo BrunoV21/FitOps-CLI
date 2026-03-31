@@ -129,7 +129,7 @@
   </form>
 </div>
 
-{% if segments %}
+{% if grouped_segments %}
 
 {% if mismatch_warning %}
 <div class="alert alert-amber" style="margin-bottom:1rem;">
@@ -183,7 +183,7 @@
 <div class="panel">
   <div class="panel-header">
     <span class="panel-title">Segment Detail</span>
-    <span class="panel-meta">{{ segments|length }} segments · terrain &amp; weather adjusted</span>
+    <span class="panel-meta">terrain &amp; weather adjusted</span>
   </div>
   <div class="table-wrap">
     <table class="data-table">
@@ -201,23 +201,104 @@
         </tr>
       </thead>
       <tbody>
-        {% for seg in segments %}
+        {% for item in grouped_segments %}
+
+        {# ── Interval group row ───────────────────────────────────── #}
+        {% if item.type == 'group' %}
         <tr>
-          <td class="text-muted">{{ seg.segment_index + 1 }}</td>
-          <td style="font-weight:600;">{{ seg.segment_name }}</td>
-          <td><span class="badge badge-dim" style="font-size:0.72rem;">{{ seg.step_type }}</span></td>
-          <td>{{ seg.duration_min ~ " min" if seg.duration_min is not none else "—" }}</td>
-          <td style="color:#888; font-size:0.85rem;">{{ "%.0f"|format(seg.est_distance_m) }} m</td>
+          <td colspan="9" style="padding:0;">
+            <details style="margin:0;">
+              <summary style="padding:8px 14px; cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; background:rgba(0,255,135,0.04); border-bottom:1px solid var(--border);">
+                <span style="display:flex; align-items:center; gap:10px;">
+                  <span class="badge badge-blue" style="font-size:0.7rem; flex-shrink:0;">×{{ item.rep_count }}</span>
+                  <strong style="font-size:0.9rem;">{{ item.label }}</strong>
+                </span>
+                <span style="display:flex; align-items:center; gap:14px; color:#888; font-size:0.82rem; flex-shrink:0;">
+                  {% if item.total_time_fmt %}<span>{{ item.total_time_fmt }}</span>{% endif %}
+                  <span style="color:#555; font-size:0.75rem;">▸ expand reps</span>
+                </span>
+              </summary>
+              <div style="padding:6px 12px 10px; background:rgba(0,0,0,0.15);">
+                <table class="data-table" style="width:100%; font-size:0.82rem;">
+                  <thead>
+                    <tr>
+                      <th style="font-size:0.72rem;">Rep</th>
+                      <th style="font-size:0.72rem;">Type</th>
+                      <th style="font-size:0.72rem;">Duration</th>
+                      <th style="font-size:0.72rem;">Est. Dist</th>
+                      <th style="font-size:0.72rem;">Grade</th>
+                      <th style="font-size:0.72rem;">Effects</th>
+                      <th style="text-align:right; font-size:0.72rem;">Pace /km</th>
+                      <th style="text-align:right; font-size:0.72rem;">Est. Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for seg in item.segments %}
+                    <tr style="{% if seg.step_type == 'recovery' %}opacity:0.65;{% endif %}">
+                      <td style="color:var(--text-muted); font-size:0.78rem;">{{ seg.segment_name }}</td>
+                      <td><span class="badge badge-dim" style="font-size:0.68rem;">{{ seg.step_type }}</span></td>
+                      <td style="font-size:0.8rem;">{{ "%.1f"|format(seg.duration_min) ~ " min" if seg.duration_min is not none else "—" }}</td>
+                      <td style="color:#888; font-size:0.8rem;">{{ "%.0f"|format(seg.est_distance_m) }} m</td>
+                      <td style="font-size:0.78rem;">
+                        {%- set g = seg.terrain.avg_grade_pct -%}
+                        {%- if g > 0.5 %}<span style="color:#f87171;">+{{ "%.1f"|format(g) }}%</span>
+                        {%- elif g < -0.5 %}<span style="color:#4ade80;">{{ "%.1f"|format(g) }}%</span>
+                        {%- else %}<span style="color:#555;">flat</span>
+                        {%- endif %}
+                      </td>
+                      <td style="font-size:0.74rem; white-space:nowrap;">
+                        {%- set gap_pct = (seg.terrain.gap_factor - 1) * 100 -%}
+                        {%- set wap_pct = (seg.weather_adjustment.wap_factor - 1) * 100 -%}
+                        {%- if gap_pct > 0.5 %}<span style="color:#f87171;">hill +{{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
+                        {%- if gap_pct < -0.5 %}<span style="color:#4ade80;">hill {{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
+                        {%- if wap_pct > 0.5 %}<span style="color:#f87171; margin-left:3px;">env +{{ "%.1f"|format(wap_pct) }}%</span>{%- endif -%}
+                        {%- if wap_pct < -0.5 %}<span style="color:#4ade80; margin-left:3px;">env {{ "%.1f"|format(wap_pct) }}%</span>{%- endif -%}
+                        {%- if gap_pct|abs <= 0.5 and wap_pct|abs <= 0.5 %}<span style="color:#555;">—</span>{%- endif -%}
+                      </td>
+                      <td style="text-align:right;">
+                        {%- if seg.pace.adjusted_min and seg.pace.adjusted_max -%}
+                          <strong>{{ seg.pace.adjusted_min }}–{{ seg.pace.adjusted_max }}</strong>
+                        {%- elif seg.pace.adjusted_min -%}
+                          <strong>{{ seg.pace.adjusted_min }}</strong>
+                        {%- else -%}
+                          <span style="color:#555; font-size:0.78rem;">{{ seg.pace.pace_source }}</span>
+                        {%- endif -%}
+                      </td>
+                      <td style="text-align:right; color:#888; font-size:0.82rem;">{{ seg.est_segment_time_fmt }}</td>
+                    </tr>
+                    {% if seg.warnings %}
+                    <tr>
+                      <td colspan="8" style="padding:0.15rem 0.5rem 0.3rem; background:rgba(251,191,36,0.06);">
+                        {% for w in seg.warnings %}<span style="font-size:0.72rem; color:#f59e0b;">⚠ {{ w }}</span>{% if not loop.last %} · {% endif %}{% endfor %}
+                      </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </td>
+        </tr>
+
+        {# ── Single segment row ───────────────────────────────────── #}
+        {% else %}
+        <tr>
+          <td class="text-muted">{{ item.segment_index + 1 }}</td>
+          <td style="font-weight:600;">{{ item.segment_name }}</td>
+          <td><span class="badge badge-dim" style="font-size:0.72rem;">{{ item.step_type }}</span></td>
+          <td>{{ item.duration_min ~ " min" if item.duration_min is not none else "—" }}</td>
+          <td style="color:#888; font-size:0.85rem;">{{ "%.0f"|format(item.est_distance_m) }} m</td>
           <td style="font-size:0.82rem;">
-            {%- set g = seg.terrain.avg_grade_pct -%}
+            {%- set g = item.terrain.avg_grade_pct -%}
             {%- if g > 0.5 %}<span style="color:#f87171;">+{{ "%.1f"|format(g) }}%</span>
             {%- elif g < -0.5 %}<span style="color:#4ade80;">{{ "%.1f"|format(g) }}%</span>
             {%- else %}<span style="color:#555;">flat</span>
             {%- endif %}
           </td>
           <td style="font-size:0.78rem; white-space:nowrap;">
-            {%- set gap_pct = (seg.terrain.gap_factor - 1) * 100 -%}
-            {%- set wap_pct = (seg.weather_adjustment.wap_factor - 1) * 100 -%}
+            {%- set gap_pct = (item.terrain.gap_factor - 1) * 100 -%}
+            {%- set wap_pct = (item.weather_adjustment.wap_factor - 1) * 100 -%}
             {%- if gap_pct > 0.5 %}<span style="color:#f87171;" title="Grade penalty">hill +{{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
             {%- if gap_pct < -0.5 %}<span style="color:#4ade80;" title="Grade bonus">hill {{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
             {%- if wap_pct > 0.5 %}<span style="color:#f87171; margin-left:4px;" title="Wind/heat penalty">env +{{ "%.1f"|format(wap_pct) }}%</span>{%- endif -%}
@@ -225,25 +306,27 @@
             {%- if gap_pct|abs <= 0.5 and wap_pct|abs <= 0.5 %}<span style="color:#555;">—</span>{%- endif -%}
           </td>
           <td style="text-align:right;">
-            {%- if seg.pace.adjusted_min and seg.pace.adjusted_max -%}
-              <strong style="font-size:1rem;">{{ seg.pace.adjusted_min }} – {{ seg.pace.adjusted_max }}</strong><span style="color:#555; font-size:0.75rem;">/km</span>
-            {%- elif seg.pace.adjusted_min -%}
-              <strong style="font-size:1rem;">{{ seg.pace.adjusted_min }}</strong><span style="color:#555; font-size:0.75rem;">/km</span>
+            {%- if item.pace.adjusted_min and item.pace.adjusted_max -%}
+              <strong style="font-size:1rem;">{{ item.pace.adjusted_min }} – {{ item.pace.adjusted_max }}</strong><span style="color:#555; font-size:0.75rem;">/km</span>
+            {%- elif item.pace.adjusted_min -%}
+              <strong style="font-size:1rem;">{{ item.pace.adjusted_min }}</strong><span style="color:#555; font-size:0.75rem;">/km</span>
             {%- else -%}
-              <span style="color:#555; font-size:0.82rem;">{{ seg.pace.pace_source }}</span>
+              <span style="color:#555; font-size:0.82rem;">{{ item.pace.pace_source }}</span>
             {%- endif -%}
           </td>
-          <td style="text-align:right; color:#888; font-size:0.88rem;">{{ seg.est_segment_time_fmt }}</td>
+          <td style="text-align:right; color:#888; font-size:0.88rem;">{{ item.est_segment_time_fmt }}</td>
         </tr>
-        {% if seg.warnings %}
+        {% if item.warnings %}
         <tr>
           <td colspan="9" style="padding:0.2rem 1rem 0.4rem; background:rgba(251,191,36,0.06);">
-            {% for w in seg.warnings %}
+            {% for w in item.warnings %}
             <span style="font-size:0.75rem; color:#f59e0b;">⚠ {{ w }}</span>{% if not loop.last %} &nbsp;·&nbsp; {% endif %}
             {% endfor %}
           </td>
         </tr>
         {% endif %}
+        {% endif %}
+
         {% endfor %}
       </tbody>
     </table>
