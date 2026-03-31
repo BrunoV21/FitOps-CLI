@@ -171,7 +171,8 @@
       "WebFetch(domain:www.trailandultrarunning.com)",
       "WebFetch(domain:www.runningcompetitor.com)",
       "WebFetch(domain:www.mcmillanrunning.com)",
-      "WebFetch(domain:onlinelibrary.wiley.com)"
+      "WebFetch(domain:onlinelibrary.wiley.com)",
+      "Skill(gsd:execute-phase)"
     ]
   },
   "enabledMcpjsonServers": [
