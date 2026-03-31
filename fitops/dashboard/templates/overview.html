@@ -16,10 +16,17 @@
     </p>
     {% endif %}
   </div>
-  <div class="period-tabs">
-    {% for p, lbl in [('week','This Week'),('month','This Month'),('year','This Year'),('all','All Time')] %}
-    <a href="/?period={{ p }}" class="period-tab {% if period == p %}active{% endif %}">{{ lbl }}</a>
-    {% endfor %}
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div class="period-tabs">
+      {% for p, lbl in [('week','This Week'),('month','This Month'),('year','This Year'),('all','All Time')] %}
+      <a href="/?period={{ p }}&view={{ view }}" class="period-tab {% if period == p %}active{% endif %}">{{ lbl }}</a>
+      {% endfor %}
+    </div>
+    <div class="period-tabs">
+      <a href="/?period={{ period }}&view=run" class="period-tab {% if view == 'run' %}active{% endif %}">Run</a>
+      <a href="/?period={{ period }}&view=cycle" class="period-tab {% if view == 'cycle' %}active{% endif %}">Cycle</a>
+      <a href="/?period={{ period }}&view=total" class="period-tab {% if view == 'total' %}active{% endif %}">Total</a>
+    </div>
   </div>
 </div>
 
@@ -29,6 +36,16 @@
     <p class="panel-label">Activities — {{ period_label }}</p>
     <p class="panel-metric">{{ stats.total_count | default(0) }}</p>
   </div>
+  {% if view == 'total' %}
+  <div class="panel panel--accent" style="--delay:40ms">
+    <p class="panel-label">Total Time — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_duration_h | default(0) }}<span class="panel-unit">h</span></p>
+  </div>
+  <div class="panel panel--accent-amber" style="--delay:80ms">
+    <p class="panel-label">Elevation — {{ period_label }}</p>
+    <p class="panel-metric">{{ stats.total_elevation_m | default(0) }}<span class="panel-unit">m</span></p>
+  </div>
+  {% else %}
   <div class="panel panel--accent" style="--delay:40ms">
     <p class="panel-label">Distance — {{ period_label }}</p>
     <p class="panel-metric">{{ stats.total_distance_km | default(0) }}<span class="panel-unit">km</span></p>
@@ -37,6 +54,7 @@
     <p class="panel-label">Elevation — {{ period_label }}</p>
     <p class="panel-metric">{{ stats.total_elevation_m | default(0) }}<span class="panel-unit">m</span></p>
   </div>
+  {% endif %}
 </div>
 
 <!-- Row 2: Today's Weather -->

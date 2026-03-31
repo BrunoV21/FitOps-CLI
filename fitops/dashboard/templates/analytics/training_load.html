@@ -8,14 +8,22 @@
     <p class="page-title">Training Load</p>
     <p class="page-subtitle">CTL (Fitness) · ATL (Fatigue) · TSB (Form)</p>
   </div>
-  <form method="get" class="filter-bar" style="margin-bottom:0;">
-    <select name="days" class="select-ctrl">
-      {% for d in [30, 60, 90, 180, 365] %}
-      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
-      {% endfor %}
-    </select>
-    <button type="submit" class="btn btn-primary">Update</button>
-  </form>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <form method="get" class="filter-bar" style="margin-bottom:0;">
+      <input type="hidden" name="view" value="{{ selected_view }}">
+      <select name="days" class="select-ctrl">
+        {% for d in [30, 60, 90, 180, 365] %}
+        <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">Update</button>
+    </form>
+    <div class="period-tabs">
+      <a href="/analytics/training-load?days={{ selected_days }}&view=run" class="period-tab {% if selected_view == 'run' %}active{% endif %}">Run</a>
+      <a href="/analytics/training-load?days={{ selected_days }}&view=cycle" class="period-tab {% if selected_view == 'cycle' %}active{% endif %}">Cycle</a>
+      <a href="/analytics/training-load?days={{ selected_days }}&view=total" class="period-tab {% if selected_view == 'total' %}active{% endif %}">Total</a>
+    </div>
+  </div>
 </div>
 
 {% if current_load %}
@@ -78,38 +86,56 @@
 
   <div class="panel" style="--delay:140ms">
     <p class="panel-label">This Week</p>
+    {% if selected_view == 'total' %}
+    <p class="panel-metric">{{ "%.1f" | format(volume_summary.this_week.duration_h) }} h</p>
+    {% set wpct = volume_summary.pct_change_week.duration %}
+    {% else %}
     <p class="panel-metric">{{ "%.1f" | format(volume_summary.this_week.distance_km) }} km</p>
     {% set wpct = volume_summary.pct_change_week.distance %}
+    {% endif %}
     {% if wpct is not none %}
     <p class="panel-sub {% if wpct > 0 %}c-green{% elif wpct < 0 %}c-red{% endif %}">
       {% if wpct > 0 %}+{% endif %}{{ "%.0f%%" | format(wpct) }} vs last week
     </p>
     {% endif %}
-    <p class="panel-sub">{{ "%.1f" | format(volume_summary.this_week.duration_h) }} h &middot; {{ volume_summary.this_week.activity_count }} activities</p>
+    <p class="panel-sub">{{ volume_summary.this_week.activity_count }} activities</p>
   </div>
 
   <div class="panel" style="--delay:180ms">
     <p class="panel-label">Last Week</p>
+    {% if selected_view == 'total' %}
+    <p class="panel-metric c-muted">{{ "%.1f" | format(volume_summary.last_week.duration_h) }} h</p>
+    {% else %}
     <p class="panel-metric c-muted">{{ "%.1f" | format(volume_summary.last_week.distance_km) }} km</p>
-    <p class="panel-sub">{{ "%.1f" | format(volume_summary.last_week.duration_h) }} h &middot; {{ volume_summary.last_week.activity_count }} activities</p>
+    {% endif %}
+    <p class="panel-sub">{{ volume_summary.last_week.activity_count }} activities</p>
   </div>
 
   <div class="panel" style="--delay:220ms">
     <p class="panel-label">This Month</p>
+    {% if selected_view == 'total' %}
+    <p class="panel-metric">{{ "%.1f" | format(volume_summary.this_month.duration_h) }} h</p>
+    {% set mpct = volume_summary.pct_change_month.duration %}
+    {% else %}
     <p class="panel-metric">{{ "%.0f" | format(volume_summary.this_month.distance_km) }} km</p>
     {% set mpct = volume_summary.pct_change_month.distance %}
+    {% endif %}
     {% if mpct is not none %}
     <p class="panel-sub {% if mpct > 0 %}c-green{% elif mpct < 0 %}c-red{% endif %}">
       {% if mpct > 0 %}+{% endif %}{{ "%.0f%%" | format(mpct) }} vs same period last month
     </p>
     {% endif %}
-    <p class="panel-sub">{{ "%.1f" | format(volume_summary.this_month.duration_h) }} h &middot; {{ volume_summary.this_month.activity_count }} activities</p>
+    <p class="panel-sub">{{ volume_summary.this_month.activity_count }} activities</p>
   </div>
 
   <div class="panel" style="--delay:260ms">
     <p class="panel-label">Last Month</p>
+    {% if selected_view == 'total' %}
+    <p class="panel-metric c-muted">{{ "%.1f" | format(volume_summary.last_month.duration_h) }} h</p>
+    {% else %}
     <p class="panel-metric c-muted">{{ "%.0f" | format(volume_summary.last_month.distance_km) }} km</p>
-    <p class="panel-sub">{{ "%.1f" | format(volume_summary.last_month.duration_h) }} h &middot; {{ volume_summary.last_month.activity_count }} activities</p>
+    {% endif %}
+    <p class="panel-sub">{{ volume_summary.last_month.activity_count }} activities</p>
   </div>
 
 </div>
@@ -126,7 +152,7 @@
 <!-- Weekly Volume Chart -->
 <div class="panel" style="margin-top:1px;--delay:200ms">
   <div class="panel-header">
-    <p class="panel-label" style="margin:0;">Weekly Volume (km)</p>
+    <p class="panel-label" style="margin:0;">Weekly Volume ({% if selected_view == 'total' %}h{% else %}km{% endif %})</p>
     <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
   </div>
   <canvas id="weeklyVolumeChart" height="60"></canvas>
@@ -151,7 +177,7 @@ if (CHART_DATA.length > 0) {
 }
 const WEEKLY_DATA = {{ weekly_json | default('[]') | safe }};
 if (WEEKLY_DATA.length > 0) {
-  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, { metric: "distance" });
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, { metric: "{{ 'duration' if selected_view == 'total' else 'distance' }}" });
 }
 </script>
 {% endblock %}

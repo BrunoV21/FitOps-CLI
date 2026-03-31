@@ -123,6 +123,7 @@ async def compute_training_load(
     athlete_id: int,
     days: int = 90,
     sport_filter: Optional[str] = None,
+    sport_types: Optional[frozenset] = None,
 ) -> TrainingLoadResult:
     end_date = date.today()
     warmup_days = CTL_DAYS * 2
@@ -136,6 +137,8 @@ async def compute_training_load(
         )
         if sport_filter:
             stmt = stmt.where(Activity.sport_type == sport_filter)
+        elif sport_types:
+            stmt = stmt.where(Activity.sport_type.in_(list(sport_types)))
         result = await session.execute(stmt)
         activities = result.scalars().all()
 

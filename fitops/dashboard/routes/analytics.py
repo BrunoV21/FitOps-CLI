@@ -17,14 +17,26 @@ from fitops.dashboard.queries.analytics import (
     get_vo2max_history,
     get_volume_summary,
     get_weekly_volume,
+    RUNNING_SPORTS,
+    RIDING_SPORTS,
 )
+
+_VIEW_SPORT_TYPES = {
+    "run": RUNNING_SPORTS,
+    "cycle": RIDING_SPORTS,
+    "total": None,
+}
 
 router = APIRouter()
 
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/analytics/training-load", response_class=HTMLResponse)
-    async def training_load(request: Request, days: int = 90, sport: Optional[str] = None):
+    async def training_load(request: Request, days: int = 90, view: str = "run"):
+        if view not in _VIEW_SPORT_TYPES:
+            view = "run"
+        sport_types = _VIEW_SPORT_TYPES[view]
+
         settings = get_settings()
         athlete_id = settings.athlete_id
 
@@ -38,9 +50,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         weekly: list = []
 
         if athlete_id:
-            tl = await get_training_load_data(athlete_id, days=days, sport=sport)
-            volume_summary = await get_volume_summary(athlete_id, sport=sport)
-            weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport=sport)
+            tl = await get_training_load_data(athlete_id, days=days, sport_types=sport_types)
+            volume_summary = await get_volume_summary(athlete_id, sport_types=sport_types)
+            weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=sport_types)
 
         if tl:
             chart_data = [
@@ -75,7 +87,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "overtraining": overtraining,
                 "volume_summary": volume_summary,
                 "selected_days": days,
-                "selected_sport": sport,
+                "selected_view": view,
                 "active_page": "analytics",
             },
         )

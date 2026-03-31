@@ -20,10 +20,10 @@ RIDING_SPORTS = frozenset({"Ride", "VirtualRide", "EBikeRide"})
 
 
 async def get_training_load_data(
-    athlete_id: int, days: int = 90, sport: Optional[str] = None
+    athlete_id: int, days: int = 90, sport: Optional[str] = None, sport_types: Optional[frozenset] = None
 ) -> Optional[TrainingLoadResult]:
     result = await compute_training_load(
-        athlete_id=athlete_id, days=days, sport_filter=sport
+        athlete_id=athlete_id, days=days, sport_filter=sport, sport_types=sport_types
     )
     if not result.history:
         return None
