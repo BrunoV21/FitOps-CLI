@@ -8,8 +8,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from fitops.analytics.activity_performance_insights import compute_activity_performance_insights
 from fitops.analytics.activity_zones import compute_activity_analytics
 from fitops.analytics.athlete_settings import get_athlete_settings
+from fitops.analytics.training_scores import compute_aerobic_score, compute_anaerobic_score
 from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_wap_factor,
@@ -32,7 +34,7 @@ from fitops.dashboard.queries.activities import (
 )
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.weather import get_weather_for_activities
-from fitops.dashboard.queries.workouts import get_workout_for_activity
+from fitops.dashboard.queries.workouts import get_all_workouts, get_workout_for_activity, get_workout_names_for_activities
 
 router = APIRouter()
 
@@ -58,6 +60,34 @@ def _pace_str(speed_ms: float | None, sport_type: str) -> str:
     return f"{speed_ms * 3.6:.1f} km/h"
 
 
+def _aerobic_label(score: float) -> str:
+    if score >= 4.5:
+        return "Exceptional aerobic session"
+    if score >= 3.5:
+        return "Strong aerobic stimulus"
+    if score >= 2.5:
+        return "Solid aerobic base work"
+    if score >= 1.5:
+        return "Moderate aerobic benefit"
+    if score >= 0.5:
+        return "Light aerobic stimulus"
+    return "Minimal aerobic benefit"
+
+
+def _anaerobic_label(score: float) -> str:
+    if score >= 4.5:
+        return "Race-intensity effort"
+    if score >= 3.5:
+        return "Hard anaerobic session"
+    if score >= 2.5:
+        return "Significant threshold stress"
+    if score >= 1.5:
+        return "Moderate anaerobic load"
+    if score >= 0.5:
+        return "Light anaerobic stimulus"
+    return "Minimal anaerobic stress"
+
+
 def _activity_row(a) -> dict:
     sport = a.sport_type
     is_run = sport in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
@@ -67,6 +97,10 @@ def _activity_row(a) -> dict:
     if a.elapsed_time_s and a.moving_time_s and a.elapsed_time_s > 0:
         elapsed = _fmt_seconds(a.elapsed_time_s)
         efficiency_pct = round(a.moving_time_s / a.elapsed_time_s * 100)
+
+    _settings = get_athlete_settings()
+    aerobic_score = compute_aerobic_score(a, _settings)
+    anaerobic_score = compute_anaerobic_score(a, _settings)
 
     return {
         "strava_id": a.strava_id,
@@ -97,6 +131,12 @@ def _activity_row(a) -> dict:
         "description": (a.description or "").strip() or None,
         "device_name": a.device_name,
         "gear_id": a.gear_id,
+        "aerobic_score": aerobic_score,
+        "anaerobic_score": anaerobic_score,
+        "aerobic_score_int": int(aerobic_score),
+        "anaerobic_score_int": int(anaerobic_score),
+        "aerobic_label": _aerobic_label(aerobic_score),
+        "anaerobic_label": _anaerobic_label(anaerobic_score),
     }
 
 
@@ -378,12 +418,21 @@ def register(templates: Jinja2Templates) -> APIRouter:
         strava_ids = [a.strava_id for a in activities]
         weather_map = await get_weather_for_activities(strava_ids)
 
+        # Batch-load linked workout names
+        db_ids = [a.id for a in activities]
+        workout_name_map = await get_workout_names_for_activities(db_ids)
+        # Build a lookup by strava_id for template use
+        activity_id_to_strava = {a.id: a.strava_id for a in activities}
+
         rows = []
         for a in activities:
             row = _activity_row(a)
             w = weather_map.get(a.strava_id)
             if w:
                 row["weather"] = _weather_summary(w)
+            wname = workout_name_map.get(a.id)
+            if wname:
+                row["workout_name"] = wname[:20] + "…" if len(wname) > 20 else wname
             rows.append(row)
 
         return templates.TemplateResponse(
@@ -418,6 +467,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if activity and activity.streams_fetched:
                 streams = await get_activity_streams(activity.id)
 
+        run_sports = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
+        is_run = activity.sport_type in run_sports if activity else False
+
         # Load weather early — True Pace stream must be injected before analytics
         _weather_map = await get_weather_for_activities([strava_id])
         _weather_obj = _weather_map.get(strava_id)
@@ -432,8 +484,23 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 # true_velocity (m/s) consumed by analytics engine
                 streams["true_velocity"] = [1000.0 / p if p and p > 0 else 0.0 for p in tp_s]
 
+        # Fallback: if true_pace wasn't computed (no weather), derive from velocity_smooth
+        # so pace-based insights always have a stream to read.
+        if streams and "true_pace" not in streams:
+            vel_raw = streams.get("velocity_smooth", [])
+            if vel_raw:
+                streams["true_pace"] = [
+                    round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
+                ]
+
         if activity and streams:
             analytics = compute_activity_analytics(activity, streams)
+
+        insights = []
+        if activity and streams:
+            insights = compute_activity_performance_insights(
+                activity, streams, get_athlete_settings()
+            )
 
         if activity is None:
             return templates.TemplateResponse(
@@ -441,9 +508,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 {"request": request, "activity": None, "active_page": "activities"},
                 status_code=404,
             )
-
-        run_sports = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
-        is_run = activity.sport_type in run_sports
 
         gear_name = None
         if activity.gear_id:
@@ -469,6 +533,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         km_splits = _compute_km_splits(streams, activity.sport_type)
         avg_gap = _compute_avg_gap(streams, activity.sport_type)
+
+        # Fetch all workouts for the assign selector
+        all_workouts = []
+        if athlete_id:
+            all_workouts = await get_all_workouts(athlete_id)
 
         # Fetch linked workout + segments if any
         workout_data = None
@@ -546,10 +615,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             wap_fmt = None
             if activity.average_speed_ms and activity.average_speed_ms > 0:
-                actual_pace_s = 1000.0 / activity.average_speed_ms
-                wap_s = actual_pace_s / wap_factor
-                m, s_rem = divmod(int(wap_s), 60)
-                wap_fmt = f"{m}:{s_rem:02d}/km"
+                if is_run:
+                    actual_pace_s = 1000.0 / activity.average_speed_ms
+                    wap_s = actual_pace_s / wap_factor
+                    m, s_rem = divmod(int(wap_s), 60)
+                    wap_fmt = f"{m}:{s_rem:02d}/km"
+                else:
+                    wap_speed_kmh = activity.average_speed_ms * 3.6 * wap_factor
+                    wap_fmt = f"{wap_speed_kmh:.1f} km/h"
 
             # HR heat/humidity impact
             hr_heat_pct: Optional[float] = None
@@ -595,9 +668,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "streams_json": json.dumps(_downsample_streams(streams)),
                 "has_streams": bool(streams),
                 "sport_type": activity.sport_type,
+                "is_run": is_run,
                 "gear_name": gear_name,
                 "workout": workout_data,
+                "all_workouts": [{"id": w.id, "name": w.name, "sport_type": w.sport_type} for w in all_workouts],
                 "weather": weather_panel,
+                "insights": insights,
                 "lt2_hr": get_athlete_settings().lthr,
                 "lt1_hr": round(get_athlete_settings().lthr * 0.92) if get_athlete_settings().lthr else None,
                 "active_page": "activities",

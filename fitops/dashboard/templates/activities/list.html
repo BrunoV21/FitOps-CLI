@@ -11,7 +11,7 @@
 </div>
 
 <!-- Filters -->
-<form method="get" class="filter-bar">
+<form method="get" class="filter-bar" onsubmit="for(const s of this.querySelectorAll('select')){if(!s.value)s.disabled=true}">
   <select name="sport" class="select-ctrl">
     <option value="">All Sports</option>
     {% for s in sports %}
@@ -49,6 +49,8 @@
         <th class="r">Avg HR</th>
         <th class="r">Watts</th>
         <th class="r">TSS</th>
+        <th class="r">Aerobic</th>
+        <th class="r">Anaerob.</th>
         <th class="r">Elev</th>
         <th class="r">Weather</th>
       </tr>
@@ -67,6 +69,9 @@
             {% if a.is_race %}
               <span class="badge badge-amber">Race</span>
             {% endif %}
+            {% if a.workout_name %}
+              <span class="badge badge-blue">{{ a.workout_name }}</span>
+            {% endif %}
             {% if a.trainer %}
               <span class="badge badge-dim">Trainer</span>
             {% endif %}
@@ -78,6 +83,18 @@
         <td class="r">{% if a.avg_hr %}{{ a.avg_hr }} bpm{% else %}—{% endif %}</td>
         <td class="r">{% if a.avg_watts %}{{ a.avg_watts }} W{% else %}—{% endif %}</td>
         <td class="r">{% if a.tss %}{{ a.tss }}{% else %}—{% endif %}</td>
+        <td class="r" title="Aerobic score {{ a.aerobic_score }}/5">
+          {% if a.aerobic_score > 0 %}
+          <span style="font-size:11px;color:var(--accent-primary);letter-spacing:1px;">{% for pip in [1,2,3,4,5] %}{% if pip <= a.aerobic_score_int %}●{% else %}○{% endif %}{% endfor %}</span>
+          <span style="font-size:10px;color:var(--text-dim);margin-left:2px;">{{ a.aerobic_score }}</span>
+          {% else %}<span class="text-dim">—</span>{% endif %}
+        </td>
+        <td class="r" title="Anaerobic score {{ a.anaerobic_score }}/5">
+          {% if a.anaerobic_score > 0.1 %}
+          <span style="font-size:11px;color:#e05252;letter-spacing:1px;">{% for pip in [1,2,3,4,5] %}{% if pip <= a.anaerobic_score_int %}●{% else %}○{% endif %}{% endfor %}</span>
+          <span style="font-size:10px;color:var(--text-dim);margin-left:2px;">{{ a.anaerobic_score }}</span>
+          {% else %}<span class="text-dim">—</span>{% endif %}
+        </td>
         <td class="r">{% if a.elevation_m %}{{ a.elevation_m }} m{% else %}—{% endif %}</td>
         <td class="r">
           {% if a.weather %}

@@ -268,12 +268,14 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     }
   }
 
-  // Pace (from velocity_smooth)
+  // Pace / Speed (from velocity_smooth)
   if ((streams.velocity_smooth || []).length > 0) {
-    const paceData = streams.velocity_smooth.map(v => v > 0.1 ? 1000 / v : null);
+    const paceData = isRun
+      ? streams.velocity_smooth.map(v => v > 0.1 ? 1000 / v : null)
+      : streams.velocity_smooth.map(v => v > 0.1 ? v * 3.6 : null);
     const paceVals = paceData.filter(Boolean);
     datasets.push({
-      label: 'Pace',
+      label: isRun ? 'Pace' : 'Speed',
       data: paceData,
       borderColor: '#00aaff',
       backgroundColor: 'rgba(0,170,255,0.06)',
@@ -284,21 +286,40 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       fill: false,
       _metricKey: 'pace',
     });
-    const p95 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.95)] || 600;
-    scales.yPace = {
-      position: 'right',
-      reverse: true,
-      title: { display: true, text: 'min/km', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
-      grid: { drawOnChartArea: false },
-      min: 0,
-      max: p95 * 1.05,
-      ticks: {
-        color: '#00aaff',
-        font: { size: 10, family: 'ui-monospace, monospace' },
-        callback: v => _fmtMMSS(v),
-        maxTicksLimit: 6,
-      },
-    };
+    if (isRun) {
+      const p95 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.95)] || 600;
+      scales.yPace = {
+        position: 'right',
+        reverse: true,
+        title: { display: true, text: 'min/km', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
+        grid: { drawOnChartArea: false },
+        min: 0,
+        max: p95 * 1.05,
+        ticks: {
+          color: '#00aaff',
+          font: { size: 10, family: 'ui-monospace, monospace' },
+          callback: v => _fmtMMSS(v),
+          maxTicksLimit: 6,
+        },
+      };
+    } else {
+      const p5 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.05)] || 0;
+      const p95 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.95)] || 50;
+      scales.yPace = {
+        position: 'right',
+        reverse: false,
+        title: { display: true, text: 'km/h', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
+        grid: { drawOnChartArea: false },
+        min: Math.max(0, p5 * 0.9),
+        max: p95 * 1.1,
+        ticks: {
+          color: '#00aaff',
+          font: { size: 10, family: 'ui-monospace, monospace' },
+          callback: v => `${v.toFixed(0)}`,
+          maxTicksLimit: 6,
+        },
+      };
+    }
 
     // Grade-Adjusted Pace — use Strava's stream if available, else compute from grade_smooth
     const gasStream = streams.grade_adjusted_speed || [];
@@ -329,11 +350,14 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       });
     }
 
-    // WAP (Weather-Adjusted Pace) — per-GPS-point, pre-computed server-side
+    // WAP — weather-adjusted pace (s/km for run, converted to km/h for cycling)
     if ((streams.wap_pace || []).length > 0) {
+      const wapData = isRun
+        ? streams.wap_pace
+        : streams.wap_pace.map(v => v > 0 ? 3600 / v : null);
       datasets.push({
-        label: 'WAP',
-        data: streams.wap_pace,
+        label: isRun ? 'WAP' : 'WAP Speed',
+        data: wapData,
         borderColor: '#ff8800',
         borderWidth: 1.5,
         borderDash: [3, 2],
@@ -346,11 +370,14 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       });
     }
 
-    // True Pace (GAP + WAP) — normalised for both gradient and weather
+    // True Pace/Speed — GAP + WAP normalised (s/km for run, km/h for cycling)
     if ((streams.true_pace || []).length > 0) {
+      const tpData = isRun
+        ? streams.true_pace
+        : streams.true_pace.map(v => v > 0 ? 3600 / v : null);
       datasets.push({
-        label: 'True Pace',
-        data: streams.true_pace,
+        label: isRun ? 'True Pace' : 'True Speed',
+        data: tpData,
         borderColor: '#00ff87',
         borderWidth: 2,
         borderDash: [4, 2],
@@ -462,9 +489,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
               if (v === null || v === undefined) return null;
               if (ds.label === 'Heart Rate') return ` HR: ${Math.round(v)} bpm`;
               if (ds.label === 'Pace')        return ` Pace: ${_fmtMMSS(v)}/km`;
+              if (ds.label === 'Speed')       return ` Speed: ${v.toFixed(1)} km/h`;
               if (ds.label === 'GAP')         return ` GAP: ${_fmtMMSS(v)}/km`;
               if (ds.label === 'WAP')         return ` WAP: ${_fmtMMSS(v)}/km`;
+              if (ds.label === 'WAP Speed')   return ` WAP: ${v.toFixed(1)} km/h`;
               if (ds.label === 'True Pace')   return ` True Pace: ${_fmtMMSS(v)}/km`;
+              if (ds.label === 'True Speed')  return ` True Speed: ${v.toFixed(1)} km/h`;
               if (ds.label === 'Altitude')    return ` Alt: ${Math.round(v)} m`;
               if (ds.label === 'Cadence')     return ` Cadence: ${Math.round(v)} ${isRun ? 'spm' : 'rpm'}`;
               if (ds.label === 'Power')       return ` Power: ${Math.round(v)} W`;
@@ -493,16 +523,17 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
  * @param {string} containerId
  * @param {{hr, pace, alt, cad, pwr}: boolean} available
  */
-function initMetricToggles(chart, containerId, available) {
+function initMetricToggles(chart, containerId, available, sportType) {
   const container = document.getElementById(containerId);
   if (!container || !chart) return;
 
+  const _isRun = new Set(['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike']).has(sportType);
   const METRICS = [
-    { key: 'hr',   label: 'HR',       color: '#ff3355', defaultOn: true  },
-    { key: 'pace', label: 'Pace',     color: '#00aaff', defaultOn: true  },
+    { key: 'hr',   label: 'HR',                      color: '#ff3355', defaultOn: true  },
+    { key: 'pace', label: _isRun ? 'Pace' : 'Speed', color: '#00aaff', defaultOn: true  },
     { key: 'gap',  label: 'GAP',      color: '#00ccff', defaultOn: true  },
-    { key: 'wap',  label: 'WAP',      color: '#ff8800', defaultOn: true  },
-    { key: 'tp',   label: 'True Pace', color: '#00ff87', defaultOn: true  },
+    { key: 'wap',  label: _isRun ? 'WAP' : 'WAP Speed',        color: '#ff8800', defaultOn: true  },
+    { key: 'tp',   label: _isRun ? 'True Pace' : 'True Speed', color: '#00ff87', defaultOn: true  },
     { key: 'alt',  label: 'Altitude', color: '#00ff87', defaultOn: true  },
     { key: 'cad',  label: 'Cadence',  color: '#ffaa00', defaultOn: false },
     { key: 'pwr',  label: 'Power',    color: '#aa55ff', defaultOn: false },

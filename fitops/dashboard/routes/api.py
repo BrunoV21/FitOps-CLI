@@ -3,14 +3,16 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete as sa_delete, select
 
+from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.weather_pace import wbgt_approx, pace_heat_factor
 from fitops.config.settings import get_settings
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
+from fitops.db.models.workout import Workout
 from fitops.db.session import get_async_session
 from fitops.strava.client import StravaClient
 from fitops.strava.sync_engine import SyncEngine
@@ -208,5 +210,105 @@ def register() -> APIRouter:
             return JSONResponse({"ok": True, "streams_fetched": len(stream_data), "weather_fetched": weather_ok})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
+
+    _ALLOWED_METRIC_KEYS = {
+        "max_hr", "lthr", "lt1_hr", "vo2max_override",
+        "threshold_pace_per_km_s", "lt1_pace_s",
+    }
+
+    @router.post("/api/settings/metric")
+    async def update_athlete_metric(request: Request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        key = payload.get("key")
+        value = payload.get("value")
+        if key not in _ALLOWED_METRIC_KEYS or value is None:
+            return JSONResponse({"error": "invalid key or value"}, status_code=400)
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "value must be numeric"}, status_code=400)
+        get_athlete_settings().set(**{key: value})
+        return JSONResponse({"ok": True, "key": key, "value": value})
+
+    @router.post("/api/activities/{strava_id}/assign-workout")
+    async def assign_workout(strava_id: int, request: Request):
+        settings = get_settings()
+        if not settings.athlete_id:
+            return JSONResponse({"error": "Not authenticated."}, status_code=401)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        workout_id = payload.get("workout_id")
+        if not workout_id:
+            return JSONResponse({"error": "workout_id required"}, status_code=400)
+
+        async with get_async_session() as session:
+            # Resolve activity
+            act = (await session.execute(
+                select(Activity).where(
+                    Activity.strava_id == strava_id,
+                    Activity.athlete_id == settings.athlete_id,
+                )
+            )).scalar_one_or_none()
+            if act is None:
+                return JSONResponse({"error": "Activity not found."}, status_code=404)
+
+            # Resolve workout (must belong to this athlete)
+            wkt = (await session.execute(
+                select(Workout).where(
+                    Workout.id == workout_id,
+                    Workout.athlete_id == settings.athlete_id,
+                )
+            )).scalar_one_or_none()
+            if wkt is None:
+                return JSONResponse({"error": "Workout not found."}, status_code=404)
+
+            # Unlink any other workout already assigned to this activity
+            prev = (await session.execute(
+                select(Workout).where(Workout.activity_id == act.id)
+            )).scalar_one_or_none()
+            if prev and prev.id != wkt.id:
+                prev.activity_id = None
+                prev.linked_at = None
+                prev.status = "planned"
+
+            # Assign
+            wkt.activity_id = act.id
+            wkt.linked_at = datetime.now(timezone.utc)
+            wkt.status = "completed"
+
+        return JSONResponse({"ok": True, "workout_id": wkt.id, "workout_name": wkt.name})
+
+    @router.post("/api/activities/{strava_id}/unassign-workout")
+    async def unassign_workout(strava_id: int):
+        settings = get_settings()
+        if not settings.athlete_id:
+            return JSONResponse({"error": "Not authenticated."}, status_code=401)
+
+        async with get_async_session() as session:
+            act = (await session.execute(
+                select(Activity).where(
+                    Activity.strava_id == strava_id,
+                    Activity.athlete_id == settings.athlete_id,
+                )
+            )).scalar_one_or_none()
+            if act is None:
+                return JSONResponse({"error": "Activity not found."}, status_code=404)
+
+            wkt = (await session.execute(
+                select(Workout).where(Workout.activity_id == act.id)
+            )).scalar_one_or_none()
+            if wkt is None:
+                return JSONResponse({"error": "No workout linked."}, status_code=404)
+
+            wkt.activity_id = None
+            wkt.linked_at = None
+            wkt.status = "planned"
+
+        return JSONResponse({"ok": True})
 
     return router
