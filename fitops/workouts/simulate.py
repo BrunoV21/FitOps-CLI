@@ -229,17 +229,6 @@ def simulate_workout_on_course(
         if seg.duration_min is None:
             warnings.append("duration_min is None — distance estimated as 0 m")
 
-        # Warn: HR-only segment falling back to estimated pace
-        is_hr_only = (
-            seg.target_pace_min_s_per_km is None
-            and seg.target_pace_max_s_per_km is None
-            and seg.target_focus_type in ("hr_zone", "hr_range")
-        )
-        if is_hr_only and base_pace_s is None and pace_src == "estimated":
-            warnings.append(
-                "No pace target or --base-pace provided; using 6:00/km fallback for distance estimate"
-            )
-
         # Warn: overflowed course
         if est_dist_m > 0 and not covered_km_segs:
             warnings.append("Segment falls beyond course end — neutral factors applied")

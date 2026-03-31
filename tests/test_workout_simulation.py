@@ -256,12 +256,11 @@ class TestSimulateWorkoutOnCourse:
         r = results[0]
         assert r.adj_pace_min_s > r.flat_pace_min_s  # uphill → slower (larger s/km)
 
-    def test_hr_segment_no_base_pace_uses_estimated_with_warning(self):
+    def test_hr_segment_no_base_pace_uses_estimated(self):
         seg = _hr_seg(duration_min=10.0)
         results = simulate_workout_on_course([seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=None)
         r = results[0]
         assert r.pace_source == "estimated"
-        assert any("6:00" in w for w in r.warnings)
 
     def test_hr_segment_with_base_pace(self):
         seg = _hr_seg(duration_min=10.0)

@@ -8,7 +8,10 @@
     <p class="page-title">Workouts</p>
     <p class="page-subtitle">Linked workout definitions and compliance scores</p>
   </div>
-  <a href="/workouts/simulate" class="btn">Simulate on Route</a>
+  <div style="display:flex;gap:8px;">
+    <a href="/workouts/create" class="btn">+ Create Workout</a>
+    <a href="/workouts/simulate" class="btn">Simulate on Route</a>
+  </div>
 </div>
 
 {% if workouts %}
@@ -67,33 +70,71 @@
             <p style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);padding:12px 16px 8px;">
               Segment Breakdown
             </p>
-            {% for seg in w.segments %}
-            <div class="segment-row">
-              <div>
-                <span style="font-size:12px;font-weight:600;color:var(--text-primary);">
-                  {{ seg.segment_name or ("Segment " ~ seg.segment_index) }}
-                </span>
-                {% if seg.step_type %}<span style="margin-left:8px;font-size:11px;color:var(--text-dim);">{{ seg.step_type }}</span>{% endif %}
-                {% if seg.target_zone %}<span style="margin-left:8px;" class="zone-badge z{{ seg.target_zone }}">Z{{ seg.target_zone }}</span>{% endif %}
-              </div>
-              <div style="display:flex;align-items:center;gap:16px;font-size:11px;color:var(--text-muted);">
-                {% if seg.actuals.avg_heartrate_bpm %}
-                <span>{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm avg</span>
-                {% endif %}
-                {% if seg.compliance.time_in_target_pct is not none %}
-                <span>{{ "%.0f%%" | format(seg.compliance.time_in_target_pct) }} in zone</span>
-                {% endif %}
-                {% if seg.compliance.compliance_score is not none %}
-                <span style="font-weight:700;color:
-                  {% if seg.compliance.compliance_score >= 0.8 %}var(--accent-primary)
-                  {% elif seg.compliance.compliance_score >= 0.5 %}var(--accent-amber)
-                  {% else %}var(--accent-red){% endif %};">
-                  {{ "%.0f%%" | format(seg.compliance.compliance_score * 100) }}
-                </span>
-                {% endif %}
-              </div>
-            </div>
-            {% endfor %}
+            <table class="data-table" style="margin:0;">
+              <thead>
+                <tr>
+                  <th>Segment</th>
+                  <th>Type</th>
+                  <th>Target</th>
+                  <th class="r">Avg Pace</th>
+                  <th class="r">Avg HR</th>
+                  <th class="r">Avg Speed</th>
+                  <th class="r">Avg GAP</th>
+                  <th class="r">Avg Cadence</th>
+                  <th class="r">In Target</th>
+                  <th class="r">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for seg in w.segments %}
+                <tr>
+                  <td style="font-weight:600;color:var(--text-primary);">
+                    {{ seg.segment_name or ("Segment " ~ seg.segment_index) }}
+                  </td>
+                  <td style="font-size:11px;color:var(--text-dim);">{{ seg.step_type or "—" }}</td>
+                  <td style="font-size:11px;color:var(--text-muted);">{{ seg.target_label }}</td>
+                  <td class="r">
+                    {% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}
+                  </td>
+                  <td class="r">
+                    {% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}
+                  </td>
+                  <td class="r">
+                    {% if seg.actuals.avg_speed_kmh %}{{ "%.1f" | format(seg.actuals.avg_speed_kmh) }} km/h{% else %}—{% endif %}
+                  </td>
+                  <td class="r">
+                    {% if seg.actuals.avg_gap_formatted %}{{ seg.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}
+                  </td>
+                  <td class="r">
+                    {% if seg.actuals.avg_cadence %}{{ "%.0f" | format(seg.actuals.avg_cadence) }} spm{% else %}—{% endif %}
+                  </td>
+                  <td class="r">
+                    {% if seg.compliance.time_in_target_pct is not none %}
+                      {{ "%.0f%%" | format(seg.compliance.time_in_target_pct * 100) }}
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="r">
+                    {% if seg.compliance_pct is not none %}
+                    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+                      <div class="compliance-bar-track" style="width:40px;">
+                        <div class="compliance-bar-fill" style="width:{{ seg.compliance_pct }}%;background:
+                          {% if seg.compliance_pct >= 80 %}var(--accent-primary)
+                          {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+                          {% else %}var(--accent-red){% endif %};"></div>
+                      </div>
+                      <span style="font-weight:700;min-width:30px;text-align:right;color:
+                        {% if seg.compliance_pct >= 80 %}var(--accent-primary)
+                        {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
+                        {% else %}var(--accent-red){% endif %};">
+                        {{ seg.compliance_pct }}%
+                      </span>
+                    </div>
+                    {% else %}<span style="color:var(--text-dim);">—</span>{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
         </td>
       </tr>

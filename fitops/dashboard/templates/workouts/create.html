@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Create Workout — FitOps{% endblock %}
+{% block page_name %}Workouts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Create Workout</p>
+    <p class="page-subtitle">Define a workout from a JSON structure and save it to your workout library</p>
+  </div>
+  <a href="/workouts" class="back-link">← Workouts</a>
+</div>
+
+{% if created %}
+{# ── Success state ─────────────────────────────────────────────── #}
+<div class="panel" style="margin-bottom:1.25rem;border-left:3px solid var(--accent-primary);">
+  <div style="padding:1rem 1.25rem;">
+    <p style="font-size:13px;font-weight:700;color:var(--accent-primary);margin-bottom:6px;">Workout created — {{ created.file_name }}</p>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+      <strong style="color:var(--text-primary);">{{ created.name }}</strong>
+      &nbsp;·&nbsp; {{ created.sport | capitalize }}
+      &nbsp;·&nbsp; {{ created.segment_count }} segments
+      &nbsp;·&nbsp; {{ created.total_duration_min }} min planned
+    </p>
+    <table class="data-table" style="margin-bottom:12px;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Segment</th>
+          <th>Type</th>
+          <th class="r">Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for seg in created.segments %}
+        <tr>
+          <td style="color:var(--text-dim);">{{ loop.index }}</td>
+          <td style="font-weight:600;">{{ seg.name }}</td>
+          <td style="font-size:11px;color:var(--text-dim);">{{ seg.step_type or "—" }}</td>
+          <td class="r">{% if seg.duration_min %}{{ seg.duration_min }} min{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="display:flex;gap:8px;">
+      <a href="/workouts/create" class="btn">Create Another</a>
+      <a href="/workouts" class="btn">← Back to Workouts</a>
+    </div>
+  </div>
+</div>
+
+{% else %}
+{# ── Create form ───────────────────────────────────────────────── #}
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <span class="panel-title">Workout Definition</span>
+  </div>
+  <form method="post" action="/workouts/create" style="padding:1rem 1.25rem;">
+
+    {% if error %}
+    <div class="alert alert-red" style="margin-bottom:1rem;">
+      <strong>Error:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1rem;">
+      <div>
+        <label style="display:block;font-size:0.78rem;color:#888;margin-bottom:0.3rem;">Workout Name</label>
+        <input type="text" name="name" value="{{ form.name or '' }}" placeholder="e.g. Thursday Threshold Run"
+               required
+               style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+      </div>
+      <div>
+        <label style="display:block;font-size:0.78rem;color:#888;margin-bottom:0.3rem;">Sport</label>
+        <select name="sport"
+                style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;">
+          {% for s in [('run','Run'),('ride','Ride'),('swim','Swim'),('walk','Walk'),('hike','Hike')] %}
+          <option value="{{ s[0] }}" {% if (form.sport or 'run') == s[0] %}selected{% endif %}>{{ s[1] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-bottom:1rem;">
+      <label style="display:block;font-size:0.78rem;color:#888;margin-bottom:0.3rem;">
+        Workout JSON
+        <span style="color:var(--text-dim);font-weight:400;margin-left:6px;">— paste your workout definition below</span>
+      </label>
+      <textarea name="workout_json_str" rows="20" required
+                placeholder='{
+  "training": {
+    "warmup": {
+      "time_minutes": 10,
+      "heart_rate_range_bpm": { "min": 120, "max": 145 }
+    },
+    "intervals": [
+      {
+        "sets": 5,
+        "run": {
+          "time_seconds": 300,
+          "pace_per_km": { "min": "4:30", "max": "5:00" }
+        },
+        "rest": { "time_seconds": 90 }
+      }
+    ],
+    "cooldown_rest": {
+      "time_minutes": 10,
+      "heart_rate_range_bpm": { "min": 110, "max": 140 }
+    }
+  }
+}'
+                style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 0.75rem;border-radius:4px;font-size:0.82rem;font-family:ui-monospace,monospace;resize:vertical;">{{ form.workout_json_str or '' }}</textarea>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button type="submit"
+              style="padding:0.4rem 1.1rem;background:var(--accent-primary);color:#000;border:none;border-radius:4px;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.04em;">
+        Create Workout
+      </button>
+      <a href="/workouts" style="font-size:0.82rem;color:var(--text-dim);">Cancel</a>
+    </div>
+
+  </form>
+</div>
+
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header"><span class="panel-title">JSON Format Reference</span></div>
+  <div style="padding:0.75rem 1.25rem;font-size:11px;color:var(--text-dim);line-height:1.7;">
+    <p style="margin-bottom:6px;">The top-level <code>training</code> key supports:</p>
+    <ul style="margin:0 0 8px 16px;">
+      <li><code>warmup</code> — <code>time_minutes</code>, optional <code>heart_rate_range_bpm</code> <em>{min, max}</em></li>
+      <li><code>intervals</code> — array of interval groups, each with <code>sets</code>, <code>run</code> and <code>rest</code> blocks</li>
+      <li><code>cooldown_rest</code> — same shape as warmup</li>
+    </ul>
+    <p style="margin-bottom:4px;">Each <strong>run</strong> block: <code>time_seconds</code>, optional <code>pace_per_km</code> <em>{min, max}</em> as <code>"M:SS"</code></p>
+    <p>Each <strong>rest</strong> block: <code>time_seconds</code></p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
