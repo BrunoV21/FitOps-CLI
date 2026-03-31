@@ -16,6 +16,7 @@ async def get_recent_activities(
     limit: int = 50,
     offset: int = 0,
     sport: Optional[str] = None,
+    sport_types: Optional[frozenset] = None,
     days: Optional[int] = None,
     since: Optional[datetime] = None,
 ) -> list[Activity]:
@@ -23,6 +24,8 @@ async def get_recent_activities(
         q = select(Activity).where(Activity.athlete_id == athlete_id)
         if sport:
             q = q.where(Activity.sport_type == sport)
+        elif sport_types:
+            q = q.where(Activity.sport_type.in_(list(sport_types)))
         if since:
             q = q.where(Activity.start_date >= since)
         elif days:
@@ -74,24 +77,30 @@ async def get_activity_stats(
     athlete_id: int,
     days: Optional[int] = None,
     since: Optional[datetime] = None,
+    sport_types: Optional[frozenset] = None,
 ) -> dict:
     async with get_async_session() as session:
         q = select(
             func.count(Activity.id).label("total_count"),
             func.sum(Activity.distance_m).label("total_distance_m"),
             func.sum(Activity.total_elevation_gain_m).label("total_elevation_m"),
+            func.sum(Activity.moving_time_s).label("total_moving_time_s"),
         ).where(Activity.athlete_id == athlete_id)
         if since:
             q = q.where(Activity.start_date >= since)
         elif days:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
+        if sport_types:
+            q = q.where(Activity.sport_type.in_(list(sport_types)))
         result = await session.execute(q)
         row = result.one()
+        total_s = row.total_moving_time_s or 0
         return {
             "total_count": row.total_count or 0,
             "total_distance_km": round((row.total_distance_m or 0) / 1000, 1),
             "total_elevation_m": round(row.total_elevation_m or 0),
+            "total_duration_h": round(total_s / 3600, 1),
         }
 
 

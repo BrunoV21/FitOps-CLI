@@ -59,7 +59,7 @@
     {% endif %}
   </div>
   <div class="panel" style="--delay:80ms">
-    <p class="panel-label">Pace / Speed</p>
+    <p class="panel-label">{% if is_run %}Pace{% else %}Speed{% endif %}</p>
     <p class="panel-metric--md">{{ activity.pace }}</p>
   </div>
   {% if activity.elevation_m %}
@@ -72,6 +72,20 @@
   <div class="panel panel--accent-blue" style="--delay:160ms">
     <p class="panel-label">Training Stress</p>
     <p class="panel-metric--md c-blue">{{ activity.tss }}</p>
+  </div>
+  {% endif %}
+  {% if activity.aerobic_score > 0 %}
+  <div class="panel panel--accent" style="--delay:200ms">
+    <p class="panel-label">Aerobic Score</p>
+    <p class="panel-metric--md c-green">{{ activity.aerobic_score }}<span class="panel-unit">/5</span></p>
+    <p class="panel-sub">{{ activity.aerobic_label }}</p>
+  </div>
+  {% endif %}
+  {% if activity.anaerobic_score > 0.1 %}
+  <div class="panel panel--accent-red" style="--delay:240ms">
+    <p class="panel-label">Anaerobic Score</p>
+    <p class="panel-metric--md c-red">{{ activity.anaerobic_score }}<span class="panel-unit">/5</span></p>
+    <p class="panel-sub">{{ activity.anaerobic_label }}</p>
   </div>
   {% endif %}
 </div>
@@ -312,6 +326,48 @@
 </div>
 {% endif %}
 
+{# ── Performance Insights ─────────────────────────────────────── #}
+{% if insights %}
+<div class="panel" style="--delay:520ms;margin-bottom:1px;">
+  <p class="panel-label">Performance Insights</p>
+  {% for ins in insights %}
+  {% if ins.action == "prompt_update" %}
+  <div class="insight-item insight-item--improve" data-metric="{{ ins.metric }}" style="padding:10px 0;border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+      <span class="badge badge-green">NEW</span>
+      <span style="font-size:12px;color:var(--text-primary);font-weight:600;margin-left:4px;">{{ ins.label }}: {{ ins.detected_fmt }}</span>
+      {% if ins.current_fmt %}
+      <span style="font-size:11px;color:var(--text-dim);margin-left:2px;">was {{ ins.current_fmt }}</span>
+      {% endif %}
+      <span style="font-size:10px;color:var(--accent-primary);margin-left:2px;">
+        ({% if ins.delta_pct > 0 %}+{% endif %}{{ "%.1f"|format(ins.delta_pct * 100) }}%)
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+      <span style="font-size:11px;color:var(--text-dim);flex:1;">{{ ins.explanation }}</span>
+      <button
+        class="btn btn-primary"
+        style="font-size:10px;padding:3px 10px;flex-shrink:0;"
+        onclick="applyInsight('{{ ins.setting_key }}', {{ ins.detected_value }}, this)">
+        Set as default
+      </button>
+    </div>
+  </div>
+  {% elif ins.action == "warn" %}
+  <div style="display:flex;align-items:flex-start;gap:6px;padding:8px 0;border-bottom:1px solid var(--border);">
+    <span style="color:var(--accent-amber);font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">▲</span>
+    <div>
+      <span style="font-size:11px;color:var(--text-muted);font-weight:600;">{{ ins.label }}: {{ ins.detected_fmt }}</span>
+      {% if ins.current_fmt %}<span style="font-size:11px;color:var(--text-dim);margin-left:4px;">(setting: {{ ins.current_fmt }})</span>{% endif %}
+      <span style="font-size:11px;color:var(--accent-amber);margin-left:4px;">{{ "%.1f"|format(ins.delta_pct * 100) }}%</span>
+      <p style="font-size:11px;color:var(--text-dim);margin:2px 0 0;">{{ ins.explanation }}</p>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ── Effort details panel ─────────────────────────────────────── #}
 {% set has_effort_details = activity.elapsed or gear_name or activity.gear_id %}
 {% if has_effort_details %}
@@ -406,16 +462,19 @@
     <p class="panel-label" style="margin:0;">
       Workout Plan — <a href="/workouts/{{ workout.id }}" class="panel-link">{{ workout.name }}</a>
     </p>
-    {% if workout.compliance_pct is not none %}
-    <span style="font-size:12px;font-weight:700;color:
-      {% if workout.compliance_pct >= 80 %}var(--accent-primary)
-      {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
-      {% else %}var(--accent-red){% endif %};">
-      {{ workout.compliance_pct }}% overall
-    </span>
-    {% else %}
-    <span style="font-size:11px;color:var(--text-dim);">Run <code>fitops workouts compliance {{ activity.strava_id }}</code> to score</span>
-    {% endif %}
+    <div style="display:flex;align-items:center;gap:10px;">
+      {% if workout.compliance_pct is not none %}
+      <span style="font-size:12px;font-weight:700;color:
+        {% if workout.compliance_pct >= 80 %}var(--accent-primary)
+        {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
+        {% else %}var(--accent-red){% endif %};">
+        {{ workout.compliance_pct }}% overall
+      </span>
+      {% else %}
+      <span style="font-size:11px;color:var(--text-dim);">Run <code>fitops workouts compliance {{ activity.strava_id }}</code> to score</span>
+      {% endif %}
+      <button id="unassign-btn" onclick="unassignWorkout()" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid var(--border-color);background:transparent;color:var(--text-dim);cursor:pointer;">Unassign</button>
+    </div>
   </div>
   {% if workout.segments %}
   <table class="data-table">
@@ -469,6 +528,23 @@
 </div>
 {% endif %}
 
+{# ── Assign Workout (shown when none is linked) ───────────────── #}
+{% if all_workouts %}
+<div id="assign-workout-panel" class="panel" style="--delay:625ms;margin-bottom:1px;{% if workout %}display:none;{% endif %}">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <p class="panel-label" style="margin:0;flex-shrink:0;">Assign Workout</p>
+    <select id="workout-select" style="flex:1;min-width:160px;max-width:340px;font-size:12px;padding:4px 8px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-panel);color:var(--text-primary);cursor:pointer;">
+      <option value="">— select workout —</option>
+      {% for w in all_workouts %}
+      <option value="{{ w.id }}">{{ w.name }} ({{ w.sport_type }})</option>
+      {% endfor %}
+    </select>
+    <button onclick="assignWorkout()" style="font-size:12px;padding:4px 12px;border-radius:4px;border:1px solid var(--accent-primary);background:transparent;color:var(--accent-primary);cursor:pointer;font-weight:600;">Assign</button>
+  </div>
+  <p id="assign-msg" style="margin:6px 0 0;font-size:11px;color:var(--text-dim);display:none;"></p>
+</div>
+{% endif %}
+
 {# ── Lap Splits ───────────────────────────────────────────────── #}
 {% if laps %}
 {# Compute pace_s range across laps for color coding #}
@@ -493,7 +569,7 @@
         <th>Name</th>
         <th class="r">Distance</th>
         <th class="r">Duration</th>
-        <th class="r">Pace / Speed</th>
+        <th class="r">{% if is_run %}Pace{% else %}Speed{% endif %}</th>
         <th class="r">Avg HR</th>
         <th class="r">Max HR</th>
         {% if laps | selectattr('avg_watts') | list %}<th class="r">Watts</th>{% endif %}
@@ -537,6 +613,46 @@
 {% endblock %}
 
 {% block scripts %}
+{% if insights %}
+<script>
+async function applyInsight(settingKey, value, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving\u2026';
+
+  try {
+    const res = await fetch('/api/settings/metric', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: settingKey, value: value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+
+    btn.textContent = 'Saved \u2713';
+    btn.style.color = 'var(--accent-primary)';
+    btn.style.borderColor = 'var(--accent-primary)';
+    btn.style.background = 'transparent';
+
+    const item = btn.closest('.insight-item--improve');
+    if (item) {
+      const wasEl = item.querySelector('[style*="was "]') || item.querySelector('span[style*="text-dim"]');
+      if (wasEl) wasEl.textContent = 'Updated in settings';
+    }
+  } catch (err) {
+    btn.textContent = 'Error';
+    btn.style.color = 'var(--accent-red)';
+    btn.style.borderColor = 'var(--accent-red)';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = orig;
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }, 3000);
+  }
+}
+</script>
+{% endif %}
 {% if has_streams %}
 <script>
 (function() {
@@ -561,11 +677,48 @@
     alt:  (STREAMS.altitude || []).length > 0,
     cad:  (STREAMS.cadence || []).length > 0,
     pwr:  (STREAMS.watts || []).length > 0,
-  });
+  }, SPORT_TYPE);
 })();
 </script>
 {% endif %}
 <script>
+async function assignWorkout() {
+  const sel = document.getElementById('workout-select');
+  const msg = document.getElementById('assign-msg');
+  const workout_id = parseInt(sel.value);
+  if (!workout_id) { msg.textContent = 'Select a workout first.'; msg.style.display='block'; return; }
+
+  msg.textContent = 'Assigning…'; msg.style.display = 'block';
+  try {
+    const res = await fetch(`/api/activities/{{ activity.strava_id }}/assign-workout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workout_id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    msg.textContent = 'Assigned — reloading…';
+    setTimeout(() => location.reload(), 600);
+  } catch (err) {
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--accent-red)';
+  }
+}
+
+async function unassignWorkout() {
+  const btn = document.getElementById('unassign-btn');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(`/api/activities/{{ activity.strava_id }}/unassign-workout`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    btn.textContent = 'Error';
+    btn.disabled = false;
+  }
+}
+
 async function fetchActivityStreams(stravaId) {
   const btn = document.getElementById('fetch-streams-btn');
   btn.disabled = true;
