@@ -133,7 +133,8 @@
 {% endif %}
 {% else %}
 <div class="empty-state">
-  No activities found. Try adjusting the filters or run <code>fitops sync run</code>.
+  <p>No activities found. Try adjusting the filters.</p>
+  <button class="btn btn-primary" style="margin-top:12px;" onclick="triggerSync()">Sync from Strava</button>
 </div>
 {% endif %}
 {% endblock %}
