@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from typing import Optional
 
 import typer
 
@@ -14,14 +16,19 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.command("login")
-def login() -> None:
+def login(
+    client_id: Optional[str] = typer.Option(None, "--client-id", envvar="STRAVA_CLIENT_ID", help="Strava Client ID"),
+    client_secret: Optional[str] = typer.Option(None, "--client-secret", envvar="STRAVA_CLIENT_SECRET", help="Strava Client Secret"),
+) -> None:
     """Authenticate with Strava via OAuth."""
     settings = get_settings()
 
     if not settings.client_id:
         typer.echo("Strava client_id not configured.")
-        client_id = typer.prompt("Enter your Strava Client ID")
-        client_secret = typer.prompt("Enter your Strava Client Secret", hide_input=True)
+        if not client_id:
+            client_id = input("Enter your Strava Client ID: ").strip()
+        if not client_secret:
+            client_secret = input("Enter your Strava Client Secret: ").strip()
         settings.save_credentials(client_id, client_secret)
         settings.reload()
 
