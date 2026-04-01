@@ -140,6 +140,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         workout_files = list_workout_files()
         courses = await get_all_courses()
         return templates.TemplateResponse(
+            request,
             "workouts/simulate.html",
             {
                 "request": request,
@@ -203,6 +204,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         def _render_error(msg: str):
             return templates.TemplateResponse(
+                request,
                 "workouts/simulate.html",
                 {
                     "request": request,
@@ -365,6 +367,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         from fitops.race.course_parser import _fmt_duration
         return templates.TemplateResponse(
+            request,
             "workouts/simulate.html",
             {
                 "request": request,
@@ -434,6 +437,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 })
 
         return templates.TemplateResponse(
+            request,
             "workouts/list.html",
             {
                 "request": request,
@@ -445,6 +449,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/workouts/create", response_class=HTMLResponse)
     async def workout_create_form(request: Request):
         return templates.TemplateResponse(
+            request,
             "workouts/create.html",
             {"request": request, "form": {}, "error": None, "created": None, "active_page": "workouts"},
         )
@@ -463,6 +468,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         def _render_error(msg: str):
             return templates.TemplateResponse(
+                request,
                 "workouts/create.html",
                 {"request": request, "form": form_vals, "error": msg, "created": None, "active_page": "workouts"},
             )
@@ -517,6 +523,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             ],
         }
         return templates.TemplateResponse(
+            request,
             "workouts/create.html",
             {"request": request, "form": form_vals, "error": None, "created": created, "active_page": "workouts"},
         )
@@ -528,6 +535,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         if not athlete_id:
             return templates.TemplateResponse(
+                request,
                 "workouts/detail.html",
                 {"request": request, "workout": None, "active_page": "workouts"},
                 status_code=404,
@@ -536,6 +544,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         result = await get_workout_with_segments(workout_id, athlete_id)
         if result is None:
             return templates.TemplateResponse(
+                request,
                 "workouts/detail.html",
                 {"request": request, "workout": None, "active_page": "workouts"},
                 status_code=404,
@@ -577,6 +586,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         overall_pct = round(workout.compliance_score * 100) if workout.compliance_score is not None else None
 
         return templates.TemplateResponse(
+            request,
             "workouts/detail.html",
             {
                 "request": request,

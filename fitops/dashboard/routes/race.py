@@ -134,6 +134,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         await create_all_tables()
         courses = await get_all_courses()
         return templates.TemplateResponse(
+            request,
             "race/index.html",
             {
                 "request": request,
@@ -145,6 +146,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/race/import", response_class=HTMLResponse)
     async def race_import_form(request: Request):
         return templates.TemplateResponse(
+            request,
             "race/import.html",
             {"request": request, "error": None, "active_page": "race"},
         )
@@ -219,6 +221,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             error = str(exc)
 
         return templates.TemplateResponse(
+            request,
             "race/import.html",
             {"request": request, "error": error, "active_page": "race"},
         )
@@ -242,6 +245,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         route_coords = _sample_route_coords(course.get_course_points())
         return templates.TemplateResponse(
+            request,
             "race/course.html",
             {
                 "request": request,
@@ -263,6 +267,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         summary = course.to_summary_dict()
         route_coords = _sample_route_coords(course.get_course_points())
         return templates.TemplateResponse(
+            request,
             "race/simulate.html",
             {
                 "request": request,
@@ -326,6 +331,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         def _render_error(msg: str, weather_info: Optional[dict] = None):
             return templates.TemplateResponse(
+                request,
                 "race/simulate.html",
                 {
                     "request": request,
@@ -495,6 +501,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         elevation_profile = _build_elevation_profile(course)
 
         return templates.TemplateResponse(
+            request,
             "race/simulate.html",
             {
                 "request": request,
