@@ -12,10 +12,11 @@ from markupsafe import Markup
 _HERE = Path(__file__).parent
 
 
-def create_app() -> FastAPI:
-    from fitops.dashboard.routes import activities, analytics, api, notes, overview, profile, workouts, weather, race
+def create_app(port: int = 8888) -> FastAPI:
+    from fitops.dashboard.routes import activities, analytics, api, notes, overview, profile, workouts, weather, race, setup
 
     app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None)
+    app.state.dashboard_port = port
 
     app.mount(
         "/static",
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     # Register all routers (each route module returns its router after
     # binding the shared templates instance)
     app.include_router(api.register())
+    app.include_router(setup.register(templates))
     app.include_router(overview.register(templates))
     app.include_router(activities.register(templates))
     app.include_router(analytics.register(templates))

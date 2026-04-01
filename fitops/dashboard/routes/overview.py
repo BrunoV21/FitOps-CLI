@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
@@ -149,6 +149,10 @@ def _period_since(period: str) -> datetime | None:
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
     async def overview(request: Request, period: str = "week", view: str = "run"):
+        settings = get_settings()
+        if not settings.is_authenticated:
+            return RedirectResponse("/setup")
+
         if period not in _PERIOD_LABELS:
             period = "week"
         if view not in _VIEW_SPORT_TYPES:
@@ -156,7 +160,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         since = _period_since(period)
         sport_types = _VIEW_SPORT_TYPES[view]
 
-        settings = get_settings()
         athlete_id = settings.athlete_id
 
         athlete = await get_athlete(athlete_id) if athlete_id else None
@@ -177,6 +180,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             }
 
         return templates.TemplateResponse(
+            request,
             "overview.html",
             {
                 "request": request,

@@ -18,16 +18,7 @@ def serve(
         typer.echo("uvicorn is required. Run: pip install 'fitops-cli[dashboard]'", err=True)
         raise typer.Exit(1)
 
-    from fitops.config.settings import get_settings
     from fitops.db.migrations import init_db
-    from fitops.utils.exceptions import NotAuthenticatedError
-
-    settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1)
 
     init_db()
 
@@ -47,4 +38,4 @@ def serve(
 
     from fitops.dashboard.server import create_app
 
-    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+    uvicorn.run(create_app(port=port), host=host, port=port, log_level="warning")
