@@ -214,7 +214,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "vo2max_computed": vo2max_result,
             }
         )
-        return templates.TemplateResponse("profile.html", ctx)
+        return templates.TemplateResponse(request, "profile.html", ctx)
 
     @router.post("/profile/settings")
     async def save_settings(

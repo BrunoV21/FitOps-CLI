@@ -78,6 +78,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             overtraining = _compute_overtraining_indicators(tl.history)
 
         return templates.TemplateResponse(
+            request,
             "analytics/training_load.html",
             {
                 "request": request,
@@ -171,6 +172,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         history_json = json.dumps(history)
 
         return templates.TemplateResponse(
+            request,
             "analytics/performance.html",
             {
                 "request": request,

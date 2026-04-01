@@ -70,6 +70,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         ]
 
         return templates.TemplateResponse(
+            request,
             "notes/list.html",
             {
                 "request": request,
@@ -84,6 +85,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/notes/create", response_class=HTMLResponse)
     async def notes_create_form(request: Request):
         return templates.TemplateResponse(
+            request,
             "notes/create.html",
             {"request": request, "note": None, "active_page": "notes"},
         )
@@ -112,12 +114,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
         note = get_note_file(slug)
         if note is None:
             return templates.TemplateResponse(
+                request,
                 "notes/detail.html",
                 {"request": request, "note": None, "active_page": "notes"},
                 status_code=404,
             )
 
         return templates.TemplateResponse(
+            request,
             "notes/create.html",
             {
                 "request": request,
@@ -169,6 +173,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         note = get_note_file(slug)
         if note is None:
             return templates.TemplateResponse(
+                request,
                 "notes/detail.html",
                 {"request": request, "note": None, "active_page": "notes"},
                 status_code=404,
@@ -192,6 +197,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     }
 
         return templates.TemplateResponse(
+            request,
             "notes/detail.html",
             {
                 "request": request,

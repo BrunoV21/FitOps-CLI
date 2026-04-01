@@ -66,6 +66,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             )
 
         return templates.TemplateResponse(
+            request,
             "weather/index.html",
             {
                 "request": request,

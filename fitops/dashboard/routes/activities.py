@@ -436,6 +436,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             rows.append(row)
 
         return templates.TemplateResponse(
+            request,
             "activities/list.html",
             {
                 "request": request,
@@ -504,6 +505,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         if activity is None:
             return templates.TemplateResponse(
+                request,
                 "activities/detail.html",
                 {"request": request, "activity": None, "active_page": "activities"},
                 status_code=404,
@@ -655,6 +657,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             }
 
         return templates.TemplateResponse(
+            request,
             "activities/detail.html",
             {
                 "request": request,
