@@ -155,8 +155,7 @@
       {% endfor %}
     </div>
     {% else %}
-    <p style="color:var(--text-dim);font-size:12px;">No activities synced yet.</p>
-    <button class="btn btn-primary" style="margin-top:8px;font-size:12px;padding:6px 12px;" onclick="triggerSync()">Sync from Strava</button>
+    <p style="color:var(--text-dim);font-size:12px;">No activities synced yet. Run <code>fitops sync run</code> first.</p>
     {% endif %}
   </div>
 
@@ -194,8 +193,7 @@
       </span>
     </div>
     {% else %}
-    <p style="color:var(--text-dim);font-size:12px;">No training data.</p>
-    <button class="btn btn-primary" style="margin-top:8px;font-size:12px;padding:6px 12px;" onclick="triggerSync()">Sync from Strava</button>
+    <p style="color:var(--text-dim);font-size:12px;">No training data.<br>Run <code>fitops sync run</code> first.</p>
     {% endif %}
   </div>
 
