@@ -38,4 +38,4 @@ def serve(
 
     from fitops.dashboard.server import create_app
 
-    uvicorn.run(create_app(port=port), host=host, port=port, log_level="warning")
+    uvicorn.run(create_app(port=port), host=host, port=port, log_level="info")
