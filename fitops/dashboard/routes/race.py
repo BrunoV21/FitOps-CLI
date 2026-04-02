@@ -4,14 +4,18 @@ import datetime
 import json
 import os
 import tempfile
-from typing import Optional
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.weather_pace import headwind_ms
-from fitops.dashboard.queries.race import delete_course, get_all_courses, get_course, save_course
+from fitops.dashboard.queries.race import (
+    delete_course,
+    get_all_courses,
+    get_course,
+    save_course,
+)
 from fitops.db.migrations import create_all_tables
 from fitops.race.course_parser import (
     build_km_segments,
@@ -26,7 +30,9 @@ from fitops.race.simulation import simulate_pacer_mode, simulate_splits
 router = APIRouter()
 
 
-def _sample_route_coords(course_points: list[dict], max_points: int = 400) -> list[list[float]]:
+def _sample_route_coords(
+    course_points: list[dict], max_points: int = 400
+) -> list[list[float]]:
     """Return [[lat, lon], ...] downsampled to at most max_points."""
     pts = [[p["lat"], p["lon"]] for p in course_points if "lat" in p and "lon" in p]
     if len(pts) <= max_points:
@@ -84,16 +90,16 @@ def _wind_label(bearing_deg: float, wind_speed_ms: float, wind_dir_deg: float) -
     # hw / wind_speed_ms gives cos of angle between runner and wind
     ratio = hw / wind_speed_ms  # -1 = pure tailwind, +1 = pure headwind
 
-    if ratio >= 0.64:       # angle < ~50°
+    if ratio >= 0.64:  # angle < ~50°
         label = "Headwind"
         css_class = "wind-head"
-    elif ratio >= 0.17:     # angle < ~80°
+    elif ratio >= 0.17:  # angle < ~80°
         label = "Head-cross"
         css_class = "wind-headcross"
-    elif ratio >= -0.17:    # angle ±80°
+    elif ratio >= -0.17:  # angle ±80°
         label = "Crosswind"
         css_class = "wind-cross"
-    elif ratio >= -0.64:    # angle < ~130°
+    elif ratio >= -0.64:  # angle < ~130°
         label = "Tail-cross"
         css_class = "wind-tailcross"
     else:
@@ -119,11 +125,13 @@ def _build_elevation_profile(course) -> list[dict]:
     for km_idx in range(len(segments) + 1):
         target_dist = km_idx * 1000.0
         # Advance ptr while the next point is closer to target_dist
-        while ptr + 1 < n_pts and abs(points[ptr + 1]["distance_from_start_m"] - target_dist) <= abs(
-            points[ptr]["distance_from_start_m"] - target_dist
-        ):
+        while ptr + 1 < n_pts and abs(
+            points[ptr + 1]["distance_from_start_m"] - target_dist
+        ) <= abs(points[ptr]["distance_from_start_m"] - target_dist):
             ptr += 1
-        elevation_profile.append({"km": km_idx, "elevation_m": round(points[ptr]["elevation_m"], 1)})
+        elevation_profile.append(
+            {"km": km_idx, "elevation_m": round(points[ptr]["elevation_m"], 1)}
+        )
     return elevation_profile
 
 
@@ -155,12 +163,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
     async def race_import_post(
         request: Request,
         name: str = Form(...),
-        source_type: str = Form(...),   # "file" | "url"
-        url: Optional[str] = Form(None),
-        file: Optional[UploadFile] = File(None),
+        source_type: str = Form(...),  # "file" | "url"
+        url: str | None = Form(None),
+        file: UploadFile | None = File(None),
     ):
         await create_all_tables()
-        error: Optional[str] = None
+        error: str | None = None
         points = []
 
         try:
@@ -180,7 +188,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 content = await file.read()
                 suffix = os.path.splitext(file.filename)[1].lower()
                 if suffix not in (".gpx", ".tcx"):
-                    raise ValueError(f"Unsupported file type '{suffix}'. Use .gpx or .tcx.")
+                    raise ValueError(
+                        f"Unsupported file type '{suffix}'. Use .gpx or .tcx."
+                    )
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(content)
                     tmp_path = tmp.name
@@ -200,8 +210,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
             segments = build_km_segments(points)
             total_dist = points[-1]["distance_from_start_m"]
             elev_gain = compute_total_elevation_gain(points)
-            file_fmt = "gpx" if source_type == "file" and file and file.filename.endswith(".gpx") else (
-                        "tcx" if source_type == "file" else None)
+            file_fmt = (
+                "gpx"
+                if source_type == "file" and file and file.filename.endswith(".gpx")
+                else ("tcx" if source_type == "file" else None)
+            )
             src_ref = url.strip() if source_type in ("mapmyrun", "strava") else None
             src_label = source_type  # "file" | "mapmyrun" | "strava"
 
@@ -237,7 +250,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         await create_all_tables()
         course = await get_course(course_id)
         if course is None:
-            return HTMLResponse(content="<h1>404 — Course not found</h1>", status_code=404)
+            return HTMLResponse(
+                content="<h1>404 — Course not found</h1>", status_code=404
+            )
 
         segments = course.get_km_segments()
         elevation_profile = _build_elevation_profile(course)
@@ -262,7 +277,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         await create_all_tables()
         course = await get_course(course_id)
         if course is None:
-            return HTMLResponse(content="<h1>404 — Course not found</h1>", status_code=404)
+            return HTMLResponse(
+                content="<h1>404 — Course not found</h1>", status_code=404
+            )
 
         summary = course.to_summary_dict()
         route_coords = _sample_route_coords(course.get_course_points())
@@ -286,28 +303,32 @@ def register(templates: Jinja2Templates) -> APIRouter:
     async def race_simulate_post(
         request: Request,
         course_id: int,
-        target_time: Optional[str] = Form(None),
-        strategy: Optional[str] = Form(None),
-        pacer_pace: Optional[str] = Form(None),
-        drop_at_km: Optional[str] = Form(None),
-        race_date: Optional[str] = Form(None),
-        race_hour: Optional[str] = Form(None),
-        temp: Optional[str] = Form(None),
-        humidity: Optional[str] = Form(None),
-        wind: Optional[str] = Form(None),
-        wind_dir: Optional[str] = Form(None),
+        target_time: str | None = Form(None),
+        strategy: str | None = Form(None),
+        pacer_pace: str | None = Form(None),
+        drop_at_km: str | None = Form(None),
+        race_date: str | None = Form(None),
+        race_hour: str | None = Form(None),
+        temp: str | None = Form(None),
+        humidity: str | None = Form(None),
+        wind: str | None = Form(None),
+        wind_dir: str | None = Form(None),
     ):
         await create_all_tables()
         course = await get_course(course_id)
         if course is None:
-            return HTMLResponse(content="<h1>404 — Course not found</h1>", status_code=404)
+            return HTMLResponse(
+                content="<h1>404 — Course not found</h1>", status_code=404
+            )
 
         summary = course.to_summary_dict()
         segments = course.get_km_segments()
 
         # Parse target time and normalize back to HH:MM:SS for display
         try:
-            target_total_s, target_time_normalized = _parse_finish_time(target_time or "")
+            target_total_s, target_time_normalized = _parse_finish_time(
+                target_time or ""
+            )
         except (ValueError, AttributeError):
             normalized_placeholder = target_time or ""
             target_time_normalized = normalized_placeholder
@@ -329,7 +350,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         route_coords = _sample_route_coords(course.get_course_points())
         route_coords_json = json.dumps(route_coords)
 
-        def _render_error(msg: str, weather_info: Optional[dict] = None):
+        def _render_error(msg: str, weather_info: dict | None = None):
             return templates.TemplateResponse(
                 request,
                 "race/simulate.html",
@@ -347,7 +368,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             )
 
         if target_total_s <= 0:
-            return _render_error("Invalid target time. Use H:MM or HH:MM:SS (e.g. 1:45:00).")
+            return _render_error(
+                "Invalid target time. Use H:MM or HH:MM:SS (e.g. 1:45:00)."
+            )
 
         strat = (strategy or "even").lower()
         if strat not in ("even", "negative", "positive"):
@@ -358,7 +381,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
         # 2. Auto-fetch by race date (forecast if future, archive if past)
         # 3. Neutral defaults
         weather_source = "neutral"
-        weather = {"temperature_c": 15.0, "humidity_pct": 40.0, "wind_speed_ms": 0.0, "wind_direction_deg": 0.0}
+        weather = {
+            "temperature_c": 15.0,
+            "humidity_pct": 40.0,
+            "wind_speed_ms": 0.0,
+            "wind_direction_deg": 0.0,
+        }
 
         if temp and humidity:
             try:
@@ -370,20 +398,32 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
                 weather_source = "manual"
             except ValueError:
-                return _render_error("Invalid weather values. Temperature and humidity must be numbers.")
+                return _render_error(
+                    "Invalid weather values. Temperature and humidity must be numbers."
+                )
 
-        elif race_date and course.start_lat is not None and course.start_lon is not None:
-            from fitops.weather.client import fetch_forecast_weather, fetch_activity_weather
+        elif (
+            race_date and course.start_lat is not None and course.start_lon is not None
+        ):
+            from fitops.weather.client import (
+                fetch_activity_weather,
+                fetch_forecast_weather,
+            )
+
             try:
                 parsed_date = datetime.date.fromisoformat(race_date)
             except ValueError:
-                return _render_error(f"Invalid race date: {race_date!r}. Use YYYY-MM-DD format.")
+                return _render_error(
+                    f"Invalid race date: {race_date!r}. Use YYYY-MM-DD format."
+                )
 
             hour = int(race_hour) if race_hour and race_hour.isdigit() else 9
             today = datetime.date.today()
 
             if parsed_date > today:
-                fetched = await fetch_forecast_weather(course.start_lat, course.start_lon, race_date, hour)
+                fetched = await fetch_forecast_weather(
+                    course.start_lat, course.start_lon, race_date, hour
+                )
                 if fetched:
                     weather = {
                         "temperature_c": fetched.get("temperature_c", 15.0),
@@ -394,10 +434,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     weather_source = "forecast"
             else:
                 race_datetime = datetime.datetime(
-                    parsed_date.year, parsed_date.month, parsed_date.day,
-                    hour, 0, 0, tzinfo=datetime.timezone.utc
+                    parsed_date.year,
+                    parsed_date.month,
+                    parsed_date.day,
+                    hour,
+                    0,
+                    0,
+                    tzinfo=datetime.UTC,
                 )
-                fetched = await fetch_activity_weather(course.start_lat, course.start_lon, race_datetime)
+                fetched = await fetch_activity_weather(
+                    course.start_lat, course.start_lon, race_datetime
+                )
                 if fetched:
                     weather = {
                         "temperature_c": fetched.get("temperature_c", 15.0),
@@ -416,9 +463,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if use_pacer:
                 pacer_pace_s = _parse_pace(pacer_pace)
                 drop_km = float(drop_at_km)
-                pacer_data = simulate_pacer_mode(segments, target_total_s, pacer_pace_s, drop_km, weather)
+                pacer_data = simulate_pacer_mode(
+                    segments, target_total_s, pacer_pace_s, drop_km, weather
+                )
                 # Combine sit and push splits for the chart
-                sit_dist_km = pacer_data["sit_phase"]["distance_km"]
                 sit_pace_s = pacer_pace_s
                 sit_splits = [
                     {
@@ -444,6 +492,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     cum += sp["segment_time_s"]
                     sp["cumulative_time_s"] = round(cum, 1)
                     from fitops.race.course_parser import _fmt_duration
+
                     sp["cumulative_time_fmt"] = _fmt_duration(cum)
 
                 # Mark push splits
@@ -455,7 +504,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 pacer_pace_s_for_chart = sit_pace_s
                 drop_km_for_chart = drop_km
             else:
-                splits = simulate_splits(segments, target_total_s, weather, strategy=strat)
+                splits = simulate_splits(
+                    segments, target_total_s, weather, strategy=strat
+                )
                 pacer_pace_s_for_chart = None
                 drop_km_for_chart = None
         except ValueError as exc:
@@ -466,7 +517,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         wind_dir = weather.get("wind_direction_deg", 0.0)
         if splits:
             for sp in splits:
-                sp["wind"] = _wind_label(sp.get("bearing_deg", 0.0), wind_speed, wind_dir)
+                sp["wind"] = _wind_label(
+                    sp.get("bearing_deg", 0.0), wind_speed, wind_dir
+                )
 
         # Compute avg pace and chart data
         avg_pace_s = 0.0
@@ -481,6 +534,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             total_dist_km = sum(s["distance_m"] for s in splits) / 1000.0
             if total_dist_km > 0:
                 from fitops.race.course_parser import _fmt_duration
+
                 avg_pace_s = total_time / total_dist_km
                 avg_pace_fmt = _fmt_duration(avg_pace_s)
 

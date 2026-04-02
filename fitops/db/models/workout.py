@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Float, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,48 +19,48 @@ class Workout(Base):
 
     # --- Identity ---
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sport_type: Mapped[str] = mapped_column(Text, nullable=False)
 
     # --- Markdown-file source (Phase 3) ---
-    athlete_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    workout_file_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    workout_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    workout_meta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+    athlete_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    workout_file_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workout_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workout_meta: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
 
     # --- Activity link ---
-    activity_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    linked_at: Mapped[Optional[datetime]] = mapped_column(
+    activity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    linked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # --- Physiology snapshot at link time ---
-    physiology_snapshot: Mapped[Optional[str]] = mapped_column(
+    physiology_snapshot: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # JSON: {ctl, atl, tsb, vo2max, lt1_hr, lt2_hr, zones_method, zones}
 
     # --- Legacy / Phase 3.2 ---
-    course_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    course_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(Text, default="planned")
-    scheduled_at: Mapped[Optional[datetime]] = mapped_column(
+    scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    compliance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    compliance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # --- Helpers ---

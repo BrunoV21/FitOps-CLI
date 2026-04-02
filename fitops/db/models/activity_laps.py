@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -14,22 +13,22 @@ class ActivityLap(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     activity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    strava_lap_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    lap_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    elapsed_time_s: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    moving_time_s: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    distance_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    average_speed_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    average_heartrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    max_heartrate: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    average_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    strava_lap_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lap_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    elapsed_time_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    moving_time_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_speed_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_heartrate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_heartrate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    average_watts: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
     @classmethod
-    def from_strava_data(cls, activity_id: int, data: dict) -> "ActivityLap":
+    def from_strava_data(cls, activity_id: int, data: dict) -> ActivityLap:
         return cls(
             activity_id=activity_id,
             strava_lap_id=data.get("id"),

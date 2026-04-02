@@ -4,14 +4,12 @@ tests/test_workout_simulation.py
 Pure unit tests for fitops/workouts/simulate.py.
 No DB, no fixtures, no I/O.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from fitops.workouts.segments import WorkoutSegmentDef
 from fitops.workouts.simulate import (
     WorkoutSegmentSimResult,
-    _DEFAULT_PACE_S,
     compute_segment_factors,
     estimate_segment_distance_m,
     map_segments_to_course,
@@ -72,12 +70,19 @@ def _hr_seg(
 
 
 def _flat_km_seg(km: int = 1, dist_m: float = 1000.0, grade: float = 0.0) -> dict:
-    return {"km": km, "distance_m": dist_m, "elevation_gain_m": 0.0, "grade": grade, "bearing": 0.0}
+    return {
+        "km": km,
+        "distance_m": dist_m,
+        "elevation_gain_m": 0.0,
+        "grade": grade,
+        "bearing": 0.0,
+    }
 
 
 # ---------------------------------------------------------------------------
 # estimate_segment_distance_m
 # ---------------------------------------------------------------------------
+
 
 class TestEstimateSegmentDistance:
     def test_pace_range_midpoint(self):
@@ -89,7 +94,10 @@ class TestEstimateSegmentDistance:
 
     def test_single_min_bound_used_as_both(self):
         seg = WorkoutSegmentDef(
-            index=0, name="T", step_type="interval", target_zone=None,
+            index=0,
+            name="T",
+            step_type="interval",
+            target_zone=None,
             duration_min=10.0,
             target_pace_min_s_per_km=300.0,
             target_pace_max_s_per_km=None,
@@ -121,7 +129,10 @@ class TestEstimateSegmentDistance:
 
     def test_single_max_bound_only(self):
         seg = WorkoutSegmentDef(
-            index=0, name="T", step_type="interval", target_zone=None,
+            index=0,
+            name="T",
+            step_type="interval",
+            target_zone=None,
             duration_min=10.0,
             target_pace_min_s_per_km=None,
             target_pace_max_s_per_km=360.0,
@@ -135,6 +146,7 @@ class TestEstimateSegmentDistance:
 # ---------------------------------------------------------------------------
 # compute_segment_factors
 # ---------------------------------------------------------------------------
+
 
 class TestComputeSegmentFactors:
     def test_flat_neutral_factors_near_one(self):
@@ -164,13 +176,26 @@ class TestComputeSegmentFactors:
     def test_distance_weighted_average(self):
         # Two segments: one uphill 10% (1000m), one flat 0% (500m)
         km_segs = [
-            {"km": 1, "distance_m": 1000.0, "elevation_gain_m": 100.0, "grade": 0.10, "bearing": 0.0},
-            {"km": 2, "distance_m": 500.0, "elevation_gain_m": 0.0, "grade": 0.0, "bearing": 0.0},
+            {
+                "km": 1,
+                "distance_m": 1000.0,
+                "elevation_gain_m": 100.0,
+                "grade": 0.10,
+                "bearing": 0.0,
+            },
+            {
+                "km": 2,
+                "distance_m": 500.0,
+                "elevation_gain_m": 0.0,
+                "grade": 0.0,
+                "bearing": 0.0,
+            },
         ]
         f = compute_segment_factors(km_segs, _NEUTRAL_WEATHER)
         # Should be weighted toward the 1000m segment
         # Independently compute what expected avg_gap should be
         from fitops.race.simulation import gap_factor
+
         gf1 = gap_factor(0.10)
         gf2 = gap_factor(0.0)
         expected = (gf1 * 1000 + gf2 * 500) / 1500
@@ -180,6 +205,7 @@ class TestComputeSegmentFactors:
 # ---------------------------------------------------------------------------
 # map_segments_to_course
 # ---------------------------------------------------------------------------
+
 
 class TestMapSegmentsToCourse:
     def _three_km_course(self) -> list[dict]:
@@ -225,15 +251,18 @@ class TestMapSegmentsToCourse:
 
     def test_none_duration_segment(self):
         seg = _pace_seg(duration_min=None)
-        mapped = map_segments_to_course([seg], self._three_km_course(), base_pace_s=None)
+        mapped = map_segments_to_course(
+            [seg], self._three_km_course(), base_pace_s=None
+        )
         assert len(mapped) == 1
-        assert mapped[0][2] == 0.0   # est_dist_m
-        assert mapped[0][1] == []    # no km_segs covered
+        assert mapped[0][2] == 0.0  # est_dist_m
+        assert mapped[0][1] == []  # no km_segs covered
 
 
 # ---------------------------------------------------------------------------
 # simulate_workout_on_course
 # ---------------------------------------------------------------------------
+
 
 class TestSimulateWorkoutOnCourse:
     def _flat_course(self, n_km: int = 5) -> list[dict]:
@@ -241,7 +270,9 @@ class TestSimulateWorkoutOnCourse:
 
     def test_flat_neutral_adj_approx_equals_flat(self):
         seg = _pace_seg(duration_min=10.0, pace_min=330.0, pace_max=330.0)
-        results = simulate_workout_on_course([seg], self._flat_course(), _NEUTRAL_WEATHER)
+        results = simulate_workout_on_course(
+            [seg], self._flat_course(), _NEUTRAL_WEATHER
+        )
         r = results[0]
         # combined_factor ≈ 1.0 on flat neutral
         assert abs(r.avg_combined_factor - 1.0) < 0.05
@@ -250,7 +281,15 @@ class TestSimulateWorkoutOnCourse:
         assert abs(r.adj_pace_min_s - r.flat_pace_min_s) < 20.0  # within 20s
 
     def test_uphill_adj_greater_than_flat(self):
-        course = [{"km": 1, "distance_m": 1000.0, "elevation_gain_m": 100.0, "grade": 0.10, "bearing": 0.0}]
+        course = [
+            {
+                "km": 1,
+                "distance_m": 1000.0,
+                "elevation_gain_m": 100.0,
+                "grade": 0.10,
+                "bearing": 0.0,
+            }
+        ]
         seg = _pace_seg(duration_min=5.0, pace_min=330.0, pace_max=330.0)
         results = simulate_workout_on_course([seg], course, _NEUTRAL_WEATHER)
         r = results[0]
@@ -258,20 +297,26 @@ class TestSimulateWorkoutOnCourse:
 
     def test_hr_segment_no_base_pace_uses_estimated(self):
         seg = _hr_seg(duration_min=10.0)
-        results = simulate_workout_on_course([seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=None)
+        results = simulate_workout_on_course(
+            [seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=None
+        )
         r = results[0]
         assert r.pace_source == "estimated"
 
     def test_hr_segment_with_base_pace(self):
         seg = _hr_seg(duration_min=10.0)
-        results = simulate_workout_on_course([seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=360.0)
+        results = simulate_workout_on_course(
+            [seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=360.0
+        )
         r = results[0]
         assert r.pace_source == "base_pace"
         assert r.warnings == []
 
     def test_none_duration_produces_zero_distance_and_warning(self):
         seg = _pace_seg(duration_min=None)
-        results = simulate_workout_on_course([seg], self._flat_course(), _NEUTRAL_WEATHER)
+        results = simulate_workout_on_course(
+            [seg], self._flat_course(), _NEUTRAL_WEATHER
+        )
         r = results[0]
         assert r.est_distance_m == 0.0
         assert any("duration_min" in w for w in r.warnings)
@@ -279,14 +324,18 @@ class TestSimulateWorkoutOnCourse:
     def test_overflow_segment_gets_neutral_factor_and_note(self):
         # Single huge segment overflows 5 km course
         seg = _pace_seg(duration_min=120.0, pace_min=300.0, pace_max=300.0)  # 24 km
-        results = simulate_workout_on_course([seg], self._flat_course(1), _NEUTRAL_WEATHER)
+        results = simulate_workout_on_course(
+            [seg], self._flat_course(1), _NEUTRAL_WEATHER
+        )
         r = results[0]
         # Should not crash; combined factor should still be set
         assert r.avg_combined_factor >= 0.5
 
     def test_no_pace_fields_on_hr_segment(self):
         seg = _hr_seg(duration_min=10.0)
-        results = simulate_workout_on_course([seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=None)
+        results = simulate_workout_on_course(
+            [seg], self._flat_course(), _NEUTRAL_WEATHER, base_pace_s=None
+        )
         r = results[0]
         # No pace target → flat/adj should be None
         assert r.flat_pace_min_s is None
@@ -298,6 +347,7 @@ class TestSimulateWorkoutOnCourse:
 # ---------------------------------------------------------------------------
 # validate_distance_mismatch
 # ---------------------------------------------------------------------------
+
 
 class TestValidateDistanceMismatch:
     def _make_result(self, est_m: float) -> WorkoutSegmentSimResult:

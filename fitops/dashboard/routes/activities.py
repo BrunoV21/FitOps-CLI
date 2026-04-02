@@ -2,26 +2,32 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from fitops.analytics.activity_performance_insights import compute_activity_performance_insights
+from fitops.analytics.activity_performance_insights import (
+    compute_activity_performance_insights,
+)
 from fitops.analytics.activity_zones import compute_activity_analytics
 from fitops.analytics.athlete_settings import get_athlete_settings
-from fitops.analytics.training_scores import compute_aerobic_score, compute_anaerobic_score
+from fitops.analytics.training_scores import (
+    compute_aerobic_score,
+    compute_anaerobic_score,
+)
 from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_wap_factor,
     deg_to_compass,
     headwind_ms,
-    pace_heat_factor as _pace_heat_factor,
     pace_wind_factor,
     vo2max_heat_factor,
     wbgt_flag,
     weather_condition_label,
+)
+from fitops.analytics.weather_pace import (
+    pace_heat_factor as _pace_heat_factor,
 )
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import (
@@ -34,7 +40,11 @@ from fitops.dashboard.queries.activities import (
 )
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.weather import get_weather_for_activities
-from fitops.dashboard.queries.workouts import get_all_workouts, get_workout_for_activity, get_workout_names_for_activities
+from fitops.dashboard.queries.workouts import (
+    get_all_workouts,
+    get_workout_for_activity,
+    get_workout_names_for_activities,
+)
 
 router = APIRouter()
 
@@ -108,7 +118,9 @@ def _activity_row(a) -> dict:
         "sport_type": sport,
         "is_run": is_run,
         "date": a.start_date_local.strftime("%Y-%m-%d") if a.start_date_local else "—",
-        "date_pretty": a.start_date_local.strftime("%d %b %Y") if a.start_date_local else "—",
+        "date_pretty": a.start_date_local.strftime("%d %b %Y")
+        if a.start_date_local
+        else "—",
         "distance_km": round(a.distance_m / 1000, 2) if a.distance_m else None,
         "duration": _fmt_seconds(a.moving_time_s),
         "elapsed": elapsed,
@@ -117,10 +129,14 @@ def _activity_row(a) -> dict:
         "avg_hr": round(a.average_heartrate) if a.average_heartrate else None,
         "max_hr": a.max_heartrate,
         "avg_watts": round(a.average_watts) if a.average_watts else None,
-        "weighted_avg_watts": round(a.weighted_average_watts) if a.weighted_average_watts else None,
+        "weighted_avg_watts": round(a.weighted_average_watts)
+        if a.weighted_average_watts
+        else None,
         "max_watts": a.max_watts,
         "tss": round(a.training_stress_score, 1) if a.training_stress_score else None,
-        "elevation_m": round(a.total_elevation_gain_m) if a.total_elevation_gain_m else None,
+        "elevation_m": round(a.total_elevation_gain_m)
+        if a.total_elevation_gain_m
+        else None,
         "is_race": a.is_race,
         "trainer": a.trainer,
         "commute": a.commute,
@@ -149,16 +165,22 @@ def _weather_summary(w) -> dict:
         "apparent_temp_c": w.apparent_temp_c,
         "humidity_pct": w.humidity_pct,
         "wind_speed_ms": w.wind_speed_ms,
-        "wind_speed_kmh": round(w.wind_speed_ms * 3.6, 1) if w.wind_speed_ms is not None else None,
+        "wind_speed_kmh": round(w.wind_speed_ms * 3.6, 1)
+        if w.wind_speed_ms is not None
+        else None,
         "wind_direction_deg": w.wind_direction_deg,
-        "wind_dir_compass": deg_to_compass(w.wind_direction_deg) if w.wind_direction_deg is not None else None,
+        "wind_dir_compass": deg_to_compass(w.wind_direction_deg)
+        if w.wind_direction_deg is not None
+        else None,
         "precipitation_mm": w.precipitation_mm,
         "wbgt_c": wbgt,
         "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else "green",
         "pace_heat_factor": w.pace_heat_factor,
         "source": w.source,
         "condition": weather_condition_label(wcode) if wcode is not None else None,
-        "temp_fmt": f"{round(w.temperature_c)}°C" if w.temperature_c is not None else None,
+        "temp_fmt": f"{round(w.temperature_c)}°C"
+        if w.temperature_c is not None
+        else None,
     }
 
 
@@ -180,7 +202,9 @@ def _compute_true_pace_stream(streams: dict, weather) -> list | None:
     if gap_raw and len(gap_raw) >= n_v * 0.8:
         gap_speed = gap_raw
     elif grade and len(grade) >= n_v * 0.8:
-        gap_speed = [v * (1 + 0.033 * g) if (v and v > 0.1) else 0.0 for v, g in zip(vel, grade)]
+        gap_speed = [
+            v * (1 + 0.033 * g) if (v and v > 0.1) else 0.0 for v, g in zip(vel, grade, strict=False)
+        ]
     else:
         return None  # No gradient data available
 
@@ -265,10 +289,10 @@ def _compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
         return None
 
     dist = streams.get("distance", [])
-    vel  = streams.get("velocity_smooth", [])
-    hr   = streams.get("heartrate", [])
-    cad  = streams.get("cadence", [])
-    alt  = streams.get("altitude", [])
+    vel = streams.get("velocity_smooth", [])
+    hr = streams.get("heartrate", [])
+    cad = streams.get("cadence", [])
+    alt = streams.get("altitude", [])
 
     if len(dist) < 10 or len(vel) < 10 or (dist[-1] if dist else 0) < 1000:
         return None
@@ -327,12 +351,14 @@ def _compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
             km_target += 1000.0
             continue
 
-        splits.append({
-            "km": len(splits) + 1,
-            "label": str(len(splits) + 1),
-            "partial": False,
-            **stats,
-        })
+        splits.append(
+            {
+                "km": len(splits) + 1,
+                "label": str(len(splits) + 1),
+                "partial": False,
+                **stats,
+            }
+        )
 
         seg_start = i
         km_target += 1000.0
@@ -344,12 +370,14 @@ def _compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
         remaining = dist[-1] - dist[seg_start]
         stats = _seg_stats(seg_start, len(dist) - 1)
         if stats:
-            splits.append({
-                "km": len(splits) + 1,
-                "label": f"{len(splits) + 1} ({remaining / 1000:.2f}km)",
-                "partial": True,
-                **stats,
-            })
+            splits.append(
+                {
+                    "km": len(splits) + 1,
+                    "label": f"{len(splits) + 1} ({remaining / 1000:.2f}km)",
+                    "partial": True,
+                    **stats,
+                }
+            )
 
     return splits if splits else None
 
@@ -366,7 +394,7 @@ def _compute_avg_gap(streams: dict, sport_type: str) -> str | None:
         if vel and grade:
             gas = [
                 v * (1 + 0.033 * g) if v and v > 0.1 else 0.0
-                for v, g in zip(vel, grade)
+                for v, g in zip(vel, grade, strict=False)
             ]
 
     valid = [v for v in gas if v and v > 0.1]
@@ -391,8 +419,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/activities", response_class=HTMLResponse)
     async def activity_list(
         request: Request,
-        sport: Optional[str] = None,
-        days: Optional[int] = None,
+        sport: str | None = None,
+        days: int | None = None,
         limit: int = 50,
         page: int = 1,
     ):
@@ -421,9 +449,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         # Batch-load linked workout names
         db_ids = [a.id for a in activities]
         workout_name_map = await get_workout_names_for_activities(db_ids)
-        # Build a lookup by strava_id for template use
-        activity_id_to_strava = {a.id: a.strava_id for a in activities}
-
         rows = []
         for a in activities:
             row = _activity_row(a)
@@ -483,7 +508,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if tp_s:
                 streams["true_pace"] = tp_s
                 # true_velocity (m/s) consumed by analytics engine
-                streams["true_velocity"] = [1000.0 / p if p and p > 0 else 0.0 for p in tp_s]
+                streams["true_velocity"] = [
+                    1000.0 / p if p and p > 0 else 0.0 for p in tp_s
+                ]
 
         # Fallback: if true_pace wasn't computed (no weather), derive from velocity_smooth
         # so pace-based insights always have a stream to read.
@@ -521,17 +548,25 @@ def register(templates: Jinja2Templates) -> APIRouter:
         for lap in laps:
             spd = lap.average_speed_ms
             pace_s = round(1000.0 / spd, 1) if spd and spd > 0 and is_run else None
-            lap_rows.append({
-                "index": (lap.lap_index or 0) + 1,
-                "name": lap.name or f"Lap {(lap.lap_index or 0) + 1}",
-                "duration": _fmt_seconds(lap.moving_time_s),
-                "distance_km": round(lap.distance_m / 1000, 2) if lap.distance_m else None,
-                "pace": _pace_str(spd, activity.sport_type),
-                "pace_s": pace_s,
-                "avg_hr": round(lap.average_heartrate) if lap.average_heartrate else None,
-                "max_hr": lap.max_heartrate,
-                "avg_watts": round(lap.average_watts) if lap.average_watts else None,
-            })
+            lap_rows.append(
+                {
+                    "index": (lap.lap_index or 0) + 1,
+                    "name": lap.name or f"Lap {(lap.lap_index or 0) + 1}",
+                    "duration": _fmt_seconds(lap.moving_time_s),
+                    "distance_km": round(lap.distance_m / 1000, 2)
+                    if lap.distance_m
+                    else None,
+                    "pace": _pace_str(spd, activity.sport_type),
+                    "pace_s": pace_s,
+                    "avg_hr": round(lap.average_heartrate)
+                    if lap.average_heartrate
+                    else None,
+                    "max_hr": lap.max_heartrate,
+                    "avg_watts": round(lap.average_watts)
+                    if lap.average_watts
+                    else None,
+                }
+            )
 
         km_splits = _compute_km_splits(streams, activity.sport_type)
         avg_gap = _compute_avg_gap(streams, activity.sport_type)
@@ -558,7 +593,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     focus = s.target_focus_type or "none"
                     if focus == "hr_range":
                         lo, hi = s.target_hr_min_bpm, s.target_hr_max_bpm
-                        return f"HR {int(lo)}–{int(hi)} bpm" if lo and hi else "HR target"
+                        return (
+                            f"HR {int(lo)}–{int(hi)} bpm" if lo and hi else "HR target"
+                        )
                     if focus == "pace_range":
                         lo = _fmt_pace_local(s.target_pace_min_s_per_km)
                         hi = _fmt_pace_local(s.target_pace_max_s_per_km)
@@ -571,16 +608,23 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "id": w.id,
                     "name": w.name,
                     "compliance_score": w.compliance_score,
-                    "compliance_pct": round(w.compliance_score * 100) if w.compliance_score is not None else None,
+                    "compliance_pct": round(w.compliance_score * 100)
+                    if w.compliance_score is not None
+                    else None,
                     "segments": [
                         {
                             **s.to_dict(),
                             "target_label": _seg_target_label(s),
-                            "compliance_pct": round(s.compliance_score * 100) if s.compliance_score is not None else None,
+                            "compliance_pct": round(s.compliance_score * 100)
+                            if s.compliance_score is not None
+                            else None,
                             "score_class": (
-                                "green" if s.compliance_score and s.compliance_score >= 0.8
-                                else "amber" if s.compliance_score and s.compliance_score >= 0.6
-                                else "red" if s.compliance_score is not None
+                                "green"
+                                if s.compliance_score and s.compliance_score >= 0.8
+                                else "amber"
+                                if s.compliance_score and s.compliance_score >= 0.6
+                                else "red"
+                                if s.compliance_score is not None
                                 else "dim"
                             ),
                         }
@@ -595,7 +639,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             ws = _weather_summary(w)
 
             # Compute course bearing for wind component
-            course_bearing: Optional[float] = None
+            course_bearing: float | None = None
             if activity.start_latlng and activity.end_latlng:
                 try:
                     s = json.loads(activity.start_latlng)
@@ -627,14 +671,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     wap_fmt = f"{wap_speed_kmh:.1f} km/h"
 
             # HR heat/humidity impact
-            hr_heat_pct: Optional[float] = None
-            hr_heat_bpm: Optional[int] = None
+            hr_heat_pct: float | None = None
+            hr_heat_bpm: int | None = None
             if w.temperature_c is not None and w.humidity_pct is not None:
                 vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
                 if vo2_factor < 0.99:  # meaningful reduction (>1%)
                     hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
                     if activity.average_heartrate and activity.average_heartrate > 0:
-                        hr_heat_bpm = round(activity.average_heartrate * (1.0 / vo2_factor - 1.0))
+                        hr_heat_bpm = round(
+                            activity.average_heartrate * (1.0 / vo2_factor - 1.0)
+                        )
 
             # True Pace summary: median of stream values (robust to outliers)
             true_pace_fmt = None
@@ -651,7 +697,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "wap_factor_pct": round((wap_factor - 1.0) * 100, 1),
                 "wap_fmt": wap_fmt,
                 "true_pace_fmt": true_pace_fmt,
-                "course_bearing": round(course_bearing, 0) if course_bearing is not None else None,
+                "course_bearing": round(course_bearing, 0)
+                if course_bearing is not None
+                else None,
                 "hr_heat_pct": hr_heat_pct,
                 "hr_heat_bpm": hr_heat_bpm,
             }
@@ -674,11 +722,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "is_run": is_run,
                 "gear_name": gear_name,
                 "workout": workout_data,
-                "all_workouts": [{"id": w.id, "name": w.name, "sport_type": w.sport_type} for w in all_workouts],
+                "all_workouts": [
+                    {"id": w.id, "name": w.name, "sport_type": w.sport_type}
+                    for w in all_workouts
+                ],
                 "weather": weather_panel,
                 "insights": insights,
                 "lt2_hr": get_athlete_settings().lthr,
-                "lt1_hr": round(get_athlete_settings().lthr * 0.92) if get_athlete_settings().lthr else None,
+                "lt1_hr": round(get_athlete_settings().lthr * 0.92)
+                if get_athlete_settings().lthr
+                else None,
                 "active_page": "activities",
             },
         )

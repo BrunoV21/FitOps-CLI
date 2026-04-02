@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import secrets
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.config.settings import get_settings
-from fitops.strava.oauth import STRAVA_AUTH_URL, DEFAULT_SCOPES, StravaOAuth
-from urllib.parse import urlencode
+from fitops.strava.oauth import DEFAULT_SCOPES, STRAVA_AUTH_URL, StravaOAuth
 
 router = APIRouter()
 
@@ -17,6 +17,7 @@ async def _initial_sync() -> None:
     """Run a full sync after first-time login."""
     try:
         from fitops.strava.sync_engine import SyncEngine
+
         engine = SyncEngine()
         await engine.run(full=True)
     except Exception:
@@ -49,7 +50,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         client_id = (payload.get("client_id") or "").strip()
         client_secret = (payload.get("client_secret") or "").strip()
         if not client_id or not client_secret:
-            return JSONResponse({"error": "client_id and client_secret are required"}, status_code=400)
+            return JSONResponse(
+                {"error": "client_id and client_secret are required"}, status_code=400
+            )
 
         settings = get_settings()
         settings.save_credentials(client_id, client_secret)
@@ -72,7 +75,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
         return JSONResponse({"auth_url": auth_url})
 
     @router.get("/callback")
-    async def oauth_callback(request: Request, background_tasks: BackgroundTasks, code: str = "", state: str = "", error: str = ""):
+    async def oauth_callback(
+        request: Request,
+        background_tasks: BackgroundTasks,
+        code: str = "",
+        state: str = "",
+        error: str = "",
+    ):
         if error:
             return RedirectResponse(f"/setup?error={error}")
 
@@ -90,8 +99,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
             token_data = await oauth.exchange_code_for_token(code, port=port)
             settings.save_tokens(token_data)
             background_tasks.add_task(_initial_sync)
-        except Exception as e:
-            return RedirectResponse(f"/setup?error=token_exchange")
+        except Exception:
+            return RedirectResponse("/setup?error=token_exchange")
 
         return RedirectResponse("/setup?connected=1")
 
@@ -102,14 +111,25 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"authenticated": False, "has_activities": False})
 
         from sqlalchemy import func, select
+
         from fitops.db.models.activity import Activity
         from fitops.db.session import get_async_session
 
         async with get_async_session() as session:
-            count = (await session.execute(
-                select(func.count()).select_from(Activity).where(Activity.athlete_id == settings.athlete_id)
-            )).scalar_one()
+            count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Activity)
+                    .where(Activity.athlete_id == settings.athlete_id)
+                )
+            ).scalar_one()
 
-        return JSONResponse({"authenticated": True, "has_activities": count > 0, "activity_count": count})
+        return JSONResponse(
+            {
+                "authenticated": True,
+                "has_activities": count > 0,
+                "activity_count": count,
+            }
+        )
 
     return router

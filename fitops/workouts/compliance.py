@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from fitops.analytics.zones import ZoneResult
 from fitops.workouts.segments import WorkoutSegmentDef
@@ -17,33 +16,34 @@ class SegmentCompliance:
     duration_actual_s: int
 
     # HR actuals
-    avg_heartrate: Optional[float]
-    actual_zone: Optional[int]
+    avg_heartrate: float | None
+    actual_zone: int | None
     hr_zone_distribution: dict[str, float] = field(default_factory=dict)
 
     # Pace / speed actuals
-    avg_pace_per_km: Optional[float] = None   # seconds per km
-    avg_speed_ms: Optional[float] = None
-    avg_cadence: Optional[float] = None       # spm (already doubled for runs)
-    avg_gap_per_km: Optional[float] = None    # grade-adjusted pace, s/km
+    avg_pace_per_km: float | None = None  # seconds per km
+    avg_speed_ms: float | None = None
+    avg_cadence: float | None = None  # spm (already doubled for runs)
+    avg_gap_per_km: float | None = None  # grade-adjusted pace, s/km
 
     # Compliance metrics
     target_achieved: bool = False
-    deviation_pct: float = 0.0       # positive = above target, negative = below
+    deviation_pct: float = 0.0  # positive = above target, negative = below
     time_in_target_pct: float = 0.0
     time_above_pct: float = 0.0
     time_below_pct: float = 0.0
-    compliance_score: float = 0.0    # 0.0–1.0
+    compliance_score: float = 0.0  # 0.0–1.0
 
     # Data quality
     has_heartrate: bool = False
     has_pace: bool = False
-    data_completeness: float = 0.0   # fraction of slice with valid readings
+    data_completeness: float = 0.0  # fraction of slice with valid readings
 
 
 # ---------------------------------------------------------------------------
 # Actuals helpers (shared across all scorers)
 # ---------------------------------------------------------------------------
+
 
 def _compute_actuals(
     streams: dict[str, list],
@@ -78,10 +78,13 @@ def _compute_actuals(
                 for v, g in zip(
                     (vel[start_idx:end_idx] if vel else []),
                     (grade[start_idx:end_idx] if grade else []),
+                    strict=False,
                 )
             ]
     valid_gas = [v for v in gas_slice if v and v > 0.1]
-    avg_gap = round(1000.0 / (sum(valid_gas) / len(valid_gas)), 1) if valid_gas else None
+    avg_gap = (
+        round(1000.0 / (sum(valid_gas) / len(valid_gas)), 1) if valid_gas else None
+    )
 
     return {
         "avg_speed_ms": avg_speed,
@@ -96,6 +99,7 @@ def _compute_actuals(
 # Zone-based HR scorer (existing logic, now multi-stream aware)
 # ---------------------------------------------------------------------------
 
+
 def _classify_hr_to_zone(hr: float, zones: ZoneResult) -> int:
     """Return the zone number (1–5) for a given HR value."""
     for z in reversed(zones.zones):
@@ -109,7 +113,7 @@ def _score_segment_hr_zone(
     streams: dict[str, list],
     start_idx: int,
     end_idx: int,
-    zones: Optional[ZoneResult],
+    zones: ZoneResult | None,
     is_run: bool = True,
 ) -> SegmentCompliance:
     """Score a segment against an HR zone target."""
@@ -179,6 +183,7 @@ def _score_segment_hr_zone(
 # ---------------------------------------------------------------------------
 # Absolute HR range scorer (warmup / cooldown with bpm targets)
 # ---------------------------------------------------------------------------
+
 
 def _score_segment_hr_range(
     seg: WorkoutSegmentDef,
@@ -253,6 +258,7 @@ def _score_segment_hr_range(
 # Pace range scorer (intervals with pace targets)
 # ---------------------------------------------------------------------------
 
+
 def _score_segment_pace_range(
     seg: WorkoutSegmentDef,
     streams: dict[str, list],
@@ -264,8 +270,14 @@ def _score_segment_pace_range(
     vel_stream = streams.get("velocity_smooth", [])
     hr_stream = streams.get("heartrate", [])
 
-    vel_slice = [v for v in vel_stream[start_idx:end_idx] if v and v > 0.1] if vel_stream else []
-    hr_slice = [h for h in hr_stream[start_idx:end_idx] if h and h > 0] if hr_stream else []
+    vel_slice = (
+        [v for v in vel_stream[start_idx:end_idx] if v and v > 0.1]
+        if vel_stream
+        else []
+    )
+    hr_slice = (
+        [h for h in hr_stream[start_idx:end_idx] if h and h > 0] if hr_stream else []
+    )
     duration_actual_s = end_idx - start_idx
 
     has_pace = len(vel_slice) > 0
@@ -298,14 +310,14 @@ def _score_segment_pace_range(
     avg_pace = sum(pace_values) / len(pace_values)
     total = len(pace_values)
 
-    lo = pace_min or 0.0           # fastest allowed (low s/km)
+    lo = pace_min or 0.0  # fastest allowed (low s/km)
     hi = pace_max or float("inf")  # slowest allowed (high s/km)
     midpoint = (lo + hi) / 2 if pace_max and pace_min else avg_pace
     half_range = (hi - lo) / 2 if pace_max and pace_min else 1.0
 
     time_in = sum(1 for p in pace_values if lo <= p <= hi)
-    time_above = sum(1 for p in pace_values if p > hi)   # too slow
-    time_below = sum(1 for p in pace_values if p < lo)   # too fast
+    time_above = sum(1 for p in pace_values if p > hi)  # too slow
+    time_below = sum(1 for p in pace_values if p < lo)  # too fast
 
     time_in_pct = round(time_in / total, 3)
     time_above_pct = round(time_above / total, 3)
@@ -331,12 +343,13 @@ def _score_segment_pace_range(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+
 def _score_segment(
     seg: WorkoutSegmentDef,
     streams: dict[str, list],
     start_idx: int,
     end_idx: int,
-    zones: Optional[ZoneResult],
+    zones: ZoneResult | None,
     is_run: bool = True,
 ) -> SegmentCompliance:
     """Dispatch to the appropriate scorer based on segment target type."""
@@ -353,6 +366,7 @@ def _score_segment(
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def _time_to_index(time_stream: list, t0: float, target_elapsed_s: float) -> int:
     """Return the stream index where elapsed time first reaches target_elapsed_s.
 
@@ -360,6 +374,7 @@ def _time_to_index(time_stream: list, t0: float, target_elapsed_s: float) -> int
     the recording length.
     """
     import bisect
+
     target_t = t0 + target_elapsed_s
     idx = bisect.bisect_left(time_stream, target_t)
     return min(idx, len(time_stream))
@@ -369,7 +384,7 @@ def compute_compliance(
     segments: list[WorkoutSegmentDef],
     streams: dict[str, list],
     activity_moving_time_s: int,
-    zones: Optional[ZoneResult],
+    zones: ZoneResult | None,
     is_run: bool = True,
 ) -> list[SegmentCompliance]:
     """Slice streams by segment durations and score each segment.
@@ -438,9 +453,13 @@ def compute_compliance(
                 continue
 
             planned_elapsed_s += seg.duration_min * 60
-            end_idx = min(_time_to_index(time_stream, t0, planned_elapsed_s), stream_len)
+            end_idx = min(
+                _time_to_index(time_stream, t0, planned_elapsed_s), stream_len
+            )
             start_idx = min(cursor, end_idx)
-            results.append(_score_segment(seg, streams, start_idx, end_idx, zones, is_run))
+            results.append(
+                _score_segment(seg, streams, start_idx, end_idx, zones, is_run)
+            )
             cursor = end_idx
 
     else:
@@ -466,16 +485,19 @@ def compute_compliance(
             duration_s = max(1, int(seg.duration_min * 60 * scale))
             start_idx = min(cursor, max(stream_len - 1, 0))
             end_idx = min(cursor + duration_s, stream_len)
-            results.append(_score_segment(seg, streams, start_idx, end_idx, zones, is_run))
+            results.append(
+                _score_segment(seg, streams, start_idx, end_idx, zones, is_run)
+            )
             cursor = end_idx
 
     return results
 
 
-def overall_compliance_score(results: list[SegmentCompliance]) -> Optional[float]:
+def overall_compliance_score(results: list[SegmentCompliance]) -> float | None:
     """Weighted average compliance score across all scored segments."""
     scored = [
-        r for r in results
+        r
+        for r in results
         if (r.has_heartrate and r.segment.target_zone is not None)
         or (r.has_heartrate and r.segment.target_focus_type == "hr_range")
         or (r.has_pace and r.segment.target_focus_type == "pace_range")

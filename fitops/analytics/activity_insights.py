@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from typing import Optional
 
-
-def compute_hr_drift(hr_stream: list[float], pace_stream: list[float]) -> Optional[dict]:
+def compute_hr_drift(hr_stream: list[float], pace_stream: list[float]) -> dict | None:
     """
     Cardiac decoupling: compare HR:pace efficiency ratio in first vs second half.
     Higher drift = aerobic system struggling to maintain pace at same HR.
     Decoupling % = (second_half_ratio - first_half_ratio) / first_half_ratio * 100
     <5% = well coupled (aerobic), 5-10% = moderate drift, >10% = significant decoupling
     """
-    valid = [(h, p) for h, p in zip(hr_stream, pace_stream) if h and h > 0 and p and p > 0]
-    if len(valid) < 600:  # require 10+ minutes of data (600 sec at 1 Hz) for meaningful drift
+    valid = [
+        (h, p) for h, p in zip(hr_stream, pace_stream, strict=False) if h and h > 0 and p and p > 0
+    ]
+    if (
+        len(valid) < 600
+    ):  # require 10+ minutes of data (600 sec at 1 Hz) for meaningful drift
         return None
 
     mid = len(valid) // 2
@@ -46,7 +48,9 @@ def compute_hr_drift(hr_stream: list[float], pace_stream: list[float]) -> Option
     }
 
 
-def compute_pace_hr_ratio(avg_pace_s_per_km: Optional[float], avg_hr: Optional[float]) -> Optional[float]:
+def compute_pace_hr_ratio(
+    avg_pace_s_per_km: float | None, avg_hr: float | None
+) -> float | None:
     """Efficiency ratio: pace (s/km) / HR. Lower = more efficient (faster at lower HR)."""
     if not avg_pace_s_per_km or not avg_hr or avg_hr <= 0:
         return None

@@ -1,3 +1,8 @@
+from fitops.workouts.compliance import (
+    SegmentCompliance,
+    compute_compliance,
+    overall_compliance_score,
+)
 from fitops.workouts.loader import (
     WorkoutFile,
     get_workout_file,
@@ -5,7 +10,6 @@ from fitops.workouts.loader import (
     workouts_dir,
 )
 from fitops.workouts.segments import WorkoutSegmentDef, parse_segments_from_body
-from fitops.workouts.compliance import SegmentCompliance, compute_compliance, overall_compliance_score
 
 __all__ = [
     "WorkoutFile",

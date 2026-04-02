@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
-from typing import Optional
 
 from sqlalchemy import select
 
@@ -17,7 +16,7 @@ MAX_HR_CAP = 220
 ROLLING_WINDOW_S = 20 * 60  # 20 minutes
 
 
-def _percentile(values: list[float], pct: float) -> Optional[float]:
+def _percentile(values: list[float], pct: float) -> float | None:
     if not values:
         return None
     sv = sorted(values)
@@ -28,7 +27,9 @@ def _percentile(values: list[float], pct: float) -> Optional[float]:
     return sv[lo] + frac * (sv[hi] - sv[lo])
 
 
-def _rolling_averages_20min(hr_values: list[float], time_values: list[float]) -> list[float]:
+def _rolling_averages_20min(
+    hr_values: list[float], time_values: list[float]
+) -> list[float]:
     """20-min rolling window averages over one activity HR stream."""
     if len(hr_values) < 2 or len(time_values) < 2:
         return []
@@ -43,7 +44,9 @@ def _rolling_averages_20min(hr_values: list[float], time_values: list[float]) ->
     return avgs
 
 
-def _confidence_score(activity_count: int, quality_score: float, consistency_score: float) -> int:
+def _confidence_score(
+    activity_count: int, quality_score: float, consistency_score: float
+) -> int:
     if activity_count >= 10:
         count_pts = 40
     elif activity_count >= 5:
@@ -52,14 +55,16 @@ def _confidence_score(activity_count: int, quality_score: float, consistency_sco
         count_pts = 15
     else:
         count_pts = 5
-    return min(100, count_pts + round(quality_score * 30) + round(consistency_score * 30))
+    return min(
+        100, count_pts + round(quality_score * 30) + round(consistency_score * 30)
+    )
 
 
 @dataclass
 class ZoneInferenceResult:
-    lthr: Optional[int]
-    max_hr: Optional[int]
-    resting_hr: Optional[int]
+    lthr: int | None
+    max_hr: int | None
+    resting_hr: int | None
     confidence: int
     activity_count: int
     inference_method: str
@@ -69,14 +74,16 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     async with get_async_session() as session:
         stmt = (
             select(Activity)
-            .where(Activity.athlete_id == athlete_id, Activity.streams_fetched == True)
+            .where(Activity.athlete_id == athlete_id, Activity.streams_fetched.is_(True))
             .order_by(Activity.start_date.desc())
         )
         result = await session.execute(stmt)
         activities = result.scalars().all()
 
         all_hr: list[float] = []
-        pending_rolling: list[list[float]] = []  # per-activity rolling windows, filtered later
+        pending_rolling: list[
+            list[float]
+        ] = []  # per-activity rolling windows, filtered later
         acts_with_hr = 0
         quality_scores: list[float] = []
 
@@ -115,8 +122,12 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
 
     if not all_hr:
         return ZoneInferenceResult(
-            lthr=None, max_hr=None, resting_hr=None,
-            confidence=0, activity_count=0, inference_method="none",
+            lthr=None,
+            max_hr=None,
+            resting_hr=None,
+            confidence=0,
+            activity_count=0,
+            inference_method="none",
         )
 
     max_hr_raw = _percentile(all_hr, MAX_HR_PERCENTILE)
@@ -126,17 +137,16 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     # so easy runs don't dilute the LTHR percentile estimate.
     intensity_floor = (max_hr_raw * 0.80) if max_hr_raw else 155.0
     all_rolling = [
-        avg
-        for windows in pending_rolling
-        for avg in windows
-        if avg >= intensity_floor
+        avg for windows in pending_rolling for avg in windows if avg >= intensity_floor
     ]
 
     if all_rolling:
         # Clip top 2% before taking 90th percentile — prevents a single interval spike
         # from biasing LTHR high. Winsorize: cap values above 98th percentile.
         ceiling = _percentile(all_rolling, 98)
-        all_rolling_clipped = [min(v, ceiling) for v in all_rolling] if ceiling else all_rolling
+        all_rolling_clipped = (
+            [min(v, ceiling) for v in all_rolling] if ceiling else all_rolling
+        )
         inference_method = "rolling_window"
         lthr_raw = _percentile(all_rolling_clipped, LTHR_PERCENTILE)
     else:
@@ -160,7 +170,9 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     )
 
 
-async def infer_lt2_pace(athlete_id: int, lthr: int, max_activities: int = 30) -> Optional[float]:
+async def infer_lt2_pace(
+    athlete_id: int, lthr: int, max_activities: int = 30
+) -> float | None:
     """
     Estimate LT2 pace (sec/km) from grade_adjusted_speed stream at moments
     where HR >= 97% of LTHR. Returns median GAP as sec/km, or None if insufficient data.
@@ -173,7 +185,7 @@ async def infer_lt2_pace(athlete_id: int, lthr: int, max_activities: int = 30) -
             select(Activity)
             .where(
                 Activity.athlete_id == athlete_id,
-                Activity.streams_fetched == True,
+                Activity.streams_fetched.is_(True),
                 Activity.sport_type.in_(["Run", "TrailRun", "VirtualRun"]),
             )
             .order_by(Activity.start_date.desc())
@@ -208,7 +220,7 @@ async def infer_lt2_pace(athlete_id: int, lthr: int, max_activities: int = 30) -
             if len(hr_data) != len(gap_data):
                 continue
 
-            for hr, gap_ms in zip(hr_data, gap_data):
+            for hr, gap_ms in zip(hr_data, gap_data, strict=False):
                 if hr is None or gap_ms is None:
                     continue
                 if hr >= hr_floor and gap_ms > 0.5:  # >0.5 m/s = moving
@@ -222,7 +234,9 @@ async def infer_lt2_pace(athlete_id: int, lthr: int, max_activities: int = 30) -
     return round(gap_values[median_idx], 1)
 
 
-async def infer_lt1_pace(athlete_id: int, lt1_bpm: int, max_activities: int = 30) -> Optional[float]:
+async def infer_lt1_pace(
+    athlete_id: int, lt1_bpm: int, max_activities: int = 30
+) -> float | None:
     """
     Estimate LT1 pace (sec/km) from grade_adjusted_speed at moments where HR is
     within ±6 bpm of LT1 (aerobic threshold). Returns median GAP as sec/km, or None.
@@ -236,7 +250,7 @@ async def infer_lt1_pace(athlete_id: int, lt1_bpm: int, max_activities: int = 30
             select(Activity)
             .where(
                 Activity.athlete_id == athlete_id,
-                Activity.streams_fetched == True,
+                Activity.streams_fetched.is_(True),
                 Activity.sport_type.in_(["Run", "TrailRun", "VirtualRun"]),
             )
             .order_by(Activity.start_date.desc())
@@ -271,7 +285,7 @@ async def infer_lt1_pace(athlete_id: int, lt1_bpm: int, max_activities: int = 30
             if len(hr_data) != len(gap_data):
                 continue
 
-            for hr, gap_ms in zip(hr_data, gap_data):
+            for hr, gap_ms in zip(hr_data, gap_data, strict=False):
                 if hr is None or gap_ms is None:
                     continue
                 if hr_lo <= hr <= hr_hi and gap_ms > 0.5:
@@ -290,7 +304,7 @@ def vo2max_pace_from_vdot(vdot: float) -> float:
     Solves: vdot = -4.6 + 0.182258*v + 0.000104*v^2 for v in m/min.
     """
     a, b, c = 0.000104, 0.182258, -(vdot + 4.6)
-    v_mpm = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)  # m/min
+    v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)  # m/min
     return round(1000.0 / (v_mpm / 60), 1)  # sec/km
 
 
@@ -300,9 +314,10 @@ def paces_from_vdot(vdot: float) -> tuple[float, float, float]:
     LT1 ≈ 75% VO2max, LT2 ≈ 88% VO2max, vVO2max = 100% VO2max.
     Returns (lt1_pace_s, lt2_pace_s, vo2max_pace_s).
     """
+
     def _solve(vo2: float) -> float:
         a, b, c = 0.000104, 0.182258, -(vo2 + 4.6)
-        v_mpm = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)
+        v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)
         return round(1000.0 / (v_mpm / 60), 1)
 
     return _solve(0.75 * vdot), _solve(0.88 * vdot), _solve(vdot)

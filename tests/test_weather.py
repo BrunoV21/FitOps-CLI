@@ -1,11 +1,8 @@
 """
 Tests for fitops/analytics/weather_pace.py — pure function coverage.
 """
+
 from __future__ import annotations
-
-import math
-
-import pytest
 
 from fitops.analytics.weather_pace import (
     compute_bearing,
@@ -18,10 +15,10 @@ from fitops.analytics.weather_pace import (
     wet_bulb_temp,
 )
 
-
 # ---------------------------------------------------------------------------
 # wet_bulb_temp
 # ---------------------------------------------------------------------------
+
 
 def test_wet_bulb_cool_dry():
     """0°C, 50% RH → Tw < 0°C (below dry bulb)."""
@@ -38,6 +35,7 @@ def test_wet_bulb_hot_humid():
 # ---------------------------------------------------------------------------
 # pace_heat_factor
 # ---------------------------------------------------------------------------
+
 
 def test_pace_heat_factor_neutral():
     """10°C, 40% RH → WBGT < 10 → factor = 1.0"""
@@ -62,6 +60,7 @@ def test_pace_heat_factor_mild():
 # headwind_ms
 # ---------------------------------------------------------------------------
 
+
 def test_headwind_pure_headwind():
     """Wind from North (0°) at 5 m/s, running North (0°) → headwind = 5 m/s."""
     hw = headwind_ms(wind_speed_ms=5.0, wind_dir_deg=0.0, course_bearing_deg=0.0)
@@ -84,6 +83,7 @@ def test_headwind_crosswind():
 # pace_wind_factor
 # ---------------------------------------------------------------------------
 
+
 def test_pace_wind_factor_headwind():
     """2.8 m/s (~10 km/h) headwind → ~4-5% penalty (Pugh 1971 calibration)."""
     factor = pace_wind_factor(2.8)
@@ -102,10 +102,10 @@ def test_pace_wind_factor_pugh_calibration():
 
 def test_pace_wind_factor_tailwind():
     """Tailwind benefit (factor < 1.0) is smaller magnitude than equivalent headwind cost."""
-    headwind_cost   = pace_wind_factor(3.0)   # > 1.0
+    headwind_cost = pace_wind_factor(3.0)  # > 1.0
     tailwind_benefit = pace_wind_factor(-3.0)  # < 1.0
-    headwind_delta  = headwind_cost - 1.0
-    tailwind_delta  = 1.0 - tailwind_benefit
+    headwind_delta = headwind_cost - 1.0
+    tailwind_delta = 1.0 - tailwind_benefit
     assert tailwind_delta < headwind_delta
 
 
@@ -117,6 +117,7 @@ def test_pace_wind_factor_calm():
 # ---------------------------------------------------------------------------
 # vo2max_heat_factor
 # ---------------------------------------------------------------------------
+
 
 def test_vo2max_heat_factor_cool():
     """10°C, 50% RH → factor = 1.0"""
@@ -132,6 +133,7 @@ def test_vo2max_heat_factor_hot():
 # ---------------------------------------------------------------------------
 # compute_bearing
 # ---------------------------------------------------------------------------
+
 
 def test_compute_bearing_north():
     """Two points same longitude, lat2 > lat1 → bearing ≈ 0°."""
@@ -154,6 +156,7 @@ def test_compute_bearing_south():
 # ---------------------------------------------------------------------------
 # compute_wap_factor
 # ---------------------------------------------------------------------------
+
 
 def test_compute_wap_factor_cold_no_wind():
     """Cold, dry, no wind → factor ≈ 1.0."""

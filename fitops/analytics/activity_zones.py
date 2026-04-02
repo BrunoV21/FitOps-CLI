@@ -1,20 +1,20 @@
 """Per-activity analytics: time-in-zone, LT2 inference, VO2max estimate."""
+
 from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional
 
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.pace_zones import compute_pace_zones
-from fitops.analytics.zones import compute_zones
 from fitops.analytics.vo2max import _estimate_from_activity
+from fitops.analytics.zones import compute_zones
 
 RUN_TYPES = {"Run", "TrailRun", "VirtualRun"}
 
 # LT2 constants (from KineticRun)
-_STEADY_MAX_HR_RANGE = 10     # bpm spread allowed in steady segment
-_MIN_STEADY_SECONDS = 900     # 15 min minimum steady segment
+_STEADY_MAX_HR_RANGE = 10  # bpm spread allowed in steady segment
+_MIN_STEADY_SECONDS = 900  # 15 min minimum steady segment
 _FINAL_WINDOW_SECONDS = 1200  # 20 min final averaging window
 _MIN_AVG_HR = 140
 _MIN_DURATION_SECONDS = 1800  # 30 min minimum activity
@@ -23,6 +23,7 @@ _MIN_DURATION_SECONDS = 1800  # 30 min minimum activity
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _fmt_seconds(s: int) -> str:
     h, rem = divmod(max(0, s), 3600)
@@ -76,10 +77,11 @@ def _find_steady_segment(
 # HR zones
 # ---------------------------------------------------------------------------
 
+
 def compute_time_in_hr_zones(
     hr_data: list[float],
     time_data: list[float],
-) -> Optional[list[dict]]:
+) -> list[dict] | None:
     """Map each stream point to its HR zone and sum durations."""
     settings = get_athlete_settings()
     method = settings.best_zone_method()
@@ -128,10 +130,11 @@ def compute_time_in_hr_zones(
 # Pace zones
 # ---------------------------------------------------------------------------
 
+
 def compute_time_in_pace_zones(
     velocity_data: list[float],
     time_data: list[float],
-) -> Optional[list[dict]]:
+) -> list[dict] | None:
     """Map each stream point to its pace zone and sum durations (running only)."""
     settings = get_athlete_settings()
     threshold_s = settings.threshold_pace_per_km_s
@@ -150,8 +153,8 @@ def compute_time_in_pace_zones(
             continue
         pace_s = 1000.0 / v  # m/s → sec/km
         for z in zones:
-            min_s = z["min_s_per_km"]   # faster boundary (smaller number)
-            max_s = z["max_s_per_km"]   # slower boundary (larger number)
+            min_s = z["min_s_per_km"]  # faster boundary (smaller number)
+            max_s = z["max_s_per_km"]  # slower boundary (larger number)
             too_fast = min_s is not None and pace_s < min_s
             too_slow = max_s is not None and pace_s > max_s
             if not too_fast and not too_slow:
@@ -177,11 +180,12 @@ def compute_time_in_pace_zones(
 # LT2 inference
 # ---------------------------------------------------------------------------
 
+
 def infer_lt2_from_streams(
     hr_data: list[float],
     time_data: list[float],
-    velocity_data: Optional[list[float]] = None,
-) -> Optional[dict]:
+    velocity_data: list[float] | None = None,
+) -> dict | None:
     """
     Detect LT2 from a steady-state effort segment (KineticRun algorithm).
     Requires a ≥30 min effort with avg HR ≥140 bpm and a ≥15 min steady segment.
@@ -249,12 +253,13 @@ def infer_lt2_from_streams(
 # Aggregate
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ActivityAnalytics:
-    hr_zones: Optional[list[dict]]
-    pace_zones: Optional[list[dict]]
-    lt2: Optional[dict]
-    vo2max: Optional[dict]
+    hr_zones: list[dict] | None
+    pace_zones: list[dict] | None
+    lt2: dict | None
+    vo2max: dict | None
 
 
 def compute_activity_analytics(

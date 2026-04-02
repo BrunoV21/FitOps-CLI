@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
 
 from fitops.db.models.race_course import RaceCourse
 from fitops.db.session import get_async_session
@@ -12,16 +11,16 @@ from fitops.db.session import get_async_session
 async def save_course(
     name: str,
     source: str,
-    source_ref: Optional[str],
-    file_format: Optional[str],
+    source_ref: str | None,
+    file_format: str | None,
     course_points: list[dict],
     km_segments: list[dict],
     total_distance_m: float,
     total_elevation_gain_m: float,
 ) -> dict:
     """Persist a new RaceCourse row and return its summary dict."""
-    start_lat: Optional[float] = None
-    start_lon: Optional[float] = None
+    start_lat: float | None = None
+    start_lon: float | None = None
     if course_points:
         start_lat = course_points[0]["lat"]
         start_lon = course_points[0]["lon"]
@@ -54,7 +53,7 @@ async def save_course(
         return saved.to_summary_dict()
 
 
-async def get_course(course_id: int) -> Optional[RaceCourse]:
+async def get_course(course_id: int) -> RaceCourse | None:
     """Load a RaceCourse by id. Returns None if not found."""
     async with get_async_session() as session:
         result = await session.execute(

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 
 from fitops.analytics.athlete_settings import get_athlete_settings
-from fitops.analytics.weather_pace import wbgt_approx, pace_heat_factor
+from fitops.analytics.weather_pace import pace_heat_factor, wbgt_approx
 from fitops.config.settings import get_settings
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
@@ -27,7 +28,9 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
     limit=0 fetches all matching activities.
     """
     async with get_async_session() as session:
-        stmt = select(Activity.id, Activity.strava_id).order_by(Activity.start_date.desc())
+        stmt = select(Activity.id, Activity.strava_id).order_by(
+            Activity.start_date.desc()
+        )
         if not force:
             stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712
         if limit > 0:
@@ -46,12 +49,18 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
             if force:
                 async with get_async_session() as session:
                     await session.execute(
-                        sa_delete(ActivityStream).where(ActivityStream.activity_id == internal_id)
+                        sa_delete(ActivityStream).where(
+                            ActivityStream.activity_id == internal_id
+                        )
                     )
             stream_data = await client.get_activity_streams(strava_id)
             async with get_async_session() as session:
                 for stream_type, stream_obj in stream_data.items():
-                    data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+                    data_list = (
+                        stream_obj.get("data", [])
+                        if isinstance(stream_obj, dict)
+                        else stream_obj
+                    )
                     if not force:
                         existing = await session.execute(
                             select(ActivityStream).where(
@@ -61,10 +70,16 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
                         )
                         if existing.scalar_one_or_none() is not None:
                             continue
-                    session.add(ActivityStream.from_strava_stream(internal_id, stream_type, data_list))
-                row = (await session.execute(
-                    select(Activity).where(Activity.id == internal_id)
-                )).scalar_one_or_none()
+                    session.add(
+                        ActivityStream.from_strava_stream(
+                            internal_id, stream_type, data_list
+                        )
+                    )
+                row = (
+                    await session.execute(
+                        select(Activity).where(Activity.id == internal_id)
+                    )
+                ).scalar_one_or_none()
                 if row:
                     row.streams_fetched = True
             fetched += 1
@@ -79,7 +94,9 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
 async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
     """Fetch and store weather for a list of strava_ids that were just synced."""
     import json as _json
+
     from fitops.dashboard.queries.weather import upsert_activity_weather
+
     fetched = errors = 0
     async with get_async_session() as session:
         result = await session.execute(
@@ -102,7 +119,9 @@ async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
                 if tc is not None and hum is not None:
                     weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
                     weather["pace_heat_factor"] = round(pace_heat_factor(tc, hum), 4)
-                await upsert_activity_weather(act.strava_id, weather, source="open-meteo")
+                await upsert_activity_weather(
+                    act.strava_id, weather, source="open-meteo"
+                )
                 fetched += 1
         except Exception:
             errors += 1
@@ -139,15 +158,17 @@ def register() -> APIRouter:
                 new_strava_ids = [r[0] for r in newest.all()]
             weather_result = await _fetch_weather_for_new_activities(new_strava_ids)
 
-        return JSONResponse({
-            "activities_created": result.activities_created,
-            "activities_updated": result.activities_updated,
-            "pages_fetched": result.pages_fetched,
-            "duration_s": round(result.duration_s, 2),
-            "streams": streams_result,
-            "weather": weather_result,
-            "synced_at": datetime.now(timezone.utc).isoformat(),
-        })
+        return JSONResponse(
+            {
+                "activities_created": result.activities_created,
+                "activities_updated": result.activities_updated,
+                "pages_fetched": result.pages_fetched,
+                "duration_s": round(result.duration_s, 2),
+                "streams": streams_result,
+                "weather": weather_result,
+                "synced_at": datetime.now(UTC).isoformat(),
+            }
+        )
 
     @router.post("/api/sync/streams")
     async def api_sync_streams(force: bool = False, limit: int = 0):
@@ -159,10 +180,12 @@ def register() -> APIRouter:
             )
 
         result = await _fetch_streams(limit=limit, force=force)
-        return JSONResponse({
-            **result,
-            "synced_at": datetime.now(timezone.utc).isoformat(),
-        })
+        return JSONResponse(
+            {
+                **result,
+                "synced_at": datetime.now(UTC).isoformat(),
+            }
+        )
 
     @router.post("/api/sync/streams/{strava_id}")
     async def api_sync_activity_streams(strava_id: int):
@@ -174,9 +197,11 @@ def register() -> APIRouter:
             )
 
         async with get_async_session() as session:
-            row = (await session.execute(
-                select(Activity).where(Activity.strava_id == strava_id)
-            )).scalar_one_or_none()
+            row = (
+                await session.execute(
+                    select(Activity).where(Activity.strava_id == strava_id)
+                )
+            ).scalar_one_or_none()
 
         if row is None:
             return JSONResponse({"error": "Activity not found."}, status_code=404)
@@ -185,12 +210,18 @@ def register() -> APIRouter:
         try:
             stream_data = await client.get_activity_streams(strava_id)
             async with get_async_session() as session:
-                activity = (await session.execute(
-                    select(Activity).where(Activity.strava_id == strava_id)
-                )).scalar_one_or_none()
+                activity = (
+                    await session.execute(
+                        select(Activity).where(Activity.strava_id == strava_id)
+                    )
+                ).scalar_one_or_none()
                 if activity:
                     for stream_type, stream_obj in stream_data.items():
-                        data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+                        data_list = (
+                            stream_obj.get("data", [])
+                            if isinstance(stream_obj, dict)
+                            else stream_obj
+                        )
                         existing = await session.execute(
                             select(ActivityStream).where(
                                 ActivityStream.activity_id == activity.id,
@@ -198,7 +229,11 @@ def register() -> APIRouter:
                             )
                         )
                         if existing.scalar_one_or_none() is None:
-                            session.add(ActivityStream.from_strava_stream(activity.id, stream_type, data_list))
+                            session.add(
+                                ActivityStream.from_strava_stream(
+                                    activity.id, stream_type, data_list
+                                )
+                            )
                     activity.streams_fetched = True
             # Also fetch weather while we're here
             weather_ok = False
@@ -207,13 +242,23 @@ def register() -> APIRouter:
                 weather_ok = wr.get("weather_fetched", 0) > 0
             except Exception:
                 pass
-            return JSONResponse({"ok": True, "streams_fetched": len(stream_data), "weather_fetched": weather_ok})
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "streams_fetched": len(stream_data),
+                    "weather_fetched": weather_ok,
+                }
+            )
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
     _ALLOWED_METRIC_KEYS = {
-        "max_hr", "lthr", "lt1_hr", "vo2max_override",
-        "threshold_pace_per_km_s", "lt1_pace_s",
+        "max_hr",
+        "lthr",
+        "lt1_hr",
+        "vo2max_override",
+        "threshold_pace_per_km_s",
+        "lt1_pace_s",
     }
 
     @router.post("/api/settings/metric")
@@ -248,29 +293,35 @@ def register() -> APIRouter:
 
         async with get_async_session() as session:
             # Resolve activity
-            act = (await session.execute(
-                select(Activity).where(
-                    Activity.strava_id == strava_id,
-                    Activity.athlete_id == settings.athlete_id,
+            act = (
+                await session.execute(
+                    select(Activity).where(
+                        Activity.strava_id == strava_id,
+                        Activity.athlete_id == settings.athlete_id,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if act is None:
                 return JSONResponse({"error": "Activity not found."}, status_code=404)
 
             # Resolve workout (must belong to this athlete)
-            wkt = (await session.execute(
-                select(Workout).where(
-                    Workout.id == workout_id,
-                    Workout.athlete_id == settings.athlete_id,
+            wkt = (
+                await session.execute(
+                    select(Workout).where(
+                        Workout.id == workout_id,
+                        Workout.athlete_id == settings.athlete_id,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if wkt is None:
                 return JSONResponse({"error": "Workout not found."}, status_code=404)
 
             # Unlink any other workout already assigned to this activity
-            prev = (await session.execute(
-                select(Workout).where(Workout.activity_id == act.id)
-            )).scalar_one_or_none()
+            prev = (
+                await session.execute(
+                    select(Workout).where(Workout.activity_id == act.id)
+                )
+            ).scalar_one_or_none()
             if prev and prev.id != wkt.id:
                 prev.activity_id = None
                 prev.linked_at = None
@@ -278,10 +329,12 @@ def register() -> APIRouter:
 
             # Assign
             wkt.activity_id = act.id
-            wkt.linked_at = datetime.now(timezone.utc)
+            wkt.linked_at = datetime.now(UTC)
             wkt.status = "completed"
 
-        return JSONResponse({"ok": True, "workout_id": wkt.id, "workout_name": wkt.name})
+        return JSONResponse(
+            {"ok": True, "workout_id": wkt.id, "workout_name": wkt.name}
+        )
 
     @router.post("/api/activities/{strava_id}/unassign-workout")
     async def unassign_workout(strava_id: int):
@@ -290,18 +343,22 @@ def register() -> APIRouter:
             return JSONResponse({"error": "Not authenticated."}, status_code=401)
 
         async with get_async_session() as session:
-            act = (await session.execute(
-                select(Activity).where(
-                    Activity.strava_id == strava_id,
-                    Activity.athlete_id == settings.athlete_id,
+            act = (
+                await session.execute(
+                    select(Activity).where(
+                        Activity.strava_id == strava_id,
+                        Activity.athlete_id == settings.athlete_id,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if act is None:
                 return JSONResponse({"error": "Activity not found."}, status_code=404)
 
-            wkt = (await session.execute(
-                select(Workout).where(Workout.activity_id == act.id)
-            )).scalar_one_or_none()
+            wkt = (
+                await session.execute(
+                    select(Workout).where(Workout.activity_id == act.id)
+                )
+            ).scalar_one_or_none()
             if wkt is None:
                 return JSONResponse({"error": "No workout linked."}, status_code=404)
 

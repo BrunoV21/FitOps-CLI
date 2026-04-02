@@ -6,20 +6,20 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fitops.db.base import Base
-from fitops.db.session import get_engine
+from fitops.db.models.activity import Activity  # noqa: F401
+from fitops.db.models.activity_laps import ActivityLap  # noqa: F401
+from fitops.db.models.activity_stream import ActivityStream  # noqa: F401
+from fitops.db.models.activity_weather import ActivityWeather  # noqa: F401
+from fitops.db.models.analytics_snapshot import AnalyticsSnapshot  # noqa: F401
 
 # Import all models so their tables are registered on Base.metadata
 from fitops.db.models.athlete import Athlete  # noqa: F401
-from fitops.db.models.activity import Activity  # noqa: F401
-from fitops.db.models.activity_stream import ActivityStream  # noqa: F401
-from fitops.db.models.activity_laps import ActivityLap  # noqa: F401
-from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
-from fitops.db.models.workout import Workout  # noqa: F401
-from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
-from fitops.db.models.analytics_snapshot import AnalyticsSnapshot  # noqa: F401
 from fitops.db.models.note import Note  # noqa: F401
-from fitops.db.models.activity_weather import ActivityWeather  # noqa: F401
 from fitops.db.models.race_course import RaceCourse  # noqa: F401
+from fitops.db.models.workout import Workout  # noqa: F401
+from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
+from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
+from fitops.db.session import get_engine
 
 # Columns added to `athletes` after the initial schema.
 _ATHLETE_NEW_COLUMNS: list[tuple[str, str]] = [

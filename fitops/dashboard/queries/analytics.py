@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from fitops.analytics.training_load import (
     TrainingLoadResult,
-    _compute_overtraining_indicators,
     compute_training_load,
 )
 from fitops.analytics.trends import TrendResult, compute_trends
-from fitops.analytics.vo2max import RUN_TYPES, _effort_qualifies, _estimate_from_activity, _estimate_from_streams
+from fitops.analytics.vo2max import (
+    RUN_TYPES,
+    _effort_qualifies,
+    _estimate_from_activity,
+    _estimate_from_streams,
+)
 from fitops.db.models.activity import Activity
 from fitops.db.session import get_async_session
 
@@ -20,8 +23,11 @@ RIDING_SPORTS = frozenset({"Ride", "VirtualRide", "EBikeRide"})
 
 
 async def get_training_load_data(
-    athlete_id: int, days: int = 90, sport: Optional[str] = None, sport_types: Optional[frozenset] = None
-) -> Optional[TrainingLoadResult]:
+    athlete_id: int,
+    days: int = 90,
+    sport: str | None = None,
+    sport_types: frozenset | None = None,
+) -> TrainingLoadResult | None:
     result = await compute_training_load(
         athlete_id=athlete_id, days=days, sport_filter=sport, sport_types=sport_types
     )
@@ -33,17 +39,15 @@ async def get_training_load_data(
 async def get_trends_data(
     athlete_id: int,
     days: int = 180,
-    sport: Optional[str] = None,
-    sport_types: Optional[frozenset] = None,
-) -> Optional[TrendResult]:
+    sport: str | None = None,
+    sport_types: frozenset | None = None,
+) -> TrendResult | None:
     return await compute_trends(
         athlete_id=athlete_id, days=days, sport_filter=sport, sport_types=sport_types
     )
 
 
-async def get_vo2max_history(
-    athlete_id: int, days: int = 365
-) -> list[dict]:
+async def get_vo2max_history(athlete_id: int, days: int = 365) -> list[dict]:
     """Return VO2max estimates for recent qualifying run activities, oldest first.
 
     Only activities with sufficient effort (avg HR near threshold) are included.
@@ -51,16 +55,17 @@ async def get_vo2max_history(
     without a near-threshold effort.
     """
     from fitops.analytics.athlete_settings import get_athlete_settings
+
     settings = get_athlete_settings()
     lthr = settings.lthr
     max_hr = settings.max_hr
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     async with get_async_session() as session:
         result = await session.execute(
             select(Activity)
             .where(
-                Activity.manual == False,
+                Activity.manual.is_(False),
                 Activity.athlete_id == athlete_id,
                 Activity.sport_type.in_(list(RUN_TYPES)),
                 Activity.start_date >= cutoff,
@@ -73,7 +78,9 @@ async def get_vo2max_history(
 
         rows = []
         for a in activities:
-            qualifies, effort_reason = _effort_qualifies(a.average_heartrate, lthr, max_hr)
+            qualifies, effort_reason = _effort_qualifies(
+                a.average_heartrate, lthr, max_hr
+            )
             if not qualifies:
                 continue
             est = None
@@ -85,7 +92,9 @@ async def get_vo2max_history(
                 continue
             rows.append(
                 {
-                    "date": a.start_date.date().isoformat() if a.start_date else "unknown",
+                    "date": a.start_date.date().isoformat()
+                    if a.start_date
+                    else "unknown",
                     "name": a.name,
                     "strava_id": a.strava_id,
                     "distance_km": round((a.distance_m or 0) / 1000, 2),
@@ -108,14 +117,19 @@ async def get_vo2max_history(
 async def get_weekly_volume(
     athlete_id: int,
     weeks: int = 24,
-    sport: Optional[str] = None,
-    sport_types: Optional[frozenset] = None,
+    sport: str | None = None,
+    sport_types: frozenset | None = None,
 ) -> list[dict]:
     """Return a list of {week_start, distance_km, duration_h, activity_count} dicts."""
-    cutoff = datetime.now(timezone.utc) - timedelta(weeks=weeks)
+    cutoff = datetime.now(UTC) - timedelta(weeks=weeks)
     async with get_async_session() as session:
         q = (
-            select(Activity.start_date, Activity.distance_m, Activity.moving_time_s, Activity.sport_type)
+            select(
+                Activity.start_date,
+                Activity.distance_m,
+                Activity.moving_time_s,
+                Activity.sport_type,
+            )
             .where(
                 Activity.athlete_id == athlete_id,
                 Activity.start_date >= cutoff,
@@ -136,11 +150,16 @@ async def get_weekly_volume(
             continue
         dt = row.start_date
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         monday = dt - timedelta(days=dt.weekday())
         key = monday.strftime("%Y-%m-%d")
         if key not in week_map:
-            week_map[key] = {"week_start": key, "distance_km": 0.0, "duration_h": 0.0, "activity_count": 0}
+            week_map[key] = {
+                "week_start": key,
+                "distance_km": 0.0,
+                "duration_h": 0.0,
+                "activity_count": 0,
+            }
         week_map[key]["distance_km"] += (row.distance_m or 0) / 1000
         week_map[key]["duration_h"] += (row.moving_time_s or 0) / 3600
         week_map[key]["activity_count"] += 1
@@ -151,22 +170,29 @@ async def get_weekly_volume(
         v["duration_h"] = round(v["duration_h"], 3)
 
     all_weeks = []
-    start = datetime.now(timezone.utc) - timedelta(weeks=weeks)
+    start = datetime.now(UTC) - timedelta(weeks=weeks)
     start = start - timedelta(days=start.weekday())
     for i in range(weeks):
         week_start = (start + timedelta(weeks=i)).strftime("%Y-%m-%d")
         if week_start in week_map:
             all_weeks.append(week_map[week_start])
         else:
-            all_weeks.append({"week_start": week_start, "distance_km": 0.0, "duration_h": 0.0, "activity_count": 0})
+            all_weeks.append(
+                {
+                    "week_start": week_start,
+                    "distance_km": 0.0,
+                    "duration_h": 0.0,
+                    "activity_count": 0,
+                }
+            )
 
     return all_weeks
 
 
 async def get_volume_summary(
     athlete_id: int,
-    sport: Optional[str] = None,
-    sport_types: Optional[frozenset] = None,
+    sport: str | None = None,
+    sport_types: frozenset | None = None,
 ) -> dict:
     """Return this/last week and this/last month volume with percentage changes.
 
@@ -174,7 +200,7 @@ async def get_volume_summary(
     Month = calendar month (1st to last day).
     Month % change = same day-of-month period in previous month (apples-to-apples).
     """
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
 
     # --- Week boundaries (Monday 00:00 UTC) ---
     this_monday = (today - timedelta(days=today.weekday())).replace(
@@ -183,7 +209,9 @@ async def get_volume_summary(
     last_monday = this_monday - timedelta(weeks=1)
 
     # --- Month boundaries ---
-    first_of_this_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    first_of_this_month = today.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
     if first_of_this_month.month == 1:
         first_of_last_month = first_of_this_month.replace(
             year=first_of_this_month.year - 1, month=12
@@ -196,12 +224,11 @@ async def get_volume_summary(
     # Single query covers all four windows
     cutoff = min(last_monday, first_of_last_month)
     async with get_async_session() as session:
-        q = (
-            select(Activity.start_date, Activity.distance_m, Activity.moving_time_s)
-            .where(
-                Activity.athlete_id == athlete_id,
-                Activity.start_date >= cutoff,
-            )
+        q = select(
+            Activity.start_date, Activity.distance_m, Activity.moving_time_s
+        ).where(
+            Activity.athlete_id == athlete_id,
+            Activity.start_date >= cutoff,
         )
         if sport:
             q = q.where(Activity.sport_type == sport)
@@ -224,7 +251,7 @@ async def get_volume_summary(
             continue
         dt = row.start_date
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         d_km = (row.distance_m or 0) / 1000
         d_h = (row.moving_time_s or 0) / 3600
 
@@ -254,11 +281,17 @@ async def get_volume_summary(
                 last_month_same_period["duration_h"] += d_h
                 last_month_same_period["activity_count"] += 1
 
-    for bucket in (this_week, last_week, this_month, last_month, last_month_same_period):
+    for bucket in (
+        this_week,
+        last_week,
+        this_month,
+        last_month,
+        last_month_same_period,
+    ):
         bucket["distance_km"] = round(bucket["distance_km"], 2)
         bucket["duration_h"] = round(bucket["duration_h"], 3)
 
-    def _pct(current: float, previous: float) -> Optional[float]:
+    def _pct(current: float, previous: float) -> float | None:
         if previous == 0:
             return None
         return round((current - previous) / previous * 100, 1)
@@ -274,7 +307,11 @@ async def get_volume_summary(
         },
         "pct_change_month": {
             # Compare Mar 1-14 vs Feb 1-14, not Mar 1-14 vs all of Feb
-            "distance": _pct(this_month["distance_km"], last_month_same_period["distance_km"]),
-            "duration": _pct(this_month["duration_h"], last_month_same_period["duration_h"]),
+            "distance": _pct(
+                this_month["distance_km"], last_month_same_period["distance_km"]
+            ),
+            "duration": _pct(
+                this_month["duration_h"], last_month_same_period["duration_h"]
+            ),
         },
     }

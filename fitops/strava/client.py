@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
 from fitops.config.settings import get_settings
 from fitops.strava.oauth import StravaOAuth
-from fitops.utils.cache import cached
 from fitops.utils.exceptions import StravaAuthError, SyncError
 from fitops.utils.logging import get_logger
 
@@ -43,8 +42,8 @@ class StravaClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[dict] = None,
-        data: Optional[dict] = None,
+        params: dict | None = None,
+        data: dict | None = None,
     ) -> Any:
         token = await self._get_token()
         url = f"{BASE_URL}{endpoint}"
@@ -54,9 +53,13 @@ class StravaClient:
                 method, url, headers=headers, params=params, data=data
             )
         if response.status_code == 401:
-            raise StravaAuthError("Unauthorized — token may be invalid. Try `fitops auth refresh`.")
+            raise StravaAuthError(
+                "Unauthorized — token may be invalid. Try `fitops auth refresh`."
+            )
         if response.status_code == 429:
-            raise SyncError("Strava API rate limit exceeded. Please wait and try again.")
+            raise SyncError(
+                "Strava API rate limit exceeded. Please wait and try again."
+            )
         if response.status_code >= 400:
             raise SyncError(
                 f"Strava API error {response.status_code} for {endpoint}: {response.text[:200]}"
@@ -71,8 +74,8 @@ class StravaClient:
 
     async def list_athlete_activities(
         self,
-        before: Optional[int] = None,
-        after: Optional[int] = None,
+        before: int | None = None,
+        after: int | None = None,
         page: int = 1,
         per_page: int = 30,
     ) -> list[dict]:
@@ -92,7 +95,7 @@ class StravaClient:
     async def get_activity_streams(
         self,
         activity_id: int,
-        keys: Optional[list[str]] = None,
+        keys: list[str] | None = None,
     ) -> dict:
         if keys is None:
             keys = STREAM_KEYS

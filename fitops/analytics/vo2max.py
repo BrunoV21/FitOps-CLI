@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fitops.db.models.activity import Activity
@@ -33,9 +32,9 @@ _EFFORT_MAXHR_RATIO = 0.80
 
 
 def _effort_qualifies(
-    avg_hr: Optional[float],
-    lthr: Optional[int],
-    max_hr: Optional[int],
+    avg_hr: float | None,
+    lthr: int | None,
+    max_hr: int | None,
 ) -> tuple[bool, str]:
     """Return (qualifies, reason_string) for an activity's effort level."""
     if avg_hr is None:
@@ -59,7 +58,7 @@ def apply_age_adjustment(estimate: float, age: int) -> tuple[float, float]:
     return round(estimate * age_factor, 1), round(age_factor, 3)
 
 
-def _daniels_vdot(distance_m: float, time_s: float) -> Optional[float]:
+def _daniels_vdot(distance_m: float, time_s: float) -> float | None:
     """
     Jack Daniels' VDOT — velocity-based VO2max estimate.
     Uses fractional utilization based on event duration.
@@ -85,12 +84,12 @@ def _daniels_vdot(distance_m: float, time_s: float) -> Optional[float]:
     else:
         frac = 0.84
 
-    vo2_demand = -4.6 + 0.182258 * v + 0.000104 * (v ** 2)
+    vo2_demand = -4.6 + 0.182258 * v + 0.000104 * (v**2)
     vo2max = vo2_demand / frac
     return max(28.0, min(90.0, vo2max))
 
 
-def _cooper_vo2max(distance_m: float, time_s: float) -> Optional[float]:
+def _cooper_vo2max(distance_m: float, time_s: float) -> float | None:
     """Cooper 12-min test extrapolation (for efforts > 6 min)."""
     if time_s <= 0 or distance_m < 1500:
         return None
@@ -100,17 +99,17 @@ def _cooper_vo2max(distance_m: float, time_s: float) -> Optional[float]:
 
 
 # Keep old names as aliases so existing test imports don't break
-def _vdot(distance_m: float, time_s: float) -> Optional[float]:
+def _vdot(distance_m: float, time_s: float) -> float | None:
     """Alias for _daniels_vdot for backward compatibility."""
     return _daniels_vdot(distance_m, time_s)
 
 
-def _mcardle(distance_m: float, time_s: float) -> Optional[float]:
+def _mcardle(distance_m: float, time_s: float) -> float | None:
     """Kept for backward compatibility; delegates to _cooper_vo2max."""
     return _cooper_vo2max(distance_m, time_s)
 
 
-def _costill(distance_m: float, time_s: float) -> Optional[float]:
+def _costill(distance_m: float, time_s: float) -> float | None:
     """Kept for backward compatibility; returns None (method removed)."""
     return None
 
@@ -136,29 +135,33 @@ def _confidence(distance_m: float, estimates: list[float]) -> float:
 @dataclass
 class StreamSegment:
     duration_s: float
-    distance_m: float       # grade-adjusted distance equivalent
-    avg_speed_ms: float     # duration-weighted average grade-adjusted speed (m/s)
+    distance_m: float  # grade-adjusted distance equivalent
+    avg_speed_ms: float  # duration-weighted average grade-adjusted speed (m/s)
 
 
-_MIN_SEGMENT_S = 600.0    # 10 minutes minimum continuous qualifying effort
-_MIN_SPEED_MS = 0.5       # ignore near-stationary data points
-_LT2_MIN_SPEED_MS = 2.0   # minimum speed for LT2 HR-zone sampling (filters recovery jogging)
+_MIN_SEGMENT_S = 600.0  # 10 minutes minimum continuous qualifying effort
+_MIN_SPEED_MS = 0.5  # ignore near-stationary data points
+_LT2_MIN_SPEED_MS = (
+    2.0  # minimum speed for LT2 HR-zone sampling (filters recovery jogging)
+)
 
 
 @dataclass
 class VO2MaxResult:
     estimate: float
     confidence: float
-    vdot: Optional[float]       # daniels_vdot estimate
-    cooper: Optional[float]     # cooper estimate
+    vdot: float | None  # daniels_vdot estimate
+    cooper: float | None  # cooper estimate
     activity_strava_id: int
     activity_name: str
     activity_date: str
     distance_km: float
     pace_per_km: str
     best_time_s: float = 0.0
-    estimation_method: str = "summary"   # "summary" | "streams"
-    measured_lt2_pace_s: Optional[float] = None   # sec/km, directly measured from stream HR/speed
+    estimation_method: str = "summary"  # "summary" | "streams"
+    measured_lt2_pace_s: float | None = (
+        None  # sec/km, directly measured from stream HR/speed
+    )
 
     @property
     def confidence_label(self) -> str:
@@ -176,7 +179,7 @@ def _fmt_pace(speed_ms: float) -> str:
     return f"{int(spk // 60)}:{int(spk % 60):02d}"
 
 
-def _estimate_from_activity(activity: Activity) -> Optional[VO2MaxResult]:
+def _estimate_from_activity(activity: Activity) -> VO2MaxResult | None:
     dist = activity.distance_m
     time_s = activity.moving_time_s
     if not dist or not time_s or dist < 1500:
@@ -211,9 +214,13 @@ def _estimate_from_activity(activity: Activity) -> Optional[VO2MaxResult]:
         cooper=round(c_est, 1) if c_est is not None else None,
         activity_strava_id=activity.strava_id,
         activity_name=activity.name,
-        activity_date=activity.start_date.date().isoformat() if activity.start_date else "unknown",
+        activity_date=activity.start_date.date().isoformat()
+        if activity.start_date
+        else "unknown",
         distance_km=round(dist / 1000, 2),
-        pace_per_km=_fmt_pace(activity.average_speed_ms) if activity.average_speed_ms else "N/A",
+        pace_per_km=_fmt_pace(activity.average_speed_ms)
+        if activity.average_speed_ms
+        else "N/A",
         best_time_s=float(time_s),
     )
 
@@ -240,11 +247,13 @@ def _extract_high_intensity_segments(
         nonlocal seg_time_s, seg_speed_x_time
         if seg_time_s >= min_duration_s:
             avg_v = seg_speed_x_time / seg_time_s
-            segments.append(StreamSegment(
-                duration_s=seg_time_s,
-                distance_m=avg_v * seg_time_s,
-                avg_speed_ms=avg_v,
-            ))
+            segments.append(
+                StreamSegment(
+                    duration_s=seg_time_s,
+                    distance_m=avg_v * seg_time_s,
+                    avg_speed_ms=avg_v,
+                )
+            )
         seg_time_s = 0.0
         seg_speed_x_time = 0.0
 
@@ -253,8 +262,10 @@ def _extract_high_intensity_segments(
         spd = speed_data[i]
         dt = time_data[i + 1] - time_data[i]
         if (
-            hr is not None and hr >= min_hr
-            and spd is not None and spd >= min_speed_ms
+            hr is not None
+            and hr >= min_hr
+            and spd is not None
+            and spd >= min_speed_ms
             and dt > 0
         ):
             seg_time_s += dt
@@ -269,9 +280,9 @@ def _extract_high_intensity_segments(
 async def _estimate_from_streams(
     activity: Activity,
     session: AsyncSession,
-    lthr: Optional[int],
-    max_hr: Optional[int],
-) -> Optional[VO2MaxResult]:
+    lthr: int | None,
+    max_hr: int | None,
+) -> VO2MaxResult | None:
     """Estimate VO2max using only high-intensity stream segments.
 
     Returns None if streams are missing, no qualifying segments found,
@@ -347,13 +358,13 @@ async def _estimate_from_streams(
         lt2_hr_floor = max_hr * 0.85  # type: ignore[operator]
 
     lt2_speeds: list[float] = []
-    for _hr, _spd in zip(hr_data, speed_data):
+    for _hr, _spd in zip(hr_data, speed_data, strict=False):
         if _hr is None or _spd is None or _spd < _LT2_MIN_SPEED_MS:
             continue
         if _hr >= lt2_hr_floor:
             lt2_speeds.append(_spd)
 
-    def _median_pace_s(speeds: list[float]) -> Optional[float]:
+    def _median_pace_s(speeds: list[float]) -> float | None:
         if len(speeds) < _LT_MIN_SAMPLES:
             return None
         sv = sorted(speeds)
@@ -401,7 +412,9 @@ async def _estimate_from_streams(
         cooper=round(c_est, 1) if c_est is not None else None,
         activity_strava_id=activity.strava_id,
         activity_name=activity.name,
-        activity_date=activity.start_date.date().isoformat() if activity.start_date else "unknown",
+        activity_date=activity.start_date.date().isoformat()
+        if activity.start_date
+        else "unknown",
         distance_km=round(total_distance / 1000, 2),
         pace_per_km=_fmt_pace(avg_v),
         best_time_s=float(total_duration),
@@ -410,18 +423,21 @@ async def _estimate_from_streams(
     )
 
 
-async def estimate_vo2max(athlete_id: int, max_activities: int = 200) -> Optional[VO2MaxResult]:
+async def estimate_vo2max(
+    athlete_id: int, max_activities: int = 200
+) -> VO2MaxResult | None:
     from fitops.analytics.athlete_settings import get_athlete_settings
+
     settings = get_athlete_settings()
     lthr = settings.lthr
     max_hr = settings.max_hr
 
-    lookback = datetime.now(timezone.utc) - timedelta(days=365)
+    lookback = datetime.now(UTC) - timedelta(days=365)
     async with get_async_session() as session:
         stmt = (
             select(Activity)
             .where(
-                Activity.manual == False,
+                Activity.manual.is_(False),
                 Activity.athlete_id == athlete_id,
                 Activity.sport_type.in_(list(RUN_TYPES)),
                 Activity.start_date >= lookback,
@@ -434,14 +450,14 @@ async def estimate_vo2max(athlete_id: int, max_activities: int = 200) -> Optiona
         result = await session.execute(stmt)
         activities = result.scalars().all()
 
-        best: Optional[VO2MaxResult] = None
+        best: VO2MaxResult | None = None
         for activity in activities:
             # Only consider activities where the athlete was working near threshold.
             # Easy/Z2 runs produce unreliable VDOT estimates from pace alone.
             qualifies, _ = _effort_qualifies(activity.average_heartrate, lthr, max_hr)
             if not qualifies:
                 continue
-            est: Optional[VO2MaxResult] = None
+            est: VO2MaxResult | None = None
             if activity.streams_fetched:
                 est = await _estimate_from_streams(activity, session, lthr, max_hr)
             if est is None:
@@ -451,8 +467,13 @@ async def estimate_vo2max(athlete_id: int, max_activities: int = 200) -> Optiona
             # Pick the activity with the highest VO2max estimate — that's the hardest effort
             # and the best signal for true aerobic ceiling. Confidence acts as a tiebreaker
             # only when estimates are within 1 ml/kg/min of each other.
-            if best is None or est.estimate > best.estimate + 1.0 or (
-                abs(est.estimate - best.estimate) <= 1.0 and est.confidence > best.confidence
+            if (
+                best is None
+                or est.estimate > best.estimate + 1.0
+                or (
+                    abs(est.estimate - best.estimate) <= 1.0
+                    and est.confidence > best.confidence
+                )
             ):
                 best = est
     return best
@@ -507,7 +528,9 @@ _DECAY_RATE_PER_WEEK = 0.005
 _DECREASE_DAMPING = 0.2
 
 
-def compute_vo2max_rolling(history: list[dict], initial: Optional[float] = None) -> list[dict]:
+def compute_vo2max_rolling(
+    history: list[dict], initial: float | None = None
+) -> list[dict]:
     """
     Apply a ratchet model to the per-activity VO2max history (oldest first).
 
@@ -540,8 +563,8 @@ def compute_vo2max_rolling(history: list[dict], initial: Optional[float] = None)
         except ValueError:
             return _date.today()
 
-    rolling: Optional[float] = initial
-    last_qualifying_date: Optional[_date] = None
+    rolling: float | None = initial
+    last_qualifying_date: _date | None = None
 
     for row in history:
         activity_date = _parse(row["date"])
@@ -565,7 +588,9 @@ def compute_vo2max_rolling(history: list[dict], initial: Optional[float] = None)
             if estimate >= rolling:
                 rolling = estimate  # full increase
             else:
-                rolling = rolling + _DECREASE_DAMPING * (estimate - rolling)  # damped decrease
+                rolling = rolling + _DECREASE_DAMPING * (
+                    estimate - rolling
+                )  # damped decrease
             last_qualifying_date = activity_date
         # else: non-qualifying — rolling stays as is (possibly already decayed above)
 
@@ -596,9 +621,9 @@ def compute_vo2max_rolling(history: list[dict], initial: Optional[float] = None)
 # It is NOT reliable from easy or moderate training runs.
 
 _LT2_RACE_PACE_RATIOS: dict[str, float] = {
-    "5K":       0.924,
-    "10K":      0.962,
-    "Half":     1.020,
+    "5K": 0.924,
+    "10K": 0.962,
+    "Half": 1.020,
     "Marathon": 1.070,
 }
 
@@ -611,7 +636,7 @@ def vo2max_from_lt2_pace(lt2_pace_s: float) -> float:
     Uses the same VO2-demand quadratic as _daniels_vdot, solved at LT2 speed.
     """
     v_mpm = (1000.0 / lt2_pace_s) * 60.0  # m/min
-    vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm ** 2
+    vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm**2
     return round(max(28.0, min(90.0, vo2_demand / 0.88)), 1)
 
 
@@ -625,8 +650,8 @@ def _pred_entry(pred_s: float, d2_m: float) -> dict:
 
 
 def compute_race_predictions(
-    vo2_result: "VO2MaxResult",
-    lt2_pace_s: Optional[float] = None,
+    vo2_result: VO2MaxResult,
+    lt2_pace_s: float | None = None,
 ) -> dict:
     """
     Predict race times using two complementary methods.

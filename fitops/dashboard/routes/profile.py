@@ -1,7 +1,6 @@
 """Profile dashboard route — view & edit physiological settings and equipment."""
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -17,14 +16,16 @@ from fitops.dashboard.queries.profile import get_athlete, get_equipment_with_sta
 router = APIRouter()
 
 
-def _fmt_pace(s: Optional[float]) -> Optional[str]:
+def _fmt_pace(s: float | None) -> str | None:
     if s is None:
         return None
     si = int(s)
     return f"{si // 60}:{si % 60:02d}"
 
 
-def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, equipment: list) -> dict:
+def _build_profile_context(
+    athlete, athlete_settings_data: dict, vo2max_result, equipment: list
+) -> dict:
     """Build template context dict for the profile page."""
     method = None
     hr_zones = None
@@ -43,7 +44,9 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
         method = "max-hr"
 
     if method:
-        zone_result = compute_zones(method=method, lthr=lthr, max_hr=max_hr, resting_hr=resting_hr)
+        zone_result = compute_zones(
+            method=method, lthr=lthr, max_hr=max_hr, resting_hr=resting_hr
+        )
         if zone_result:
             hr_zones = [
                 {
@@ -106,7 +109,7 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
         pz = compute_pace_zones(int(threshold_pace_s))
         pace_zones = pz.zones
 
-    def _fmt_s(s: Optional[float]) -> Optional[str]:
+    def _fmt_s(s: float | None) -> str | None:
         if s is None:
             return None
         si = int(s)
@@ -125,7 +128,7 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
             """Predict race pace and time for a given fractional utilization."""
             demand = vdot * frac
             a, b, c = 0.000104, 0.182258, -(demand + 4.6)
-            v_mpm = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)
+            v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)
             pace_s = round(1000 / (v_mpm / 60))
             total_s = round(dist_m / (v_mpm / 60))
             h, rem = divmod(total_s, 3600)
@@ -134,11 +137,11 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
             return {"pace": f"{pace_s // 60}:{pace_s % 60:02d}/km", "time": time_fmt}
 
         race_predictions = [
-            {"label": "5 K",        **_vdot_race(0.979, 5000)},
-            {"label": "10 K",       **_vdot_race(0.939, 10000)},
-            {"label": "12 K",       **_vdot_race(0.922, 12000)},
+            {"label": "5 K", **_vdot_race(0.979, 5000)},
+            {"label": "10 K", **_vdot_race(0.939, 10000)},
+            {"label": "12 K", **_vdot_race(0.922, 12000)},
             {"label": "Half (21K)", **_vdot_race(0.879, 21097)},
-            {"label": "Marathon",   **_vdot_race(0.838, 42195)},
+            {"label": "Marathon", **_vdot_race(0.838, 42195)},
         ]
 
     # Custom pace zone overrides
@@ -147,11 +150,46 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
     if pace_zones_custom:
         b = list(custom_pace_bounds)  # [b1, b2, b3, b4] slowest→fastest (desc seconds)
         pace_zones = [
-            {"zone": 1, "name": "Easy",      "min_s_per_km": b[0], "max_s_per_km": None, "min_pace_fmt": _fmt_pace(b[0]), "max_pace_fmt": None},
-            {"zone": 2, "name": "Aerobic",   "min_s_per_km": b[1], "max_s_per_km": b[0], "min_pace_fmt": _fmt_pace(b[1]), "max_pace_fmt": _fmt_pace(b[0])},
-            {"zone": 3, "name": "Tempo",     "min_s_per_km": b[2], "max_s_per_km": b[1], "min_pace_fmt": _fmt_pace(b[2]), "max_pace_fmt": _fmt_pace(b[1])},
-            {"zone": 4, "name": "Threshold", "min_s_per_km": b[3], "max_s_per_km": b[2], "min_pace_fmt": _fmt_pace(b[3]), "max_pace_fmt": _fmt_pace(b[2])},
-            {"zone": 5, "name": "VO2max",    "min_s_per_km": None, "max_s_per_km": b[3], "min_pace_fmt": None,            "max_pace_fmt": _fmt_pace(b[3])},
+            {
+                "zone": 1,
+                "name": "Easy",
+                "min_s_per_km": b[0],
+                "max_s_per_km": None,
+                "min_pace_fmt": _fmt_pace(b[0]),
+                "max_pace_fmt": None,
+            },
+            {
+                "zone": 2,
+                "name": "Aerobic",
+                "min_s_per_km": b[1],
+                "max_s_per_km": b[0],
+                "min_pace_fmt": _fmt_pace(b[1]),
+                "max_pace_fmt": _fmt_pace(b[0]),
+            },
+            {
+                "zone": 3,
+                "name": "Tempo",
+                "min_s_per_km": b[2],
+                "max_s_per_km": b[1],
+                "min_pace_fmt": _fmt_pace(b[2]),
+                "max_pace_fmt": _fmt_pace(b[1]),
+            },
+            {
+                "zone": 4,
+                "name": "Threshold",
+                "min_s_per_km": b[3],
+                "max_s_per_km": b[2],
+                "min_pace_fmt": _fmt_pace(b[3]),
+                "max_pace_fmt": _fmt_pace(b[2]),
+            },
+            {
+                "zone": 5,
+                "name": "VO2max",
+                "min_s_per_km": None,
+                "max_s_per_km": b[3],
+                "min_pace_fmt": None,
+                "max_pace_fmt": _fmt_pace(b[3]),
+            },
         ]
     # Bounds for pace edit form pre-population
     if custom_pace_bounds and len(custom_pace_bounds) == 4:
@@ -191,7 +229,9 @@ def _build_profile_context(athlete, athlete_settings_data: dict, vo2max_result, 
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/profile", response_class=HTMLResponse)
-    async def profile(request: Request, saved: Optional[str] = None, error: Optional[str] = None):
+    async def profile(
+        request: Request, saved: str | None = None, error: str | None = None
+    ):
         cfg = get_settings()
         athlete_id = cfg.athlete_id
 
@@ -219,31 +259,31 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.post("/profile/settings")
     async def save_settings(
         request: Request,
-        weight_kg: Optional[str] = Form(default=None),
-        height_cm: Optional[str] = Form(default=None),
-        birthday: Optional[str] = Form(default=None),
-        max_hr: Optional[str] = Form(default=None),
-        resting_hr: Optional[str] = Form(default=None),
-        lthr: Optional[str] = Form(default=None),
-        ftp: Optional[str] = Form(default=None),
-        threshold_pace: Optional[str] = Form(default=None),
+        weight_kg: str | None = Form(default=None),
+        height_cm: str | None = Form(default=None),
+        birthday: str | None = Form(default=None),
+        max_hr: str | None = Form(default=None),
+        resting_hr: str | None = Form(default=None),
+        lthr: str | None = Form(default=None),
+        ftp: str | None = Form(default=None),
+        threshold_pace: str | None = Form(default=None),
     ):
         s = get_athlete_settings()
         updates: dict = {}
 
-        def _int(v: Optional[str]) -> Optional[int]:
+        def _int(v: str | None) -> int | None:
             try:
                 return int(v) if v and v.strip() else None
             except ValueError:
                 return None
 
-        def _float(v: Optional[str]) -> Optional[float]:
+        def _float(v: str | None) -> float | None:
             try:
                 return float(v) if v and v.strip() else None
             except ValueError:
                 return None
 
-        def _pace_s(v: Optional[str]) -> Optional[int]:
+        def _pace_s(v: str | None) -> int | None:
             if not v or not v.strip():
                 return None
             parts = v.strip().split(":")
@@ -265,8 +305,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
             updates["max_hr_source"] = "manual"
         if (r := _int(resting_hr)) is not None:
             updates["resting_hr"] = r
-        if (l := _int(lthr)) is not None:
-            updates["lthr"] = l
+        if (lthr_val := _int(lthr)) is not None:
+            updates["lthr"] = lthr_val
             updates["lthr_source"] = "manual"
         if (f := _float(ftp)) is not None:
             updates["ftp"] = f
@@ -282,10 +322,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
         # Mirror weight/birthday to the DB athlete record
         cfg = get_settings()
         if cfg.athlete_id and ("weight_kg" in updates or "birthday" in updates):
+            from sqlalchemy import select
+
             from fitops.db.migrations import create_all_tables
             from fitops.db.models.athlete import Athlete
             from fitops.db.session import get_async_session
-            from sqlalchemy import select
 
             await create_all_tables()
             async with get_async_session() as session:
@@ -304,18 +345,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.post("/profile/hr-zones")
     async def save_hr_zones(
         request: Request,
-        z1_max: Optional[str] = Form(default=None),
-        z2_max: Optional[str] = Form(default=None),
-        z3_max: Optional[str] = Form(default=None),
-        z4_max: Optional[str] = Form(default=None),
-        reset: Optional[str] = Form(default=None),
+        z1_max: str | None = Form(default=None),
+        z2_max: str | None = Form(default=None),
+        z3_max: str | None = Form(default=None),
+        z4_max: str | None = Form(default=None),
+        reset: str | None = Form(default=None),
     ):
         s = get_athlete_settings()
         if reset:
             s.clear("custom_hr_zone_bounds")
             return RedirectResponse("/profile?saved=1", status_code=303)
 
-        def _bpm(v: Optional[str]) -> Optional[int]:
+        def _bpm(v: str | None) -> int | None:
             try:
                 return int(v) if v and v.strip() else None
             except ValueError:
@@ -331,22 +372,22 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.post("/profile/estimates")
     async def save_estimates(
         request: Request,
-        lt1_hr: Optional[str] = Form(default=None),
-        lt2_hr: Optional[str] = Form(default=None),
-        vo2max_override: Optional[str] = Form(default=None),
-        clear_lt1: Optional[str] = Form(default=None),
-        clear_lt2: Optional[str] = Form(default=None),
-        clear_vo2max: Optional[str] = Form(default=None),
+        lt1_hr: str | None = Form(default=None),
+        lt2_hr: str | None = Form(default=None),
+        vo2max_override: str | None = Form(default=None),
+        clear_lt1: str | None = Form(default=None),
+        clear_lt2: str | None = Form(default=None),
+        clear_vo2max: str | None = Form(default=None),
     ):
         s = get_athlete_settings()
 
-        def _int(v: Optional[str]) -> Optional[int]:
+        def _int(v: str | None) -> int | None:
             try:
                 return int(v) if v and v.strip() else None
             except ValueError:
                 return None
 
-        def _float(v: Optional[str]) -> Optional[float]:
+        def _float(v: str | None) -> float | None:
             try:
                 return float(v) if v and v.strip() else None
             except ValueError:
@@ -406,18 +447,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.post("/profile/pace-zones")
     async def save_pace_zones(
         request: Request,
-        b1: Optional[str] = Form(default=None),
-        b2: Optional[str] = Form(default=None),
-        b3: Optional[str] = Form(default=None),
-        b4: Optional[str] = Form(default=None),
-        reset: Optional[str] = Form(default=None),
+        b1: str | None = Form(default=None),
+        b2: str | None = Form(default=None),
+        b3: str | None = Form(default=None),
+        b4: str | None = Form(default=None),
+        reset: str | None = Form(default=None),
     ):
         s = get_athlete_settings()
         if reset:
             s.clear("custom_pace_zone_bounds")
             return RedirectResponse("/profile?saved=1", status_code=303)
 
-        def _pace_s(v: Optional[str]) -> Optional[int]:
+        def _pace_s(v: str | None) -> int | None:
             if not v or not v.strip():
                 return None
             parts = v.strip().split(":")
@@ -429,7 +470,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return None
 
         bounds = [_pace_s(b1), _pace_s(b2), _pace_s(b3), _pace_s(b4)]
-        if not all(b is not None for b in bounds) or bounds != sorted(bounds, reverse=True):
+        if not all(b is not None for b in bounds) or bounds != sorted(
+            bounds, reverse=True
+        ):
             return RedirectResponse("/profile?error=invalid_zones", status_code=303)
 
         s.set(custom_pace_zone_bounds=bounds)

@@ -3,12 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 
+from fitops.dashboard.queries.notes import get_all_notes, get_all_tags, upsert_note
 from fitops.db.migrations import create_all_tables
 from fitops.db.models.note import Note
 from fitops.db.session import get_async_session
-from fitops.dashboard.queries.notes import get_all_notes, get_all_tags, upsert_note
 from fitops.notes.loader import (
     create_note_file,
     delete_note_file,
@@ -64,7 +65,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "tags": n.tags_list(),
                 "activity_id": n.activity_id,
                 "body_preview": n.body_preview or "",
-                "created_at": n.created_at.strftime("%d %b %Y") if n.created_at else "—",
+                "created_at": n.created_at.strftime("%d %b %Y")
+                if n.created_at
+                else "—",
             }
             for n in notes
         ]
@@ -102,7 +105,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
         act_id = int(activity_id) if activity_id.strip().isdigit() else None
 
-        note = create_note_file(title=title, tags=tag_list, body=body, activity_id=act_id)
+        note = create_note_file(
+            title=title, tags=tag_list, body=body, activity_id=act_id
+        )
 
         async with get_async_session() as session:
             await upsert_note(session, note)
@@ -149,7 +154,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
         act_id = int(activity_id) if activity_id.strip().isdigit() else None
 
-        note = update_note_file(slug=slug, title=title, tags=tag_list, body=body, activity_id=act_id)
+        note = update_note_file(
+            slug=slug, title=title, tags=tag_list, body=body, activity_id=act_id
+        )
         if note is None:
             return RedirectResponse(url="/notes", status_code=303)
 
@@ -182,6 +189,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         linked_activity = None
         if note.activity_id:
             from fitops.db.models.activity import Activity
+
             async with get_async_session() as session:
                 res = await session.execute(
                     select(Activity).where(Activity.strava_id == note.activity_id)
@@ -191,9 +199,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     linked_activity = {
                         "strava_id": act.strava_id,
                         "name": act.name,
-                        "date": act.start_date_local.strftime("%d %b %Y") if act.start_date_local else "—",
+                        "date": act.start_date_local.strftime("%d %b %Y")
+                        if act.start_date_local
+                        else "—",
                         "sport_type": act.sport_type,
-                        "distance_km": round(act.distance_m / 1000, 2) if act.distance_m else None,
+                        "distance_km": round(act.distance_m / 1000, 2)
+                        if act.distance_m
+                        else None,
                     }
 
         return templates.TemplateResponse(
@@ -206,7 +218,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "title": note.title,
                     "tags": note.tags,
                     "activity_id": note.activity_id,
-                    "created": note.created.strftime("%d %b %Y, %H:%M") if note.created else "—",
+                    "created": note.created.strftime("%d %b %Y, %H:%M")
+                    if note.created
+                    else "—",
                     "body": note.body,
                 },
                 "linked_activity": linked_activity,

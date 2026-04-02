@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from fitops.config.settings import get_settings
 from fitops.config.state import get_sync_state
@@ -12,7 +11,6 @@ from fitops.db.models.activity import Activity
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
 from fitops.strava.client import StravaClient
-from fitops.utils.exceptions import SyncError
 from fitops.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -49,9 +47,9 @@ class SyncEngine:
         self,
         *,
         full: bool = False,
-        after_override: Optional[datetime] = None,
-        before_override: Optional[datetime] = None,
-    ) -> tuple[Optional[int], Optional[int], str]:
+        after_override: datetime | None = None,
+        before_override: datetime | None = None,
+    ) -> tuple[int | None, int | None, str]:
         """Return (after_epoch, before_epoch, sync_type)."""
         if full:
             return None, None, "full"
@@ -90,8 +88,8 @@ class SyncEngine:
     async def _sync_activities_paginated(
         self,
         athlete_id: int,
-        after: Optional[int],
-        before: Optional[int],
+        after: int | None,
+        before: int | None,
         result: SyncResult,
     ) -> None:
         for page in range(1, MAX_PAGES + 1):
@@ -132,8 +130,8 @@ class SyncEngine:
         self,
         *,
         full: bool = False,
-        after_override: Optional[datetime] = None,
-        before_override: Optional[datetime] = None,
+        after_override: datetime | None = None,
+        before_override: datetime | None = None,
     ) -> SyncResult:
         start_time = time.monotonic()
         result = SyncResult()

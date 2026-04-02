@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 
-from fitops.analytics.weather_pace import weather_condition_label, wbgt_flag
-from fitops.config.settings import get_settings
+from fitops.analytics.weather_pace import wbgt_flag, weather_condition_label
 from fitops.dashboard.queries.activities import get_distinct_sports
-from fitops.dashboard.queries.weather import get_activities_missing_weather, get_wap_history
+from fitops.dashboard.queries.weather import (
+    get_activities_missing_weather,
+    get_wap_history,
+)
 from fitops.db.migrations import create_all_tables
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
-from sqlalchemy import select
 
 router = APIRouter()
 
 
-def _fmt_pace(s_per_km: Optional[float]) -> str:
+def _fmt_pace(s_per_km: float | None) -> str:
     if s_per_km is None:
         return "—"
     mins = int(s_per_km) // 60
@@ -42,7 +42,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             athlete = res.scalar_one_or_none()
 
         athlete_id = athlete.strava_id if athlete else 0
-        sport_filter: Optional[str] = sport or None
+        sport_filter: str | None = sport or None
 
         history = await get_wap_history(athlete_id, days=days, sport=sport_filter)
         missing = await get_activities_missing_weather(athlete_id, limit=500)
@@ -59,7 +59,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "actual_pace_fmt": _fmt_pace(h["actual_pace_s"]),
                     "wap_fmt": _fmt_pace(h["wap_s"]),
                     "true_pace_fmt": _fmt_pace(h["true_pace_s"]),
-                    "condition": weather_condition_label(wcode) if wcode is not None else "—",
+                    "condition": weather_condition_label(wcode)
+                    if wcode is not None
+                    else "—",
                     "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else "green",
                     "factor_pct": round((h["wap_factor"] - 1.0) * 100, 1),
                 }

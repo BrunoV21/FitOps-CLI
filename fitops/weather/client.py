@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 import httpx
 
@@ -36,7 +35,7 @@ _FIELD_MAP = {
 
 async def fetch_activity_weather(
     lat: float, lng: float, activity_start_utc: datetime
-) -> Optional[dict]:
+) -> dict | None:
     """
     Fetch one hourly weather record from Open-Meteo archive API.
     Returns dict with normalized field names (matching ActivityWeather model), or None on failure.
@@ -68,7 +67,7 @@ async def fetch_activity_weather(
 
 async def fetch_forecast_weather(
     lat: float, lng: float, date: str, hour: int
-) -> Optional[dict]:
+) -> dict | None:
     """
     Fetch hourly forecast from Open-Meteo forecast API (up to 16 days ahead).
     date: 'YYYY-MM-DD', hour: 0-23 (local time at location).

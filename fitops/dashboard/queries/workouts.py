@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from sqlalchemy import select
 
 from fitops.db.models.activity import Activity
@@ -13,7 +11,7 @@ from fitops.db.session import get_async_session
 async def get_workout_with_segments(
     workout_id: int,
     athlete_id: int,
-) -> Optional[tuple[Workout, list[WorkoutSegment]]]:
+) -> tuple[Workout, list[WorkoutSegment]] | None:
     """Fetch a workout and its segments by workout id (guarded by athlete_id)."""
     async with get_async_session() as session:
         res = await session.execute(
@@ -37,7 +35,7 @@ async def get_workout_with_segments(
 
 async def get_workout_for_activity(
     activity_id: int,
-) -> Optional[tuple[Workout, list[WorkoutSegment]]]:
+) -> tuple[Workout, list[WorkoutSegment]] | None:
     """Fetch the workout (and its segments) linked to an internal activity id."""
     async with get_async_session() as session:
         res = await session.execute(
@@ -80,12 +78,10 @@ async def get_all_workouts(athlete_id: int) -> list[Workout]:
         return list(res.scalars().all())
 
 
-async def get_activity_for_workout(activity_id: int) -> Optional[Activity]:
+async def get_activity_for_workout(activity_id: int) -> Activity | None:
     """Fetch the Activity linked to a workout's activity_id (internal id)."""
     if activity_id is None:
         return None
     async with get_async_session() as session:
-        res = await session.execute(
-            select(Activity).where(Activity.id == activity_id)
-        )
+        res = await session.execute(select(Activity).where(Activity.id == activity_id))
         return res.scalar_one_or_none()
