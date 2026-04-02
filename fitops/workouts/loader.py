@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fitops.config.settings import get_settings
 
@@ -18,6 +18,7 @@ def workouts_dir() -> Path:
 # ---------------------------------------------------------------------------
 # Frontmatter parser (no PyYAML dependency — handles str/int/float/bool/list)
 # ---------------------------------------------------------------------------
+
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     """Parse YAML-like frontmatter block from markdown text.
@@ -79,24 +80,26 @@ def _stem_to_name(stem: str) -> str:
 # WorkoutFile dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class WorkoutFile:
     """A workout definition loaded from a .md file in ~/.fitops/workouts/."""
 
-    file_name: str              # e.g. "threshold-tuesday.md"
+    file_name: str  # e.g. "threshold-tuesday.md"
     file_path: Path
-    name: str                   # from frontmatter["name"] or derived from filename
-    sport: Optional[str]        # e.g. "Run", "Ride"
-    target_duration_min: Optional[int]
+    name: str  # from frontmatter["name"] or derived from filename
+    sport: str | None  # e.g. "Run", "Ride"
+    target_duration_min: int | None
     tags: list[str] = field(default_factory=list)
-    meta: dict[str, Any] = field(default_factory=dict)   # all frontmatter fields
-    body: str = ""              # markdown body (content after frontmatter)
-    raw: str = ""               # complete file content
+    meta: dict[str, Any] = field(default_factory=dict)  # all frontmatter fields
+    body: str = ""  # markdown body (content after frontmatter)
+    raw: str = ""  # complete file content
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def load_workout_file(path: Path) -> WorkoutFile:
     raw = path.read_text(encoding="utf-8")
@@ -119,7 +122,7 @@ def list_workout_files() -> list[WorkoutFile]:
     return [load_workout_file(f) for f in sorted(workouts_dir().glob("*.md"))]
 
 
-def get_workout_file(name_or_filename: str) -> Optional[WorkoutFile]:
+def get_workout_file(name_or_filename: str) -> WorkoutFile | None:
     """Find a workout by filename (with or without .md) or display name.
 
     Matching order:

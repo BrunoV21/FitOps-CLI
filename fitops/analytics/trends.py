@@ -3,8 +3,7 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -23,7 +22,7 @@ def _linear_regression(x: list[float], y: list[float]) -> tuple[float, float]:
         return 0.0, (y[0] if y else 0.0)
     sx, sy = sum(x), sum(y)
     sxx = sum(xi * xi for xi in x)
-    sxy = sum(xi * yi for xi, yi in zip(x, y))
+    sxy = sum(xi * yi for xi, yi in zip(x, y, strict=False))
     denom = n * sxx - sx * sx
     if denom == 0:
         return 0.0, sy / n
@@ -68,7 +67,7 @@ def _season(month: int) -> str:
 
 @dataclass
 class TrendResult:
-    sport_filter: Optional[str]
+    sport_filter: str | None
     days: int
     activity_count: int
     volume_trend: dict
@@ -81,10 +80,10 @@ class TrendResult:
 async def compute_trends(
     athlete_id: int,
     days: int = 180,
-    sport_filter: Optional[str] = None,
-    sport_types: Optional[frozenset] = None,
-) -> Optional[TrendResult]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    sport_filter: str | None = None,
+    sport_types: frozenset | None = None,
+) -> TrendResult | None:
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     async with get_async_session() as session:
         stmt = select(Activity).where(
@@ -114,17 +113,23 @@ async def compute_trends(
     for wk in sorted_weeks:
         acts = weekly[wk]
         total_km = sum((a.distance_m or 0) / 1000 for a in acts)
-        weekly_data.append({
-            "week": f"{wk[0]}-W{wk[1]:02d}",
-            "distance_km": round(total_km, 2),
-            "activity_count": len(acts),
-        })
+        weekly_data.append(
+            {
+                "week": f"{wk[0]}-W{wk[1]:02d}",
+                "distance_km": round(total_km, 2),
+                "activity_count": len(acts),
+            }
+        )
 
     if len(weekly_data) >= 6:
         x = list(range(len(weekly_data)))
         y = [w["distance_km"] for w in weekly_data]
         vol_slope, _ = _linear_regression(x, y)
-        vol_direction = "increasing" if vol_slope > 0.5 else ("decreasing" if vol_slope < -0.5 else "stable")
+        vol_direction = (
+            "increasing"
+            if vol_slope > 0.5
+            else ("decreasing" if vol_slope < -0.5 else "stable")
+        )
     else:
         vol_slope, vol_direction = 0.0, "insufficient_data"
 
@@ -171,12 +176,23 @@ async def compute_trends(
     for season, acts in seasonal_acts.items():
         total_km = sum((a.distance_m or 0) / 1000 for a in acts)
         # Distance-weighted mean: long runs shouldn't count same as strides
-        total_dist = sum(a.distance_m or 0 for a in acts if a.average_speed_ms and a.average_speed_ms > 0)
+        total_dist = sum(
+            a.distance_m or 0
+            for a in acts
+            if a.average_speed_ms and a.average_speed_ms > 0
+        )
         avg_pace = (
-            sum((1000 / a.average_speed_ms / 60) * (a.distance_m or 0)
-                for a in acts if a.average_speed_ms and a.average_speed_ms > 0)
-            / total_dist
-        ) if total_dist > 0 else None
+            (
+                sum(
+                    (1000 / a.average_speed_ms / 60) * (a.distance_m or 0)
+                    for a in acts
+                    if a.average_speed_ms and a.average_speed_ms > 0
+                )
+                / total_dist
+            )
+            if total_dist > 0
+            else None
+        )
         season_stats[season] = {
             "activity_count": len(acts),
             "total_distance_km": round(total_km, 2),
@@ -184,8 +200,12 @@ async def compute_trends(
         }
 
     peak_season = (
-        max(seasonal_acts.keys(), key=lambda s: sum((a.distance_m or 0) for a in seasonal_acts[s]))
-        if seasonal_acts else None
+        max(
+            seasonal_acts.keys(),
+            key=lambda s: sum((a.distance_m or 0) for a in seasonal_acts[s]),
+        )
+        if seasonal_acts
+        else None
     )
 
     seasonal = {"seasons": season_stats, "peak_season": peak_season}
@@ -198,7 +218,9 @@ async def compute_trends(
         if act.start_date:
             key = (act.start_date.year, act.start_date.month)
             if act.average_speed_ms and act.average_speed_ms > 0:
-                monthly_pace[key].append((1000 / act.average_speed_ms / 60, act.distance_m or 0))
+                monthly_pace[key].append(
+                    (1000 / act.average_speed_ms / 60, act.distance_m or 0)
+                )
             if act.average_heartrate:
                 monthly_hr[key].append(act.average_heartrate)
 
@@ -220,7 +242,9 @@ async def compute_trends(
         pace_slope, _ = _linear_regression(x, y)
         pace_direction = _pace_direction(pace_slope)
         if len(y) >= 2:
-            improvement_rate = (y[-1] - y[0]) / max(y[0], 1.0) * 100 / max(1, len(y) - 1)
+            improvement_rate = (
+                (y[-1] - y[0]) / max(y[0], 1.0) * 100 / max(1, len(y) - 1)
+            )
     elif len(monthly_pace) >= 2:
         pace_direction = "insufficient_data"
 
@@ -235,17 +259,27 @@ async def compute_trends(
         "pace_slope": round(pace_slope, 4) if pace_slope is not None else None,
         "pace_direction": pace_direction,
         "pace_trend": pace_direction,
-        "pace_strength": _trend_strength(pace_slope) if pace_slope is not None else "weak",
+        "pace_strength": _trend_strength(pace_slope)
+        if pace_slope is not None
+        else "weak",
         "hr_slope": round(hr_slope, 3) if hr_slope is not None else None,
         "hr_direction": hr_direction,
-        "improvement_rate_pct_per_month": round(improvement_rate, 2) if improvement_rate is not None else None,
+        "improvement_rate_pct_per_month": round(improvement_rate, 2)
+        if improvement_rate is not None
+        else None,
     }
 
     # Summary
     parts = []
-    if vol_direction == "increasing" and _trend_strength(vol_slope) in ("moderate", "strong"):
+    if vol_direction == "increasing" and _trend_strength(vol_slope) in (
+        "moderate",
+        "strong",
+    ):
         parts.append("volume building")
-    elif vol_direction == "decreasing" and _trend_strength(vol_slope) in ("moderate", "strong"):
+    elif vol_direction == "decreasing" and _trend_strength(vol_slope) in (
+        "moderate",
+        "strong",
+    ):
         parts.append("volume declining")
     if weekly_consistency >= 0.8:
         parts.append("consistent training")

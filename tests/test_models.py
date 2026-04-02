@@ -1,4 +1,5 @@
 """Tests for DB models."""
+
 from fitops.db.models.activity import Activity
 from fitops.db.models.athlete import Athlete
 

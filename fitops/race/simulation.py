@@ -6,12 +6,11 @@ even/negative/positive strategies, and pacer mode (sit-then-push).
 
 Pure math — no DB access, no I/O.
 """
+
 from __future__ import annotations
 
-from typing import Optional
-
 from fitops.analytics.weather_pace import compute_wap_factor
-from fitops.race.course_parser import _fmt_pace, _fmt_duration
+from fitops.race.course_parser import _fmt_duration, _fmt_pace
 
 
 def gap_factor(grade_decimal: float) -> float:
@@ -31,7 +30,7 @@ def gap_factor(grade_decimal: float) -> float:
     Formula: 1 + (-4.0 * grade^2 + 2.6 * grade)
     """
     grade = max(-0.45, min(0.45, grade_decimal))
-    relative_cost = -4.0 * grade ** 2 + 2.6 * grade
+    relative_cost = -4.0 * grade**2 + 2.6 * grade
     return 1.0 + relative_cost
 
 
@@ -70,7 +69,9 @@ def simulate_splits(
         gf = gap_factor(seg["grade"])
         wf = compute_wap_factor(temp_c, rh_pct, wind_ms, wind_dir, seg.get("bearing"))
         combined = gf * wf
-        enriched.append({**seg, "gap_factor": gf, "wap_factor": wf, "combined_factor": combined})
+        enriched.append(
+            {**seg, "gap_factor": gf, "wap_factor": wf, "combined_factor": combined}
+        )
 
     # Step 2: total difficulty-weighted distance
     total_dist_m = sum(s["distance_m"] for s in enriched)
@@ -110,21 +111,23 @@ def simulate_splits(
         seg_time_s = raw_times[i] * scale
         pace_s = seg_time_s / (seg["distance_m"] / 1000.0)
         cumulative_s += seg_time_s
-        splits.append({
-            "km": seg["km"],
-            "distance_m": round(seg["distance_m"], 1),
-            "elevation_gain_m": round(seg.get("elevation_gain_m", 0.0), 1),
-            "grade_pct": round(seg["grade"] * 100, 1),
-            "bearing_deg": round(seg.get("bearing", 0.0), 1),
-            "gap_factor": round(seg["gap_factor"], 4),
-            "wap_factor": round(seg["wap_factor"], 4),
-            "combined_factor": round(seg["combined_factor"], 4),
-            "target_pace_s": round(pace_s, 1),
-            "target_pace_fmt": _fmt_pace(pace_s),
-            "segment_time_s": round(seg_time_s, 1),
-            "cumulative_time_s": round(cumulative_s, 1),
-            "cumulative_time_fmt": _fmt_duration(cumulative_s),
-        })
+        splits.append(
+            {
+                "km": seg["km"],
+                "distance_m": round(seg["distance_m"], 1),
+                "elevation_gain_m": round(seg.get("elevation_gain_m", 0.0), 1),
+                "grade_pct": round(seg["grade"] * 100, 1),
+                "bearing_deg": round(seg.get("bearing", 0.0), 1),
+                "gap_factor": round(seg["gap_factor"], 4),
+                "wap_factor": round(seg["wap_factor"], 4),
+                "combined_factor": round(seg["combined_factor"], 4),
+                "target_pace_s": round(pace_s, 1),
+                "target_pace_fmt": _fmt_pace(pace_s),
+                "segment_time_s": round(seg_time_s, 1),
+                "cumulative_time_s": round(cumulative_s, 1),
+                "cumulative_time_fmt": _fmt_duration(cumulative_s),
+            }
+        )
     return splits
 
 
@@ -165,7 +168,9 @@ def simulate_pacer_mode(
     push_segs = [s for s in segments if s["km"] > drop_at_km]
 
     if not push_segs:
-        raise ValueError("drop_at_km is at or beyond the finish — no push phase exists.")
+        raise ValueError(
+            "drop_at_km is at or beyond the finish — no push phase exists."
+        )
 
     # Sit phase: constant pacer pace (per-segment pace scaled to segment distance)
     sit_dist_km = sum(s["distance_m"] for s in sit_segs) / 1000.0

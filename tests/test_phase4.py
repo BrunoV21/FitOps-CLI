@@ -1,20 +1,25 @@
 """Tests for Phase 4 and Phase 5 analytics functions."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
-from unittest.mock import MagicMock
 
 import pytest
 
-from fitops.analytics.trends import _linear_regression, _trend_strength, _pace_direction, _hr_direction
-from fitops.analytics.performance_metrics import _percentile, _cv
-from fitops.analytics.pace_zones import compute_pace_zones, _parse_mm_ss
+from fitops.analytics.pace_zones import _parse_mm_ss, compute_pace_zones
+from fitops.analytics.performance_metrics import _cv, _percentile
+from fitops.analytics.power_curves import _max_mean
+from fitops.analytics.trends import (
+    _hr_direction,
+    _linear_regression,
+    _pace_direction,
+    _trend_strength,
+)
 from fitops.analytics.vo2max import apply_age_adjustment
 from fitops.analytics.zone_inference import _confidence_score
-from fitops.analytics.power_curves import _max_mean
-
 
 # --- _linear_regression ---
+
 
 def test_linear_regression_perfect_slope():
     x = [0.0, 1.0, 2.0, 3.0]
@@ -47,6 +52,7 @@ def test_linear_regression_negative_slope():
 
 # --- _trend_strength ---
 
+
 def test_trend_strength_weak():
     assert _trend_strength(0.05) == "weak"
     assert _trend_strength(-0.05) == "weak"
@@ -71,6 +77,7 @@ def test_trend_strength_boundary_weak_moderate():
 
 # --- _pace_direction ---
 
+
 def test_pace_direction_improving():
     # Negative slope = faster pace (lower min/km) = improving
     assert _pace_direction(-0.05) == "improving"
@@ -89,6 +96,7 @@ def test_pace_direction_stable():
 
 # --- _hr_direction ---
 
+
 def test_hr_direction_improving():
     # Negative slope = lower HR = improving cardiac efficiency
     assert _hr_direction(-1.0) == "improving"
@@ -105,6 +113,7 @@ def test_hr_direction_stable():
 
 
 # --- _percentile ---
+
 
 def test_percentile_median():
     values = [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -140,6 +149,7 @@ def test_percentile_interpolation():
 
 # --- _cv (coefficient of variation) ---
 
+
 def test_cv_zero_for_identical():
     assert _cv([5.0, 5.0, 5.0]) == 0.0
 
@@ -165,6 +175,7 @@ def test_cv_zero_mean():
 
 
 # --- compute_pace_zones ---
+
 
 def test_pace_zones_threshold_300s():
     """300 s/km = 5:00/km threshold."""
@@ -210,6 +221,7 @@ def test_pace_zones_source_custom():
 
 # --- _parse_mm_ss ---
 
+
 def test_parse_mm_ss_five_minutes():
     assert _parse_mm_ss("5:00") == 300
 
@@ -228,6 +240,7 @@ def test_parse_mm_ss_with_whitespace():
 
 
 # --- apply_age_adjustment (vo2max) ---
+
 
 def test_age_adjustment_at_25_is_no_change():
     estimate, factor = apply_age_adjustment(50.0, 25)
@@ -262,6 +275,7 @@ def test_age_adjustment_younger_than_25():
 
 # --- _confidence_score (zone_inference) ---
 
+
 def test_confidence_score_high_count():
     score = _confidence_score(10, 1.0, 1.0)
     assert score == 100
@@ -289,6 +303,7 @@ def test_confidence_score_two_activities():
 
 
 # --- _max_mean (power_curves) ---
+
 
 def test_max_mean_simple():
     data = [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -321,8 +336,10 @@ def test_max_mean_all_zeros_returns_none():
 
 # --- Athlete.age property ---
 
+
 def test_athlete_age_no_birthday():
     from fitops.db.models.athlete import Athlete
+
     ath = Athlete()
     ath.birthday = None
     assert ath.age is None
@@ -330,6 +347,7 @@ def test_athlete_age_no_birthday():
 
 def test_athlete_age_valid_birthday():
     from fitops.db.models.athlete import Athlete
+
     ath = Athlete()
     # Set birthday to 30 years ago from today
     today = date.today()
@@ -340,6 +358,7 @@ def test_athlete_age_valid_birthday():
 
 def test_athlete_age_before_birthday_this_year():
     from fitops.db.models.athlete import Athlete
+
     ath = Athlete()
     today = date.today()
     # Birthday is tomorrow (hasn't happened yet this year)
@@ -352,6 +371,7 @@ def test_athlete_age_before_birthday_this_year():
 
 def test_athlete_age_invalid_format():
     from fitops.db.models.athlete import Athlete
+
     ath = Athlete()
     ath.birthday = "not-a-date"
     assert ath.age is None

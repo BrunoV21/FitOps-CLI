@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from fitops.config.settings import get_settings
 
@@ -37,14 +36,14 @@ class SyncState:
         self._data = _load_state()
 
     @property
-    def last_sync_at(self) -> Optional[datetime]:
+    def last_sync_at(self) -> datetime | None:
         val = self._data.get("last_sync_at")
         if val is None:
             return None
         return datetime.fromisoformat(str(val))
 
     @property
-    def last_sync_epoch(self) -> Optional[int]:
+    def last_sync_epoch(self) -> int | None:
         dt = self.last_sync_at
         return int(dt.timestamp()) if dt else None
 
@@ -64,7 +63,7 @@ class SyncState:
         activities_updated: int,
         duration_s: float,
     ) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._data["last_sync_at"] = now.isoformat()
         self._data["last_sync_type"] = sync_type
         self._data["activities_synced_total"] = (

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import typer
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
@@ -48,10 +47,18 @@ async def _get_gear_lookup() -> dict:
 
 @app.command("list")
 def list_activities(
-    sport: Optional[str] = typer.Option(None, "--sport", help="Filter by sport type (e.g. Run, Ride)."),
-    limit: int = typer.Option(20, "--limit", help="Max number of activities to return."),
-    after: Optional[str] = typer.Option(None, "--after", help="Filter activities after date (YYYY-MM-DD)."),
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    sport: str | None = typer.Option(
+        None, "--sport", help="Filter by sport type (e.g. Run, Ride)."
+    ),
+    limit: int = typer.Option(
+        20, "--limit", help="Max number of activities to return."
+    ),
+    after: str | None = typer.Option(
+        None, "--after", help="Filter activities after date (YYYY-MM-DD)."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """List synced activities."""
     settings = get_settings()
@@ -71,7 +78,7 @@ def list_activities(
                 stmt = stmt.where(Activity.sport_type == sport)
             if after:
                 try:
-                    after_dt = datetime.fromisoformat(after).replace(tzinfo=timezone.utc)
+                    after_dt = datetime.fromisoformat(after).replace(tzinfo=UTC)
                     stmt = stmt.where(Activity.start_date >= after_dt)
                 except ValueError:
                     pass
@@ -91,7 +98,10 @@ def list_activities(
             filters["sport_type"] = sport
         if after:
             filters["after"] = after
-        return {"_meta": make_meta(total_count=len(formatted), filters_applied=filters), "activities": formatted}
+        return {
+            "_meta": make_meta(total_count=len(formatted), filters_applied=filters),
+            "activities": formatted,
+        }
 
     output = asyncio.run(_fetch())
     if json_output:
@@ -103,8 +113,12 @@ def list_activities(
 @app.command("get")
 def get_activity(
     activity_id: int = typer.Argument(..., help="Strava activity ID."),
-    fetch_fresh: bool = typer.Option(False, "--fresh", help="Re-fetch detail from Strava API."),
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    fetch_fresh: bool = typer.Option(
+        False, "--fresh", help="Re-fetch detail from Strava API."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Get detailed info for a single activity."""
     settings = get_settings()
@@ -125,7 +139,10 @@ def get_activity(
             row = result.scalar_one_or_none()
 
         if row is None:
-            typer.echo(f"Activity {activity_id} not found locally. Run `fitops sync run` first.", err=True)
+            typer.echo(
+                f"Activity {activity_id} not found locally. Run `fitops sync run` first.",
+                err=True,
+            )
             raise typer.Exit(1)
 
         client = StravaClient()
@@ -152,7 +169,11 @@ def get_activity(
                     row3 = result3.scalar_one_or_none()
                     if row3:
                         for stream_type, stream_obj in stream_data.items():
-                            data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+                            data_list = (
+                                stream_obj.get("data", [])
+                                if isinstance(stream_obj, dict)
+                                else stream_obj
+                            )
                             existing = await session.execute(
                                 select(ActivityStream).where(
                                     ActivityStream.activity_id == row3.id,
@@ -160,7 +181,11 @@ def get_activity(
                                 )
                             )
                             if existing.scalar_one_or_none() is None:
-                                session.add(ActivityStream.from_strava_stream(row3.id, stream_type, data_list))
+                                session.add(
+                                    ActivityStream.from_strava_stream(
+                                        row3.id, stream_type, data_list
+                                    )
+                                )
                         row3.streams_fetched = True
                         row = row3
             except Exception:
@@ -172,6 +197,7 @@ def get_activity(
         # Enrich with HR drift if streams are available
         if row.streams_fetched:
             from fitops.analytics.activity_insights import compute_hr_drift
+
             async with get_async_session() as session:
                 hr_res = await session.execute(
                     select(ActivityStream).where(
@@ -204,8 +230,12 @@ def get_activity(
 @app.command("streams")
 def get_streams(
     activity_id: int = typer.Argument(..., help="Strava activity ID."),
-    fetch_fresh: bool = typer.Option(False, "--fresh", help="Re-fetch streams from Strava API."),
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    fetch_fresh: bool = typer.Option(
+        False, "--fresh", help="Re-fetch streams from Strava API."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Get activity stream data (heartrate, pace, power, etc.)."""
     settings = get_settings()
@@ -231,7 +261,11 @@ def get_streams(
                 client = StravaClient()
                 stream_data = await client.get_activity_streams(activity_id)
                 for stream_type, stream_obj in stream_data.items():
-                    data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+                    data_list = (
+                        stream_obj.get("data", [])
+                        if isinstance(stream_obj, dict)
+                        else stream_obj
+                    )
                     existing = await session.execute(
                         select(ActivityStream).where(
                             ActivityStream.activity_id == activity.id,
@@ -240,7 +274,11 @@ def get_streams(
                     )
                     existing_row = existing.scalar_one_or_none()
                     if existing_row is None:
-                        session.add(ActivityStream.from_strava_stream(activity.id, stream_type, data_list))
+                        session.add(
+                            ActivityStream.from_strava_stream(
+                                activity.id, stream_type, data_list
+                            )
+                        )
                 activity.streams_fetched = True
 
             streams_result = await session.execute(

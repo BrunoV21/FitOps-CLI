@@ -1,8 +1,14 @@
 """Tests for Phase 3.2 — workout segment parsing and compliance scoring."""
+
 from __future__ import annotations
 
-import pytest
-
+from fitops.analytics.zones import compute_lthr_zones
+from fitops.workouts.compliance import (
+    _classify_hr_to_zone,
+    _score_segment,
+    compute_compliance,
+    overall_compliance_score,
+)
 from fitops.workouts.segments import (
     WorkoutSegmentDef,
     _extract_duration_min,
@@ -10,19 +16,11 @@ from fitops.workouts.segments import (
     _infer_step_type,
     parse_segments_from_body,
 )
-from fitops.workouts.compliance import (
-    SegmentCompliance,
-    _classify_hr_to_zone,
-    _score_segment,
-    compute_compliance,
-    overall_compliance_score,
-)
-from fitops.analytics.zones import compute_lthr_zones
-
 
 # ---------------------------------------------------------------------------
 # Segment parser — step type inference
 # ---------------------------------------------------------------------------
+
 
 def test_step_type_warmup():
     assert _infer_step_type("Warmup") == "warmup"
@@ -53,6 +51,7 @@ def test_step_type_main_fallback():
 # Segment parser — zone extraction
 # ---------------------------------------------------------------------------
 
+
 def test_extract_zone_single():
     assert _extract_target_zone("Hold Z4 pace") == 4
     assert _extract_target_zone("Zone 3 effort") == 3
@@ -72,6 +71,7 @@ def test_extract_zone_none():
 # ---------------------------------------------------------------------------
 # Segment parser — duration extraction
 # ---------------------------------------------------------------------------
+
 
 def test_extract_duration_simple():
     assert _extract_duration_min("10 min easy") == 10.0
@@ -131,16 +131,16 @@ def test_parse_segments_step_types():
 
 def test_parse_segments_zones():
     segs = parse_segments_from_body(SAMPLE_BODY)
-    assert segs[0].target_zone == 2   # Z1-Z2 → upper = 2
-    assert segs[1].target_zone == 4   # Z4
-    assert segs[2].target_zone == 1   # Z1
-    assert segs[3].target_zone == 1   # Z1
+    assert segs[0].target_zone == 2  # Z1-Z2 → upper = 2
+    assert segs[1].target_zone == 4  # Z4
+    assert segs[2].target_zone == 1  # Z1
+    assert segs[3].target_zone == 1  # Z1
 
 
 def test_parse_segments_durations():
     segs = parse_segments_from_body(SAMPLE_BODY)
     assert segs[0].duration_min == 10.0
-    assert segs[1].duration_min == 32.0   # 4 × 8 min
+    assert segs[1].duration_min == 32.0  # 4 × 8 min
     assert segs[2].duration_min == 2.0
     assert segs[3].duration_min == 8.0
 
@@ -169,6 +169,7 @@ def test_parse_segments_no_zones_or_durations():
 # Compliance scoring — zone classification
 # ---------------------------------------------------------------------------
 
+
 def test_classify_hr_to_zone():
     zones = compute_lthr_zones(165)  # lthr=165
     # Z1 max = 140 (85% of 165), Z2 max = 152 (92%), Z3 max = 165 (100%)
@@ -188,10 +189,16 @@ def test_classify_hr_below_all_zones():
 # Compliance scoring — _score_segment
 # ---------------------------------------------------------------------------
 
-def _make_seg(index=0, name="Main Set", step_type="interval", target_zone=4, duration_min=8.0):
+
+def _make_seg(
+    index=0, name="Main Set", step_type="interval", target_zone=4, duration_min=8.0
+):
     return WorkoutSegmentDef(
-        index=index, name=name, step_type=step_type,
-        target_zone=target_zone, duration_min=duration_min,
+        index=index,
+        name=name,
+        step_type=step_type,
+        target_zone=target_zone,
+        duration_min=duration_min,
     )
 
 
@@ -210,7 +217,7 @@ def test_score_segment_no_zones():
     result = _score_segment(seg, {"heartrate": hr}, 0, 100, None)
     # HR data exists but zones are required to compute compliance
     assert result.has_heartrate is True
-    assert result.avg_heartrate is None   # cannot classify without zones
+    assert result.avg_heartrate is None  # cannot classify without zones
     assert result.compliance_score == 0.0
 
 
@@ -238,8 +245,9 @@ def test_score_segment_all_below_target():
 
 def test_score_segment_no_target_zone():
     zones = compute_lthr_zones(165)
-    seg = WorkoutSegmentDef(index=0, name="Free Run", step_type="main",
-                            target_zone=None, duration_min=10.0)
+    seg = WorkoutSegmentDef(
+        index=0, name="Free Run", step_type="main", target_zone=None, duration_min=10.0
+    )
     hr = [145.0] * 300
     result = _score_segment(seg, {"heartrate": hr}, 0, 300, zones)
     # No target → cannot fail
@@ -260,6 +268,7 @@ def test_score_segment_zone_distribution_sums_to_one():
 # ---------------------------------------------------------------------------
 # Compliance scoring — compute_compliance
 # ---------------------------------------------------------------------------
+
 
 def test_compute_compliance_proportional_slicing():
     zones = compute_lthr_zones(165)
@@ -295,6 +304,7 @@ def test_compute_compliance_empty_hr_stream():
 # ---------------------------------------------------------------------------
 # Overall compliance score
 # ---------------------------------------------------------------------------
+
 
 def test_overall_compliance_no_scored_segments():
     segs = [

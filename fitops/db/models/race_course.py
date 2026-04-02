@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -15,27 +14,33 @@ class RaceCourse(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(Text, nullable=False)        # "gpx" | "tcx" | "mapmyrun" | "strava"
-    source_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # URL or activity_id string
-    file_format: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # "gpx" | "tcx" | None
+    source: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # "gpx" | "tcx" | "mapmyrun" | "strava"
+    source_ref: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # URL or activity_id string
+    file_format: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # "gpx" | "tcx" | None
 
     total_distance_m: Mapped[float] = mapped_column(Float, nullable=False)
     total_elevation_gain_m: Mapped[float] = mapped_column(Float, nullable=False)
     num_points: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Start point for weather fetch (first waypoint of the course)
-    start_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    start_lon: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    start_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    start_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Full waypoints — JSON: list of {lat, lon, elevation_m, distance_from_start_m}
     course_points_json: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Pre-built 1km segments — JSON: list of {km, distance_m, elevation_gain_m, grade, bearing}
     # Stored at import time; never recomputed on simulate calls.
-    km_segments_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    km_segments_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     imported_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
     def get_course_points(self) -> list[dict]:

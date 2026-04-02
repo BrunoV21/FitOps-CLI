@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
-
-from fitops.utils.exceptions import ConfigError
 
 
 def _fitops_dir() -> Path:
@@ -49,11 +46,11 @@ class FitOpsSettings:
     # ------------------------------------------------------------------
 
     @property
-    def client_id(self) -> Optional[str]:
+    def client_id(self) -> str | None:
         return self._data.get("strava", {}).get("client_id")
 
     @property
-    def client_secret(self) -> Optional[str]:
+    def client_secret(self) -> str | None:
         return self._data.get("strava", {}).get("client_secret")
 
     @property
@@ -63,15 +60,15 @@ class FitOpsSettings:
         )
 
     @property
-    def access_token(self) -> Optional[str]:
+    def access_token(self) -> str | None:
         return self._data.get("strava", {}).get("access_token")
 
     @property
-    def refresh_token(self) -> Optional[str]:
+    def refresh_token(self) -> str | None:
         return self._data.get("strava", {}).get("refresh_token")
 
     @property
-    def expires_at(self) -> Optional[datetime]:
+    def expires_at(self) -> datetime | None:
         val = self._data.get("strava", {}).get("expires_at")
         if val is None:
             return None
@@ -80,7 +77,7 @@ class FitOpsSettings:
         return datetime.fromisoformat(str(val))
 
     @property
-    def athlete_id(self) -> Optional[int]:
+    def athlete_id(self) -> int | None:
         return self._data.get("strava", {}).get("athlete_id")
 
     @property
@@ -123,7 +120,9 @@ class FitOpsSettings:
         s["access_token"] = token_data.get("access_token")
         s["refresh_token"] = token_data.get("refresh_token")
         expires_at = token_data.get("expires_at")
-        s["expires_at"] = expires_at.isoformat() if isinstance(expires_at, datetime) else expires_at
+        s["expires_at"] = (
+            expires_at.isoformat() if isinstance(expires_at, datetime) else expires_at
+        )
         if "athlete_id" in token_data:
             s["athlete_id"] = token_data["athlete_id"]
         if "scopes" in token_data:
@@ -137,7 +136,7 @@ class FitOpsSettings:
         _save_config(self._data)
         self.reload()
 
-    def pop_pending_state(self) -> Optional[str]:
+    def pop_pending_state(self) -> str | None:
         state = self._data.get("strava", {}).pop("pending_state", None)
         _save_config(self._data)
         return state
@@ -151,13 +150,14 @@ class FitOpsSettings:
 
     def require_auth(self) -> None:
         from fitops.utils.exceptions import NotAuthenticatedError
+
         if not self.is_authenticated:
             raise NotAuthenticatedError(
                 "Not authenticated. Run `fitops auth login` first."
             )
 
 
-_settings: Optional[FitOpsSettings] = None
+_settings: FitOpsSettings | None = None
 
 
 def get_settings() -> FitOpsSettings:

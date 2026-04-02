@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fitops.config.settings import get_settings
-from fitops.db.base import Base
 
 
 def _get_engine():

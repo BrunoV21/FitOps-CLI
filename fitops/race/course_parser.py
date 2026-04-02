@@ -5,6 +5,7 @@ Course import parsers and segment builder for race simulation.
 Supports GPX, TCX, MapMyRun HTML/URL, and Strava activity streams.
 All parsers return a list of CoursePoint dicts in the same normalised format.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,15 +15,15 @@ import re
 from typing import TypedDict
 
 import gpxpy
-from tcxreader.tcxreader import TCXReader
 import httpx
+from tcxreader.tcxreader import TCXReader
 
 from fitops.analytics.weather_pace import compute_bearing
-
 
 # ---------------------------------------------------------------------------
 # Type alias
 # ---------------------------------------------------------------------------
+
 
 class CoursePoint(TypedDict):
     lat: float
@@ -35,19 +36,24 @@ class CoursePoint(TypedDict):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres between two lat/lon points."""
     R = 6_371_000.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
     return 2 * R * math.asin(math.sqrt(a))
 
 
 # ---------------------------------------------------------------------------
 # Source detection
 # ---------------------------------------------------------------------------
+
 
 def detect_source(arg: str) -> tuple[str, str]:
     """
@@ -82,6 +88,7 @@ def detect_source(arg: str) -> tuple[str, str]:
 # GPX parser
 # ---------------------------------------------------------------------------
 
+
 def parse_gpx(file_path: str) -> list[CoursePoint]:
     """
     Parse a GPX file into a list of CoursePoints.
@@ -89,7 +96,7 @@ def parse_gpx(file_path: str) -> list[CoursePoint]:
     Priority order: tracks → routes → waypoints (returns first non-empty list).
     Cumulative distance is computed via gpxpy's distance_2d between consecutive points.
     """
-    with open(file_path, "r", encoding="utf-8") as fh:
+    with open(file_path, encoding="utf-8") as fh:
         gpx = gpxpy.parse(fh)
 
     def _from_raw(raw_pts: list) -> list[CoursePoint]:
@@ -102,12 +109,14 @@ def parse_gpx(file_path: str) -> list[CoursePoint]:
             if prev is not None:
                 d = pt.distance_2d(prev)
                 cumulative += d if d is not None else 0.0
-            result.append({
-                "lat": pt.latitude,
-                "lon": pt.longitude,
-                "elevation_m": pt.elevation or 0.0,
-                "distance_from_start_m": cumulative,
-            })
+            result.append(
+                {
+                    "lat": pt.latitude,
+                    "lon": pt.longitude,
+                    "elevation_m": pt.elevation or 0.0,
+                    "distance_from_start_m": cumulative,
+                }
+            )
             prev = pt
         return result
 
@@ -137,6 +146,7 @@ def parse_gpx(file_path: str) -> list[CoursePoint]:
 # TCX parser
 # ---------------------------------------------------------------------------
 
+
 def parse_tcx(file_path: str) -> list[CoursePoint]:
     """
     Parse a TCX file into a list of CoursePoints.
@@ -147,7 +157,11 @@ def parse_tcx(file_path: str) -> list[CoursePoint]:
     reader = TCXReader()
     data = reader.read(file_path)
 
-    valid_tps = [tp for tp in data.trackpoints if tp.latitude is not None and tp.longitude is not None]
+    valid_tps = [
+        tp
+        for tp in data.trackpoints
+        if tp.latitude is not None and tp.longitude is not None
+    ]
 
     # Determine whether we can use native distance values
     use_native = all(tp.distance is not None for tp in valid_tps)
@@ -162,15 +176,19 @@ def parse_tcx(file_path: str) -> list[CoursePoint]:
             dist = float(tp.distance)  # type: ignore[arg-type]
         else:
             if prev_lat is not None and prev_lon is not None:
-                cumulative += _haversine_m(prev_lat, prev_lon, tp.latitude, tp.longitude)
+                cumulative += _haversine_m(
+                    prev_lat, prev_lon, tp.latitude, tp.longitude
+                )
             dist = cumulative
 
-        result.append({
-            "lat": float(tp.latitude),
-            "lon": float(tp.longitude),
-            "elevation_m": float(tp.elevation) if tp.elevation is not None else 0.0,
-            "distance_from_start_m": dist,
-        })
+        result.append(
+            {
+                "lat": float(tp.latitude),
+                "lon": float(tp.longitude),
+                "elevation_m": float(tp.elevation) if tp.elevation is not None else 0.0,
+                "distance_from_start_m": dist,
+            }
+        )
         prev_lat = tp.latitude
         prev_lon = tp.longitude
 
@@ -180,6 +198,7 @@ def parse_tcx(file_path: str) -> list[CoursePoint]:
 # ---------------------------------------------------------------------------
 # MapMyRun HTML parser
 # ---------------------------------------------------------------------------
+
 
 def parse_mapmyrun_html(html_str: str) -> list[CoursePoint]:
     """
@@ -206,7 +225,9 @@ def parse_mapmyrun_html(html_str: str) -> list[CoursePoint]:
     try:
         raw_points = state["routes"]["route"]["points"]
     except (KeyError, TypeError) as exc:
-        raise ValueError("MapMyRun page may require login or has unexpected structure") from exc
+        raise ValueError(
+            "MapMyRun page may require login or has unexpected structure"
+        ) from exc
 
     return [
         {
@@ -223,6 +244,7 @@ def parse_mapmyrun_html(html_str: str) -> list[CoursePoint]:
 # MapMyRun URL fetcher (async)
 # ---------------------------------------------------------------------------
 
+
 async def parse_mapmyrun_url(url: str) -> list[CoursePoint]:
     """
     Fetch a MapMyRun route page and parse course points from it.
@@ -236,7 +258,9 @@ async def parse_mapmyrun_url(url: str) -> list[CoursePoint]:
             "Chrome/120.0.0.0 Safari/537.36"
         )
     }
-    async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=20.0) as client:
+    async with httpx.AsyncClient(
+        headers=headers, follow_redirects=True, timeout=20.0
+    ) as client:
         resp = await client.get(url)
 
     final_url = str(resp.url)
@@ -270,8 +294,9 @@ async def parse_strava_url(url: str) -> list[CoursePoint]:
     activity_id = int(m.group(1))
 
     # Get access token from stored settings
-    from fitops.strava.oauth import StravaOAuth
     from fitops.config.settings import get_settings
+    from fitops.strava.oauth import StravaOAuth
+
     settings = get_settings()
     if not settings.access_token:
         raise ValueError("No Strava access token found. Run `fitops auth login` first.")
@@ -290,6 +315,7 @@ async def parse_strava_url(url: str) -> list[CoursePoint]:
 
         if resp.status_code == 200 and resp.content:
             import tempfile
+
             with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
                 tmp.write(resp.content)
                 tmp_path = tmp.name
@@ -308,10 +334,13 @@ async def parse_strava_url(url: str) -> list[CoursePoint]:
         headers={"Authorization": f"Bearer {token}"},
         timeout=30.0,
     ) as client:
-        resp = await client.get(api_url, params={
-            "keys": "latlng,altitude,distance",
-            "key_by_type": "true",
-        })
+        resp = await client.get(
+            api_url,
+            params={
+                "keys": "latlng,altitude,distance",
+                "key_by_type": "true",
+            },
+        )
 
     if resp.status_code == 401:
         raise ValueError("Strava token expired — run `fitops auth refresh`.")
@@ -325,9 +354,9 @@ async def parse_strava_url(url: str) -> list[CoursePoint]:
         raise ValueError(f"Strava API error {resp.status_code}: {resp.text[:200]}")
 
     data = resp.json()
-    latlng    = data.get("latlng",    {}).get("data", [])
-    altitudes = data.get("altitude",  {}).get("data", [])
-    distances = data.get("distance",  {}).get("data", [])
+    latlng = data.get("latlng", {}).get("data", [])
+    altitudes = data.get("altitude", {}).get("data", [])
+    distances = data.get("distance", {}).get("data", [])
 
     if not latlng:
         raise ValueError(
@@ -336,18 +365,23 @@ async def parse_strava_url(url: str) -> list[CoursePoint]:
 
     points: list[CoursePoint] = []
     for i, (lat, lon) in enumerate(latlng):
-        points.append({
-            "lat": float(lat),
-            "lon": float(lon),
-            "elevation_m": float(altitudes[i]) if i < len(altitudes) else 0.0,
-            "distance_from_start_m": float(distances[i]) if i < len(distances) else 0.0,
-        })
+        points.append(
+            {
+                "lat": float(lat),
+                "lon": float(lon),
+                "elevation_m": float(altitudes[i]) if i < len(altitudes) else 0.0,
+                "distance_from_start_m": float(distances[i])
+                if i < len(distances)
+                else 0.0,
+            }
+        )
     return points
 
 
 # ---------------------------------------------------------------------------
 # Strava activity stream extractor (async)
 # ---------------------------------------------------------------------------
+
 
 async def parse_strava_activity(activity_strava_id: int, session) -> list[CoursePoint]:
     """
@@ -357,9 +391,12 @@ async def parse_strava_activity(activity_strava_id: int, session) -> list[Course
     cached streams.  If streams have not been fetched yet, they are
     downloaded from the Strava API automatically.
     """
-    from fitops.db.models.activity import Activity
-    from fitops.db.models.activity_stream import ActivityStream  # local import to avoid circular
     from sqlalchemy import select
+
+    from fitops.db.models.activity import Activity
+    from fitops.db.models.activity_stream import (
+        ActivityStream,  # local import to avoid circular
+    )
 
     # Resolve the DB primary key (activity_streams.activity_id is the PK, not the Strava ID)
     activity_result = await session.execute(
@@ -368,17 +405,21 @@ async def parse_strava_activity(activity_strava_id: int, session) -> list[Course
     activity = activity_result.scalar_one_or_none()
     if activity is None:
         raise ValueError(
-            f"Activity {activity_strava_id} not found locally. "
-            f"Run: fitops sync run"
+            f"Activity {activity_strava_id} not found locally. Run: fitops sync run"
         )
 
     # Auto-fetch streams if not yet cached
     if not activity.streams_fetched:
         from fitops.strava.client import StravaClient
+
         client = StravaClient()
         stream_data = await client.get_activity_streams(activity_strava_id)
         for stream_type, stream_obj in stream_data.items():
-            data_list = stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+            data_list = (
+                stream_obj.get("data", [])
+                if isinstance(stream_obj, dict)
+                else stream_obj
+            )
             existing = await session.execute(
                 select(ActivityStream).where(
                     ActivityStream.activity_id == activity.id,
@@ -386,7 +427,11 @@ async def parse_strava_activity(activity_strava_id: int, session) -> list[Course
                 )
             )
             if existing.scalar_one_or_none() is None:
-                session.add(ActivityStream.from_strava_stream(activity.id, stream_type, data_list))
+                session.add(
+                    ActivityStream.from_strava_stream(
+                        activity.id, stream_type, data_list
+                    )
+                )
         activity.streams_fetched = True
         await session.commit()
 
@@ -412,12 +457,16 @@ async def parse_strava_activity(activity_strava_id: int, session) -> list[Course
 
     points: list[CoursePoint] = []
     for i, (lat, lon) in enumerate(latlng):
-        points.append({
-            "lat": float(lat),
-            "lon": float(lon),
-            "elevation_m": float(altitudes[i]) if i < len(altitudes) else 0.0,
-            "distance_from_start_m": float(distances[i]) if i < len(distances) else 0.0,
-        })
+        points.append(
+            {
+                "lat": float(lat),
+                "lon": float(lon),
+                "elevation_m": float(altitudes[i]) if i < len(altitudes) else 0.0,
+                "distance_from_start_m": float(distances[i])
+                if i < len(distances)
+                else 0.0,
+            }
+        )
 
     return points
 
@@ -454,7 +503,9 @@ def build_km_segments(points: list[CoursePoint]) -> list[dict]:
         # Include the very last point in the final km
         if k == num_km - 1:
             bucket_pts = [
-                p for p in points if start_dist <= p["distance_from_start_m"] <= end_dist
+                p
+                for p in points
+                if start_dist <= p["distance_from_start_m"] <= end_dist
             ]
 
         if not bucket_pts:
@@ -470,18 +521,22 @@ def build_km_segments(points: list[CoursePoint]) -> list[dict]:
         grade = max(_GRADE_MIN, min(_GRADE_MAX, raw_grade))
 
         bearing = compute_bearing(
-            start_pt["lat"], start_pt["lon"],
-            end_pt["lat"], end_pt["lon"],
+            start_pt["lat"],
+            start_pt["lon"],
+            end_pt["lat"],
+            end_pt["lon"],
         )
 
-        segments.append({
-            "km": k + 1,
-            "distance_m": round(dist_m, 1),
-            "elevation_gain_m": round(elev_gain, 1),
-            "elevation_delta_m": round(elev_delta, 1),
-            "grade": grade,
-            "bearing": bearing,
-        })
+        segments.append(
+            {
+                "km": k + 1,
+                "distance_m": round(dist_m, 1),
+                "elevation_gain_m": round(elev_gain, 1),
+                "elevation_delta_m": round(elev_delta, 1),
+                "grade": grade,
+                "bearing": bearing,
+            }
+        )
 
     return segments
 
@@ -489,6 +544,7 @@ def build_km_segments(points: list[CoursePoint]) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Formatter helpers
 # ---------------------------------------------------------------------------
+
 
 def _fmt_pace(s_per_km: float) -> str:
     """Format seconds/km as MM:SS/km string."""

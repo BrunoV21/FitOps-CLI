@@ -9,14 +9,14 @@ then outputs adjusted pace targets.
 
 Pure computation — no DB access, no I/O.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
-from fitops.race.simulation import gap_factor
 from fitops.analytics.weather_pace import compute_wap_factor
-from fitops.race.course_parser import _fmt_pace, _fmt_duration
+from fitops.race.course_parser import _fmt_duration, _fmt_pace
+from fitops.race.simulation import gap_factor
 from fitops.workouts.segments import WorkoutSegmentDef
 
 # Fallback pace when no pace/base-pace provided: 6:00/km
@@ -28,9 +28,11 @@ class WorkoutSegmentSimResult:
     """Simulation result for a single workout segment."""
 
     segment: WorkoutSegmentDef
-    course_km_start: float          # course distance at start of this segment (m)
-    course_km_end: float            # course distance at end of this segment (m)
-    km_indices_covered: list[int]   # 1-based km indices from RaceCourse.get_km_segments()
+    course_km_start: float  # course distance at start of this segment (m)
+    course_km_end: float  # course distance at end of this segment (m)
+    km_indices_covered: list[
+        int
+    ]  # 1-based km indices from RaceCourse.get_km_segments()
 
     est_distance_m: float
     avg_grade_pct: float
@@ -39,13 +41,13 @@ class WorkoutSegmentSimResult:
     avg_combined_factor: float
     elevation_gain_m: float
 
-    flat_pace_min_s: Optional[float]
-    flat_pace_max_s: Optional[float]
-    adj_pace_min_s: Optional[float]
-    adj_pace_max_s: Optional[float]
+    flat_pace_min_s: float | None
+    flat_pace_max_s: float | None
+    adj_pace_min_s: float | None
+    adj_pace_max_s: float | None
 
     est_segment_time_s: float
-    pace_source: str                # "pace_range" | "base_pace" | "estimated"
+    pace_source: str  # "pace_range" | "base_pace" | "estimated"
     warnings: list[str] = field(default_factory=list)
 
 
@@ -53,9 +55,10 @@ class WorkoutSegmentSimResult:
 # Distance / pace helpers
 # ---------------------------------------------------------------------------
 
+
 def estimate_segment_distance_m(
     seg: WorkoutSegmentDef,
-    base_pace_s: Optional[float],
+    base_pace_s: float | None,
 ) -> tuple[float, str]:
     """Estimate how far this segment covers on the course.
 
@@ -125,7 +128,9 @@ def compute_segment_factors(
     for km_seg in covered_km_segs:
         dist = km_seg["distance_m"]
         gf = gap_factor(km_seg["grade"])
-        wf = compute_wap_factor(temp_c, rh_pct, wind_ms, wind_dir, km_seg.get("bearing"))
+        wf = compute_wap_factor(
+            temp_c, rh_pct, wind_ms, wind_dir, km_seg.get("bearing")
+        )
         cf = gf * wf
 
         wsum_grade += km_seg["grade"] * dist
@@ -148,10 +153,11 @@ def compute_segment_factors(
 # Course mapping
 # ---------------------------------------------------------------------------
 
+
 def map_segments_to_course(
     workout_segments: list[WorkoutSegmentDef],
     km_segments: list[dict],
-    base_pace_s: Optional[float],
+    base_pace_s: float | None,
 ) -> list[tuple[WorkoutSegmentDef, list[dict], float, str]]:
     """Walk a distance cursor through km_segments, assigning each workout segment
     the km-segs it covers.
@@ -205,11 +211,12 @@ def map_segments_to_course(
 # Main simulation
 # ---------------------------------------------------------------------------
 
+
 def simulate_workout_on_course(
     segments: list[WorkoutSegmentDef],
     km_segments: list[dict],
     weather: dict,
-    base_pace_s: Optional[float] = None,
+    base_pace_s: float | None = None,
 ) -> list[WorkoutSegmentSimResult]:
     """Orchestrate workout-on-course simulation.
 
@@ -297,10 +304,11 @@ def simulate_workout_on_course(
 # Validation
 # ---------------------------------------------------------------------------
 
+
 def validate_distance_mismatch(
     results: list[WorkoutSegmentSimResult],
     course_total_m: float,
-) -> Optional[str]:
+) -> str | None:
     """Return a warning string if total estimated workout distance exceeds course
     total by more than 10%.  No warning if workout is shorter (intentional partial use).
     """
@@ -318,6 +326,7 @@ def validate_distance_mismatch(
 # ---------------------------------------------------------------------------
 # JSON serialisation helper
 # ---------------------------------------------------------------------------
+
 
 def result_to_dict(r: WorkoutSegmentSimResult) -> dict:
     """Convert a WorkoutSegmentSimResult to the plan's JSON output structure."""
@@ -342,10 +351,18 @@ def result_to_dict(r: WorkoutSegmentSimResult) -> dict:
         },
         "combined_factor": r.avg_combined_factor,
         "pace": {
-            "flat_target_min": _fmt_pace(r.flat_pace_min_s) if r.flat_pace_min_s is not None else None,
-            "flat_target_max": _fmt_pace(r.flat_pace_max_s) if r.flat_pace_max_s is not None else None,
-            "adjusted_min": _fmt_pace(r.adj_pace_min_s) if r.adj_pace_min_s is not None else None,
-            "adjusted_max": _fmt_pace(r.adj_pace_max_s) if r.adj_pace_max_s is not None else None,
+            "flat_target_min": _fmt_pace(r.flat_pace_min_s)
+            if r.flat_pace_min_s is not None
+            else None,
+            "flat_target_max": _fmt_pace(r.flat_pace_max_s)
+            if r.flat_pace_max_s is not None
+            else None,
+            "adjusted_min": _fmt_pace(r.adj_pace_min_s)
+            if r.adj_pace_min_s is not None
+            else None,
+            "adjusted_max": _fmt_pace(r.adj_pace_max_s)
+            if r.adj_pace_max_s is not None
+            else None,
             "pace_source": r.pace_source,
         },
         "est_distance_m": r.est_distance_m,

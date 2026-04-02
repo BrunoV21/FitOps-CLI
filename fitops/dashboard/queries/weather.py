@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +12,9 @@ from fitops.db.models.activity_weather import ActivityWeather
 from fitops.db.session import get_async_session
 
 
-async def get_weather_for_activities(strava_ids: list[int]) -> dict[int, ActivityWeather]:
+async def get_weather_for_activities(
+    strava_ids: list[int],
+) -> dict[int, ActivityWeather]:
     """Batch load weather rows for a list of strava_ids. Returns {strava_id: ActivityWeather}."""
     if not strava_ids:
         return {}
@@ -26,7 +27,7 @@ async def get_weather_for_activities(strava_ids: list[int]) -> dict[int, Activit
 
 async def get_weather_for_activity(
     session: AsyncSession, activity_id: int
-) -> Optional[ActivityWeather]:
+) -> ActivityWeather | None:
     result = await session.execute(
         select(ActivityWeather).where(ActivityWeather.activity_id == activity_id)
     )
@@ -36,13 +37,13 @@ async def get_weather_for_activity(
 async def get_wap_history(
     athlete_id: int,
     days: int = 180,
-    sport: Optional[str] = None,
+    sport: str | None = None,
 ) -> list[dict]:
     """
     Return list of dicts with pace, WAP, and weather info for activities that have
     both weather data and average_speed_ms.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     async with get_async_session() as session:
         q = (
@@ -68,7 +69,7 @@ async def get_wap_history(
         actual_pace_s = 1000.0 / act.average_speed_ms  # s/km
 
         # Compute course bearing from start→end latlng if available
-        course_bearing: Optional[float] = None
+        course_bearing: float | None = None
         if act.start_latlng and act.end_latlng:
             try:
                 s = json.loads(act.start_latlng)
@@ -96,10 +97,14 @@ async def get_wap_history(
                 "name": act.name,
                 "strava_id": act.strava_id,
                 "sport_type": act.sport_type,
-                "distance_km": round(act.distance_m / 1000, 2) if act.distance_m else None,
+                "distance_km": round(act.distance_m / 1000, 2)
+                if act.distance_m
+                else None,
                 "actual_pace_s": round(actual_pace_s, 1),
                 "wap_s": round(wap_s, 1),
-                "true_pace_s": round(wap_s, 1),  # same as WAP (GAP streams not stored yet)
+                "true_pace_s": round(
+                    wap_s, 1
+                ),  # same as WAP (GAP streams not stored yet)
                 "wap_factor": round(wap_factor, 4),
                 "temp_c": weather.temperature_c,
                 "humidity_pct": weather.humidity_pct,
@@ -157,7 +162,7 @@ async def upsert_activity_weather(
             "wbgt_c": weather_dict.get("wbgt_c"),
             "pace_heat_factor": weather_dict.get("pace_heat_factor"),
             "source": source,
-            "fetched_at": datetime.now(timezone.utc),
+            "fetched_at": datetime.now(UTC),
         }
 
         if row:

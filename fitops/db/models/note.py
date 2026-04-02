@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,16 +15,18 @@ class Note(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)         # JSON list
-    activity_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    body_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # first 200 chars
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
+    activity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body_preview: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # first 200 chars
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     def tags_list(self) -> list[str]:

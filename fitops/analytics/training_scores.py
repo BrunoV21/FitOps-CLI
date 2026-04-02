@@ -16,7 +16,11 @@ def _intensity_factor(activity: Activity, settings: AthleteSettings) -> float:
         return min(activity.average_watts / settings.ftp, 2.0)
 
     # 2. Running + pace + threshold pace
-    if sport in RUN_TYPES and activity.average_speed_ms and activity.average_speed_ms > 0:
+    if (
+        sport in RUN_TYPES
+        and activity.average_speed_ms
+        and activity.average_speed_ms > 0
+    ):
         threshold_s = settings.threshold_pace_per_km_s
         if threshold_s and threshold_s > 0:
             avg_pace_s = 1000.0 / activity.average_speed_ms
@@ -53,17 +57,17 @@ def compute_aerobic_score(activity: Activity, settings: AthleteSettings) -> floa
 
     # Aerobic efficiency per zone — Z2 is optimal; high intensity shifts energy to anaerobic
     if intensity < 0.50:
-        eff = 0.2       # very easy / rest
+        eff = 0.2  # very easy / rest
     elif intensity < 0.75:
-        eff = 0.5       # recovery / Z1
+        eff = 0.5  # recovery / Z1
     elif intensity < 0.88:
-        eff = 1.0       # Z2 aerobic sweet spot
+        eff = 1.0  # Z2 aerobic sweet spot
     elif intensity < 1.00:
-        eff = 0.85      # Z3 tempo — still aerobic-dominant
+        eff = 0.85  # Z3 tempo — still aerobic-dominant
     elif intensity < 1.06:
-        eff = 0.55      # Z4 threshold — split energy systems
+        eff = 0.55  # Z4 threshold — split energy systems
     else:
-        eff = 0.30      # Z5 VO2max+ — anaerobic dominant
+        eff = 0.30  # Z5 VO2max+ — anaerobic dominant
 
     # Normalizer: 5/3 hours at Z2 = 5.0
     return min(5.0, round(duration_h * eff * 3.0, 1))

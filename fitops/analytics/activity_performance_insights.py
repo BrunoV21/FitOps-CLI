@@ -1,8 +1,8 @@
 """Per-activity performance insights: detect new PRs and regressions vs athlete settings."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from fitops.analytics.vo2max import _effort_qualifies, _estimate_from_activity
 
@@ -14,17 +14,18 @@ _ROLLING_WINDOW_S = 20 * 60  # 20 minutes
 # Dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PerformanceInsight:
-    metric: str           # "max_hr" | "lt2_hr" | "lt1_hr" | "vo2max" | "lt2_pace" | "lt1_pace"
+    metric: str  # "max_hr" | "lt2_hr" | "lt1_hr" | "vo2max" | "lt2_pace" | "lt1_pace"
     label: str
-    setting_key: str      # key in athlete_settings.json
-    current_value: Optional[float]
+    setting_key: str  # key in athlete_settings.json
+    current_value: float | None
     detected_value: float
-    delta_pct: float      # >0 = improvement, <0 = regression
-    action: str           # "prompt_update" | "warn" | "ignore"
+    delta_pct: float  # >0 = improvement, <0 = regression
+    action: str  # "prompt_update" | "warn" | "ignore"
     detected_fmt: str
-    current_fmt: Optional[str]
+    current_fmt: str | None
     unit: str
     explanation: str
 
@@ -32,6 +33,7 @@ class PerformanceInsight:
 # ---------------------------------------------------------------------------
 # Formatters
 # ---------------------------------------------------------------------------
+
 
 def _fmt_hr(bpm: float) -> str:
     return f"{int(round(bpm))} bpm"
@@ -49,6 +51,7 @@ def _fmt_vo2max(v: float) -> str:
 # ---------------------------------------------------------------------------
 # Action classifiers (science-based thresholds)
 # ---------------------------------------------------------------------------
+
 
 def _classify_hr(delta_pct: float) -> str:
     """Any improvement prompts; ignore within ±3%; warn if >5% regression.
@@ -89,6 +92,7 @@ def _classify_pace(delta_pct: float) -> str:
 # Effort classification
 # ---------------------------------------------------------------------------
 
+
 def _is_hard_effort(activity, settings) -> bool:
     """True if avg HR qualifies as a threshold-level effort."""
     hr = activity.average_heartrate
@@ -119,11 +123,12 @@ def _is_easy_run(activity, settings) -> bool:
 # Stream utilities
 # ---------------------------------------------------------------------------
 
+
 def _p90_rolling_20min_hr(
     hr_data: list,
     time_data: list,
     intensity_floor: float = 0.0,
-) -> Optional[float]:
+) -> float | None:
     """90th-percentile of valid 20-min rolling HR averages where avg >= intensity_floor.
 
     Taking the maximum window overestimates LTHR when the athlete goes out too hard.
@@ -141,9 +146,12 @@ def _p90_rolling_20min_hr(
         t_right = time_data[right]
         if t_right is None:
             continue
-        while time_data[left] is not None and time_data[left] < t_right - _ROLLING_WINDOW_S:
+        while (
+            time_data[left] is not None
+            and time_data[left] < t_right - _ROLLING_WINDOW_S
+        ):
             left += 1
-        window = [h for h in hr_data[left:right + 1] if h and h > 0]
+        window = [h for h in hr_data[left : right + 1] if h and h > 0]
         if len(window) < 10:
             continue
         avg = sum(window) / len(window)
@@ -154,7 +162,7 @@ def _p90_rolling_20min_hr(
         return None
 
     valid_avgs.sort()
-    idx = (0.90 * (len(valid_avgs) - 1))
+    idx = 0.90 * (len(valid_avgs) - 1)
     lo = int(idx)
     hi = min(lo + 1, len(valid_avgs) - 1)
     p90 = valid_avgs[lo] + (idx - lo) * (valid_avgs[hi] - valid_avgs[lo])
@@ -166,13 +174,15 @@ def _median_pace_at_hr_floor(
     true_pace_data: list,
     hr_floor: float,
     min_samples: int = 120,
-) -> Optional[float]:
+) -> float | None:
     """Median true pace (sec/km) where HR >= hr_floor. true_pace_data is already in sec/km."""
     values = []
-    for hr, pace in zip(hr_data, true_pace_data):
+    for hr, pace in zip(hr_data, true_pace_data, strict=False):
         if hr is None or pace is None:
             continue
-        if hr >= hr_floor and 0 < pace < 2000:  # 2000 s/km = ~0.5 m/s, filters stationary
+        if (
+            hr >= hr_floor and 0 < pace < 2000
+        ):  # 2000 s/km = ~0.5 m/s, filters stationary
             values.append(pace)
     if len(values) < min_samples:
         return None
@@ -186,10 +196,10 @@ def _median_pace_in_hr_band(
     hr_lo: float,
     hr_hi: float,
     min_samples: int = 120,
-) -> Optional[float]:
+) -> float | None:
     """Median true pace (sec/km) where hr_lo <= HR <= hr_hi. true_pace_data is already in sec/km."""
     values = []
-    for hr, pace in zip(hr_data, true_pace_data):
+    for hr, pace in zip(hr_data, true_pace_data, strict=False):
         if hr is None or pace is None:
             continue
         if hr_lo <= hr <= hr_hi and 0 < pace < 2000:
@@ -204,7 +214,8 @@ def _median_pace_in_hr_band(
 # Per-metric detectors
 # ---------------------------------------------------------------------------
 
-def _detect_max_hr(activity, streams: dict, settings) -> Optional[PerformanceInsight]:
+
+def _detect_max_hr(activity, streams: dict, settings) -> PerformanceInsight | None:
     """New max HR — only meaningful from hard efforts."""
     if not _is_hard_effort(activity, settings):
         return None
@@ -245,7 +256,7 @@ def _detect_max_hr(activity, streams: dict, settings) -> Optional[PerformanceIns
     )
 
 
-def _detect_lt2_hr(activity, streams: dict, settings) -> Optional[PerformanceInsight]:
+def _detect_lt2_hr(activity, streams: dict, settings) -> PerformanceInsight | None:
     """LTHR estimate from best 20-min rolling HR — only for hard efforts with stream data."""
     if not _is_hard_effort(activity, settings):
         return None
@@ -281,7 +292,7 @@ def _detect_lt2_hr(activity, streams: dict, settings) -> Optional[PerformanceIns
     )
 
 
-def _detect_lt1_hr(activity, streams: dict, settings) -> Optional[PerformanceInsight]:
+def _detect_lt1_hr(activity, streams: dict, settings) -> PerformanceInsight | None:
     """LT1 HR from steady-state easy run — only for clearly aerobic efforts."""
     if not _is_easy_run(activity, settings):
         return None
@@ -292,8 +303,10 @@ def _detect_lt1_hr(activity, streams: dict, settings) -> Optional[PerformanceIns
 
     # Resolve current LT1 HR: stored or derived from LTHR (LT1 ≈ 83% LTHR, Seiler)
     current = settings.lt1_hr
-    current_for_compare = current if current is not None else (
-        round(settings.lthr * 0.83) if settings.lthr else None
+    current_for_compare = (
+        current
+        if current is not None
+        else (round(settings.lthr * 0.83) if settings.lthr else None)
     )
     if current_for_compare is None:
         return None
@@ -338,7 +351,7 @@ def _detect_lt1_hr(activity, streams: dict, settings) -> Optional[PerformanceIns
     )
 
 
-def _detect_vo2max(activity, streams: dict, settings) -> Optional[PerformanceInsight]:
+def _detect_vo2max(activity, streams: dict, settings) -> PerformanceInsight | None:
     """VO2max from Daniels VDOT — all qualifying hard efforts (not just races)."""
     if activity.sport_type not in RUN_TYPES:
         return None
@@ -390,7 +403,7 @@ def _detect_vo2max(activity, streams: dict, settings) -> Optional[PerformanceIns
     )
 
 
-def _detect_lt2_pace(activity, streams: dict, settings) -> Optional[PerformanceInsight]:
+def _detect_lt2_pace(activity, streams: dict, settings) -> PerformanceInsight | None:
     """LT2 pace from median true pace at HR >= 97% LTHR — only for hard running efforts."""
     if activity.sport_type not in RUN_TYPES:
         return None
@@ -441,7 +454,7 @@ def _detect_lt2_pace(activity, streams: dict, settings) -> Optional[PerformanceI
     )
 
 
-def _detect_lt1_pace(activity, streams: dict, settings) -> Optional[PerformanceInsight]:
+def _detect_lt1_pace(activity, streams: dict, settings) -> PerformanceInsight | None:
     """LT1 pace from median true pace in the LT1 HR band — only for easy runs."""
     if not _is_easy_run(activity, settings):
         return None
@@ -495,6 +508,7 @@ def _detect_lt1_pace(activity, streams: dict, settings) -> Optional[PerformanceI
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def compute_activity_performance_insights(
     activity,

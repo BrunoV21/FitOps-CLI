@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -15,10 +14,10 @@ async def get_recent_activities(
     athlete_id: int,
     limit: int = 50,
     offset: int = 0,
-    sport: Optional[str] = None,
-    sport_types: Optional[frozenset] = None,
-    days: Optional[int] = None,
-    since: Optional[datetime] = None,
+    sport: str | None = None,
+    sport_types: frozenset | None = None,
+    days: int | None = None,
+    since: datetime | None = None,
 ) -> list[Activity]:
     async with get_async_session() as session:
         q = select(Activity).where(Activity.athlete_id == athlete_id)
@@ -29,7 +28,7 @@ async def get_recent_activities(
         if since:
             q = q.where(Activity.start_date >= since)
         elif days:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            cutoff = datetime.now(UTC) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
         q = q.order_by(Activity.start_date.desc()).offset(offset).limit(limit)
         result = await session.execute(q)
@@ -38,21 +37,21 @@ async def get_recent_activities(
 
 async def count_activities(
     athlete_id: int,
-    sport: Optional[str] = None,
-    days: Optional[int] = None,
+    sport: str | None = None,
+    days: int | None = None,
 ) -> int:
     async with get_async_session() as session:
         q = select(func.count(Activity.id)).where(Activity.athlete_id == athlete_id)
         if sport:
             q = q.where(Activity.sport_type == sport)
         if days:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            cutoff = datetime.now(UTC) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
         result = await session.execute(q)
         return result.scalar_one() or 0
 
 
-async def get_activity_detail(athlete_id: int, strava_id: int) -> Optional[Activity]:
+async def get_activity_detail(athlete_id: int, strava_id: int) -> Activity | None:
     async with get_async_session() as session:
         result = await session.execute(
             select(Activity).where(
@@ -75,9 +74,9 @@ async def get_activity_laps(activity_db_id: int) -> list[ActivityLap]:
 
 async def get_activity_stats(
     athlete_id: int,
-    days: Optional[int] = None,
-    since: Optional[datetime] = None,
-    sport_types: Optional[frozenset] = None,
+    days: int | None = None,
+    since: datetime | None = None,
+    sport_types: frozenset | None = None,
 ) -> dict:
     async with get_async_session() as session:
         q = select(
@@ -89,7 +88,7 @@ async def get_activity_stats(
         if since:
             q = q.where(Activity.start_date >= since)
         elif days:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            cutoff = datetime.now(UTC) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
         if sport_types:
             q = q.where(Activity.sport_type.in_(list(sport_types)))

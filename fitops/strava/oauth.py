@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import webbrowser
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -24,14 +23,16 @@ CALLBACK_TIMEOUT_S = 120
 CALLBACK_PORTS = [8080, 8081, 8082]
 
 
-def validate_strava_token(access_token: Optional[str], expires_at: Optional[datetime]) -> bool:
+def validate_strava_token(
+    access_token: str | None, expires_at: datetime | None
+) -> bool:
     """Return True if the token is still valid (5-minute buffer)."""
     if not access_token or not expires_at:
         return False
     buffer = timedelta(minutes=5)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = expires_at.replace(tzinfo=UTC)
     return now < (expires_at - buffer)
 
 
@@ -39,9 +40,9 @@ class LocalCallbackServer:
     """Tiny asyncio HTTP server that captures a single OAuth callback."""
 
     def __init__(self) -> None:
-        self.code: Optional[str] = None
-        self.state: Optional[str] = None
-        self.error: Optional[str] = None
+        self.code: str | None = None
+        self.state: str | None = None
+        self.error: str | None = None
         self._received = asyncio.Event()
 
     async def _handle_request(
@@ -161,8 +162,10 @@ class LocalCallbackServer:
         server = await asyncio.start_server(self._handle_request, "127.0.0.1", port)
         async with server:
             try:
-                await asyncio.wait_for(self._received.wait(), timeout=CALLBACK_TIMEOUT_S)
-            except asyncio.TimeoutError:
+                await asyncio.wait_for(
+                    self._received.wait(), timeout=CALLBACK_TIMEOUT_S
+                )
+            except TimeoutError:
                 raise StravaAuthError(
                     f"OAuth callback timed out after {CALLBACK_TIMEOUT_S}s. Please try again."
                 )
@@ -171,13 +174,13 @@ class LocalCallbackServer:
 class StravaOAuth:
     """Handles Strava OAuth 2.0 flow."""
 
-    def __init__(self, settings: Optional[FitOpsSettings] = None) -> None:
+    def __init__(self, settings: FitOpsSettings | None = None) -> None:
         self.settings = settings or get_settings()
 
     def get_authorization_url(
         self,
-        scopes: Optional[list[str]] = None,
-        state: Optional[str] = None,
+        scopes: list[str] | None = None,
+        state: str | None = None,
         port: int = 8080,
     ) -> str:
         if scopes is None:
@@ -214,7 +217,7 @@ class StravaOAuth:
         return {
             "access_token": data["access_token"],
             "refresh_token": data["refresh_token"],
-            "expires_at": datetime.fromtimestamp(data["expires_at"], tz=timezone.utc),
+            "expires_at": datetime.fromtimestamp(data["expires_at"], tz=UTC),
             "athlete_id": data["athlete"]["id"],
             "scopes": data.get("scope", "").split(","),
         }
@@ -236,7 +239,7 @@ class StravaOAuth:
         return {
             "access_token": data["access_token"],
             "refresh_token": data["refresh_token"],
-            "expires_at": datetime.fromtimestamp(data["expires_at"], tz=timezone.utc),
+            "expires_at": datetime.fromtimestamp(data["expires_at"], tz=UTC),
         }
 
     async def fetch_detailed_athlete(self, access_token: str) -> dict:
@@ -257,7 +260,7 @@ class StravaOAuth:
             )
         return response.status_code == 200
 
-    async def run_login_flow(self, scopes: Optional[list[str]] = None) -> dict:
+    async def run_login_flow(self, scopes: list[str] | None = None) -> dict:
         """Full interactive login: open browser, capture callback, exchange token."""
         state = secrets.token_urlsafe(32)
         self.settings.save_pending_state(state)
@@ -265,7 +268,7 @@ class StravaOAuth:
         port = 8080
         auth_url = self.get_authorization_url(scopes=scopes, state=state, port=port)
 
-        print(f"\nOpening Strava authorization in your browser...")
+        print("\nOpening Strava authorization in your browser...")
         print(f"If the browser doesn't open, visit:\n  {auth_url}\n")
         webbrowser.open(auth_url)
 
@@ -295,7 +298,9 @@ class StravaOAuth:
             return self.settings.access_token
 
         if not self.settings.refresh_token:
-            raise StravaAuthError("No refresh token available. Please run `fitops auth login`.")
+            raise StravaAuthError(
+                "No refresh token available. Please run `fitops auth login`."
+            )
 
         token_data = await self.refresh_access_token(self.settings.refresh_token)
         self.settings.save_tokens(token_data)

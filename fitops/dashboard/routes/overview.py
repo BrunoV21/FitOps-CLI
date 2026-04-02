@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -10,18 +9,21 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
 from fitops.analytics.weather_pace import (
+    deg_to_compass,
     pace_heat_factor,
     wbgt_approx,
     wbgt_flag,
     weather_condition_label,
-    deg_to_compass,
 )
 from fitops.config.settings import get_settings
-from fitops.dashboard.queries.activities import get_activity_stats, get_recent_activities
+from fitops.dashboard.queries.activities import (
+    get_activity_stats,
+    get_recent_activities,
+)
 from fitops.dashboard.queries.analytics import (
-    get_training_load_data,
-    RUNNING_SPORTS,
     RIDING_SPORTS,
+    RUNNING_SPORTS,
+    get_training_load_data,
 )
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.profile import get_activity_heatmap_data
@@ -69,7 +71,7 @@ def _format_activity(a) -> dict:
     }
 
 
-async def _get_today_weather(athlete_id: Optional[int]) -> Optional[dict]:
+async def _get_today_weather(athlete_id: int | None) -> dict | None:
     """Fetch today's forecast using coordinates from the athlete's most recent GPS activity."""
     if not athlete_id:
         return None
@@ -90,7 +92,7 @@ async def _get_today_weather(athlete_id: Optional[int]) -> Optional[dict]:
     except (json.JSONDecodeError, TypeError, ValueError, IndexError):
         return None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     raw = await fetch_forecast_weather(lat, lng, now.strftime("%Y-%m-%d"), now.hour)
     if not raw:
         return None
@@ -101,15 +103,17 @@ async def _get_today_weather(athlete_id: Optional[int]) -> Optional[dict]:
     wind_dir = raw.get("wind_direction_deg") or 0.0
     wcode = raw.get("weather_code")
 
-    wbgt_val: Optional[float] = None
-    heat_factor: Optional[float] = None
+    wbgt_val: float | None = None
+    heat_factor: float | None = None
     if temp_c is not None and humidity is not None:
         wbgt_val = round(wbgt_approx(temp_c, humidity), 1)
         heat_factor = round(pace_heat_factor(temp_c, humidity), 4)
 
     return {
         "temperature_c": round(temp_c, 1) if temp_c is not None else None,
-        "apparent_temp_c": round(raw.get("apparent_temp_c"), 1) if raw.get("apparent_temp_c") is not None else None,
+        "apparent_temp_c": round(raw.get("apparent_temp_c"), 1)
+        if raw.get("apparent_temp_c") is not None
+        else None,
         "humidity_pct": humidity,
         "precipitation_mm": raw.get("precipitation_mm"),
         "wind_speed_kmh": round(wind_speed * 3.6, 1),
@@ -126,7 +130,12 @@ async def _get_today_weather(athlete_id: Optional[int]) -> Optional[dict]:
     }
 
 
-_PERIOD_LABELS = {"week": "This Week", "month": "This Month", "year": "This Year", "all": "All Time"}
+_PERIOD_LABELS = {
+    "week": "This Week",
+    "month": "This Month",
+    "year": "This Year",
+    "all": "All Time",
+}
 
 _VIEW_SPORT_TYPES = {
     "run": RUNNING_SPORTS,
@@ -136,9 +145,11 @@ _VIEW_SPORT_TYPES = {
 
 
 def _period_since(period: str) -> datetime | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if period == "week":
-        return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        return (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
     if period == "month":
         return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     if period == "year":
@@ -163,10 +174,24 @@ def register(templates: Jinja2Templates) -> APIRouter:
         athlete_id = settings.athlete_id
 
         athlete = await get_athlete(athlete_id) if athlete_id else None
-        recent = await get_recent_activities(athlete_id, limit=10, since=since, sport_types=sport_types) if athlete_id else []
-        stats = await get_activity_stats(athlete_id, since=since, sport_types=sport_types) if athlete_id else {}
+        recent = (
+            await get_recent_activities(
+                athlete_id, limit=10, since=since, sport_types=sport_types
+            )
+            if athlete_id
+            else []
+        )
+        stats = (
+            await get_activity_stats(athlete_id, since=since, sport_types=sport_types)
+            if athlete_id
+            else {}
+        )
         tl = await get_training_load_data(athlete_id, days=1) if athlete_id else None
-        heatmap_data = await get_activity_heatmap_data(athlete_id, since=None) if athlete_id else []
+        heatmap_data = (
+            await get_activity_heatmap_data(athlete_id, since=None)
+            if athlete_id
+            else []
+        )
         today_weather = await _get_today_weather(athlete_id)
 
         current_load = None

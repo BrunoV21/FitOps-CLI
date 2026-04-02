@@ -3,22 +3,21 @@ from __future__ import annotations
 import datetime
 import json
 import re
-from typing import Optional
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
 from fitops.config.settings import get_settings
-from fitops.db.models.workout import Workout
-from fitops.db.models.workout_segment import WorkoutSegment
-from fitops.db.session import get_async_session
+from fitops.dashboard.queries.race import get_all_courses, get_course
 from fitops.dashboard.queries.workouts import (
     get_activity_for_workout,
     get_workout_with_segments,
 )
-from fitops.dashboard.queries.race import get_all_courses, get_course
+from fitops.db.models.workout import Workout
+from fitops.db.models.workout_segment import WorkoutSegment
+from fitops.db.session import get_async_session
 
 router = APIRouter()
 
@@ -33,7 +32,7 @@ def _group_interval_segments(seg_rows: list[dict]) -> list[dict]:
     i = 0
     while i < len(seg_rows):
         seg = seg_rows[i]
-        m = re.match(r'^(.+?)\s+\((\d+)/(\d+)\)$', seg.get("segment_name", "") or "")
+        m = re.match(r"^(.+?)\s+\((\d+)/(\d+)\)$", seg.get("segment_name", "") or "")
         if m and int(m.group(2)) == 1:
             total = int(m.group(3))
             # Collect all consecutive segments that share this (*/total) suffix
@@ -41,7 +40,7 @@ def _group_interval_segments(seg_rows: list[dict]) -> list[dict]:
             j = i
             while j < len(seg_rows):
                 s = seg_rows[j]
-                gm = re.match(r'^.+?\s+\(\d+/(\d+)\)$', s.get("segment_name", "") or "")
+                gm = re.match(r"^.+?\s+\(\d+/(\d+)\)$", s.get("segment_name", "") or "")
                 if gm and int(gm.group(1)) == total:
                     group_segs.append(s)
                     j += 1
@@ -54,28 +53,33 @@ def _group_interval_segments(seg_rows: list[dict]) -> list[dict]:
             first_rest = rest_segs[0] if rest_segs else None
 
             # Duration labels: "30s interval (1/4)" → "30s"
-            work_dur_m = re.match(r'^(\S+)', first_work.get("segment_name", "") or "")
+            work_dur_m = re.match(r"^(\S+)", first_work.get("segment_name", "") or "")
             work_dur_label = work_dur_m.group(1) if work_dur_m else "?"
             rest_dur_label = None
             if first_rest:
-                rest_dur_m = re.match(r'^(\S+)', first_rest.get("segment_name", "") or "")
+                rest_dur_m = re.match(
+                    r"^(\S+)", first_rest.get("segment_name", "") or ""
+                )
                 rest_dur_label = rest_dur_m.group(1) if rest_dur_m else None
 
             # Pace label — works for both simulate (pace dict) and detail (target_label)
-            pace_label: Optional[str] = None
+            pace_label: str | None = None
             p = first_work.get("pace") or {}
             if p.get("adjusted_min") and p.get("adjusted_max"):
                 pace_label = f"{p['adjusted_min']}–{p['adjusted_max']}/km"
             elif p.get("adjusted_min"):
                 pace_label = f"{p['adjusted_min']}/km"
-            elif first_work.get("target_label") and first_work.get("target_label") != "—":
+            elif (
+                first_work.get("target_label") and first_work.get("target_label") != "—"
+            ):
                 pace_label = first_work["target_label"]
 
             # Total estimated time (simulate context; None in detail context)
             total_time_s = sum(s.get("est_segment_time_s", 0) or 0 for s in group_segs)
-            total_time_fmt: Optional[str] = None
+            total_time_fmt: str | None = None
             if total_time_s > 0:
                 from fitops.race.course_parser import _fmt_duration as _fmt_dur
+
                 total_time_fmt = _fmt_dur(total_time_s)
 
             label_parts = [f"{total}×{work_dur_label} intervals"]
@@ -84,17 +88,19 @@ def _group_interval_segments(seg_rows: list[dict]) -> list[dict]:
             if rest_dur_label:
                 label_parts.append(f"({rest_dur_label} rest)")
 
-            result.append({
-                "type": "group",
-                "rep_count": total,
-                "work_dur_label": work_dur_label,
-                "rest_dur_label": rest_dur_label,
-                "pace_label": pace_label,
-                "label": " ".join(label_parts),
-                "total_time_s": total_time_s,
-                "total_time_fmt": total_time_fmt,
-                "segments": group_segs,
-            })
+            result.append(
+                {
+                    "type": "group",
+                    "rep_count": total,
+                    "work_dur_label": work_dur_label,
+                    "rest_dur_label": rest_dur_label,
+                    "pace_label": pace_label,
+                    "label": " ".join(label_parts),
+                    "total_time_s": total_time_s,
+                    "total_time_fmt": total_time_fmt,
+                    "segments": group_segs,
+                }
+            )
             i = j
         else:
             result.append({"type": "single", **seg})
@@ -137,6 +143,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/workouts/simulate", response_class=HTMLResponse)
     async def workout_simulate_form(request: Request):
         from fitops.workouts.loader import list_workout_files
+
         workout_files = list_workout_files()
         courses = await get_all_courses()
         return templates.TemplateResponse(
@@ -144,7 +151,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             "workouts/simulate.html",
             {
                 "request": request,
-                "workout_files": [{"name": wf.name, "filename": wf.file_name} for wf in workout_files],
+                "workout_files": [
+                    {"name": wf.name, "filename": wf.file_name} for wf in workout_files
+                ],
                 "courses": courses,
                 "form": {},
                 "error": None,
@@ -159,30 +168,32 @@ def register(templates: Jinja2Templates) -> APIRouter:
     async def workout_simulate_post(
         request: Request,
         workout_name: str = Form(...),
-        course_source: str = Form("course"),   # "course" | "activity"
-        course_id: Optional[str] = Form(None),
-        activity_id: Optional[str] = Form(None),
-        base_pace: Optional[str] = Form(None),
-        sim_date: Optional[str] = Form(None),
-        sim_hour: Optional[str] = Form(None),
-        temp: Optional[str] = Form(None),
-        humidity: Optional[str] = Form(None),
-        wind: Optional[str] = Form(None),
-        wind_dir: Optional[str] = Form(None),
+        course_source: str = Form("course"),  # "course" | "activity"
+        course_id: str | None = Form(None),
+        activity_id: str | None = Form(None),
+        base_pace: str | None = Form(None),
+        sim_date: str | None = Form(None),
+        sim_hour: str | None = Form(None),
+        temp: str | None = Form(None),
+        humidity: str | None = Form(None),
+        wind: str | None = Form(None),
+        wind_dir: str | None = Form(None),
     ):
-        from fitops.workouts.loader import get_workout_file, list_workout_files
-        from fitops.workouts.segments import parse_segments_from_body
-        from fitops.workouts.json_parser import parse_segments_from_json
-        from fitops.workouts.simulate import (
-            simulate_workout_on_course,
-            validate_distance_mismatch,
-            result_to_dict,
+        from fitops.race.course_parser import (
+            _parse_time as _parse_pace_s,
         )
         from fitops.race.course_parser import (
             build_km_segments,
             compute_total_elevation_gain,
             parse_strava_activity,
-            _parse_time as _parse_pace_s,
+        )
+        from fitops.workouts.json_parser import parse_segments_from_json
+        from fitops.workouts.loader import get_workout_file, list_workout_files
+        from fitops.workouts.segments import parse_segments_from_body
+        from fitops.workouts.simulate import (
+            result_to_dict,
+            simulate_workout_on_course,
+            validate_distance_mismatch,
         )
 
         workout_files = list_workout_files()
@@ -208,7 +219,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "workouts/simulate.html",
                 {
                     "request": request,
-                    "workout_files": [{"name": wf.name, "filename": wf.file_name} for wf in workout_files],
+                    "workout_files": [
+                        {"name": wf.name, "filename": wf.file_name}
+                        for wf in workout_files
+                    ],
                     "courses": courses,
                     "form": form_vals,
                     "error": msg,
@@ -222,7 +236,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         # --- load workout file ---
         wf = get_workout_file(workout_name)
         if wf is None:
-            return _render_error(f"Workout {workout_name!r} not found in ~/.fitops/workouts/.")
+            return _render_error(
+                f"Workout {workout_name!r} not found in ~/.fitops/workouts/."
+            )
 
         # wf.meta["workout_meta"] is stored as a raw JSON string by the frontmatter
         # parser (simple key:value parser can't detect JSON objects). Parse it here.
@@ -244,18 +260,20 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return _render_error(f"No segments found in workout {workout_name!r}.")
 
         # --- parse base pace ---
-        base_pace_s: Optional[float] = None
+        base_pace_s: float | None = None
         if base_pace and base_pace.strip():
             try:
                 base_pace_s = _parse_pace_s(base_pace.strip())
             except (ValueError, IndexError):
-                return _render_error(f"Invalid base pace {base_pace!r}. Use MM:SS format.")
+                return _render_error(
+                    f"Invalid base pace {base_pace!r}. Use MM:SS format."
+                )
 
         # --- load course km-segments ---
         km_segs: list[dict] = []
         course_info: dict = {}
-        course_start_lat: Optional[float] = None
-        course_start_lon: Optional[float] = None
+        course_start_lat: float | None = None
+        course_start_lon: float | None = None
 
         if course_source == "course":
             if not course_id or not course_id.strip():
@@ -281,7 +299,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             try:
                 act_strava_id = int(activity_id.strip())
             except ValueError:
-                return _render_error(f"Invalid activity ID {activity_id!r}. Must be a number.")
+                return _render_error(
+                    f"Invalid activity ID {activity_id!r}. Must be a number."
+                )
 
             try:
                 async with get_async_session() as session:
@@ -306,7 +326,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         # --- weather resolution ---
         weather_source = "neutral"
-        weather = {"temperature_c": 15.0, "humidity_pct": 40.0, "wind_speed_ms": 0.0, "wind_direction_deg": 0.0}
+        weather = {
+            "temperature_c": 15.0,
+            "humidity_pct": 40.0,
+            "wind_speed_ms": 0.0,
+            "wind_direction_deg": 0.0,
+        }
 
         if temp and humidity:
             try:
@@ -318,20 +343,35 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
                 weather_source = "manual"
             except ValueError:
-                return _render_error("Invalid weather values — temperature and humidity must be numbers.")
+                return _render_error(
+                    "Invalid weather values — temperature and humidity must be numbers."
+                )
 
-        elif sim_date and sim_date.strip() and course_start_lat is not None and course_start_lon is not None:
-            from fitops.weather.client import fetch_forecast_weather, fetch_activity_weather
+        elif (
+            sim_date
+            and sim_date.strip()
+            and course_start_lat is not None
+            and course_start_lon is not None
+        ):
+            from fitops.weather.client import (
+                fetch_activity_weather,
+                fetch_forecast_weather,
+            )
+
             try:
                 parsed_date = datetime.date.fromisoformat(sim_date.strip())
             except ValueError:
-                return _render_error(f"Invalid date {sim_date!r}. Use YYYY-MM-DD format.")
+                return _render_error(
+                    f"Invalid date {sim_date!r}. Use YYYY-MM-DD format."
+                )
 
             hour = int(sim_hour) if sim_hour and sim_hour.isdigit() else 9
             today = datetime.date.today()
 
             if parsed_date > today:
-                fetched = await fetch_forecast_weather(course_start_lat, course_start_lon, sim_date.strip(), hour)
+                fetched = await fetch_forecast_weather(
+                    course_start_lat, course_start_lon, sim_date.strip(), hour
+                )
                 if fetched:
                     weather = {
                         "temperature_c": fetched.get("temperature_c", 15.0),
@@ -342,10 +382,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     weather_source = "forecast"
             else:
                 sim_datetime = datetime.datetime(
-                    parsed_date.year, parsed_date.month, parsed_date.day,
-                    hour, 0, 0, tzinfo=datetime.timezone.utc
+                    parsed_date.year,
+                    parsed_date.month,
+                    parsed_date.day,
+                    hour,
+                    0,
+                    0,
+                    tzinfo=datetime.UTC,
                 )
-                fetched = await fetch_activity_weather(course_start_lat, course_start_lon, sim_datetime)
+                fetched = await fetch_activity_weather(
+                    course_start_lat, course_start_lon, sim_datetime
+                )
                 if fetched:
                     weather = {
                         "temperature_c": fetched.get("temperature_c", 15.0),
@@ -366,12 +413,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
         total_est_s = round(sum(r.est_segment_time_s for r in results), 1)
 
         from fitops.race.course_parser import _fmt_duration
+
         return templates.TemplateResponse(
             request,
             "workouts/simulate.html",
             {
                 "request": request,
-                "workout_files": [{"name": wf.name, "filename": wf.file_name} for wf in workout_files],
+                "workout_files": [
+                    {"name": wf.name, "filename": wf.file_name} for wf in workout_files
+                ],
                 "courses": courses,
                 "form": form_vals,
                 "error": None,
@@ -417,24 +467,36 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 seg_rows = []
                 for s in segments:
                     d = s.to_dict()
-                    seg_rows.append({
-                        **d,
-                        "target_label": _segment_target_label(d),
-                        "compliance_pct": round(s.compliance_score * 100) if s.compliance_score is not None else None,
-                    })
-                rows.append({
-                    "id": w.id,
-                    "name": w.name,
-                    "sport_type": w.sport_type,
-                    "status": w.status,
-                    "linked_at": w.linked_at.strftime("%d %b %Y") if w.linked_at else "—",
-                    "compliance_score": (
-                        f"{w.compliance_score * 100:.0f}%" if w.compliance_score is not None else "—"
-                    ),
-                    "compliance_pct": round(w.compliance_score * 100) if w.compliance_score is not None else None,
-                    "segment_count": len(segments),
-                    "segments": seg_rows,
-                })
+                    seg_rows.append(
+                        {
+                            **d,
+                            "target_label": _segment_target_label(d),
+                            "compliance_pct": round(s.compliance_score * 100)
+                            if s.compliance_score is not None
+                            else None,
+                        }
+                    )
+                rows.append(
+                    {
+                        "id": w.id,
+                        "name": w.name,
+                        "sport_type": w.sport_type,
+                        "status": w.status,
+                        "linked_at": w.linked_at.strftime("%d %b %Y")
+                        if w.linked_at
+                        else "—",
+                        "compliance_score": (
+                            f"{w.compliance_score * 100:.0f}%"
+                            if w.compliance_score is not None
+                            else "—"
+                        ),
+                        "compliance_pct": round(w.compliance_score * 100)
+                        if w.compliance_score is not None
+                        else None,
+                        "segment_count": len(segments),
+                        "segments": seg_rows,
+                    }
+                )
 
         return templates.TemplateResponse(
             request,
@@ -451,7 +513,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
         return templates.TemplateResponse(
             request,
             "workouts/create.html",
-            {"request": request, "form": {}, "error": None, "created": None, "active_page": "workouts"},
+            {
+                "request": request,
+                "form": {},
+                "error": None,
+                "created": None,
+                "active_page": "workouts",
+            },
         )
 
     @router.post("/workouts/create", response_class=HTMLResponse)
@@ -461,7 +529,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
         sport: str = Form("run"),
         workout_json_str: str = Form(...),
     ):
-        from fitops.workouts.json_parser import parse_segments_from_json, generate_markdown_body
+        from fitops.workouts.json_parser import (
+            generate_markdown_body,
+            parse_segments_from_json,
+        )
         from fitops.workouts.loader import workouts_dir
 
         form_vals = {"name": name, "sport": sport, "workout_json_str": workout_json_str}
@@ -470,7 +541,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return templates.TemplateResponse(
                 request,
                 "workouts/create.html",
-                {"request": request, "form": form_vals, "error": msg, "created": None, "active_page": "workouts"},
+                {
+                    "request": request,
+                    "form": form_vals,
+                    "error": msg,
+                    "created": None,
+                    "active_page": "workouts",
+                },
             )
 
         try:
@@ -517,7 +594,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 {
                     "name": s.name,
                     "step_type": s.step_type,
-                    "duration_min": round(s.duration_min, 1) if s.duration_min else None,
+                    "duration_min": round(s.duration_min, 1)
+                    if s.duration_min
+                    else None,
                 }
                 for s in segments
             ],
@@ -525,7 +604,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
         return templates.TemplateResponse(
             request,
             "workouts/create.html",
-            {"request": request, "form": form_vals, "error": None, "created": created, "active_page": "workouts"},
+            {
+                "request": request,
+                "form": form_vals,
+                "error": None,
+                "created": created,
+                "active_page": "workouts",
+            },
         )
 
     @router.get("/workouts/{workout_id}", response_class=HTMLResponse)
@@ -560,7 +645,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 linked_activity = {
                     "strava_id": act.strava_id,
                     "name": act.name,
-                    "date": act.start_date_local.strftime("%d %b %Y") if act.start_date_local else "—",
+                    "date": act.start_date_local.strftime("%d %b %Y")
+                    if act.start_date_local
+                    else "—",
                     "sport_type": act.sport_type,
                 }
 
@@ -571,19 +658,30 @@ def register(templates: Jinja2Templates) -> APIRouter:
         seg_rows = []
         for s in segments:
             d = s.to_dict()
-            seg_rows.append({
-                **d,
-                "target_label": _segment_target_label(d),
-                "compliance_pct": round(s.compliance_score * 100) if s.compliance_score is not None else None,
-                "score_class": (
-                    "green" if s.compliance_score and s.compliance_score >= 0.8
-                    else "amber" if s.compliance_score and s.compliance_score >= 0.6
-                    else "red" if s.compliance_score is not None
-                    else "dim"
-                ),
-            })
+            seg_rows.append(
+                {
+                    **d,
+                    "target_label": _segment_target_label(d),
+                    "compliance_pct": round(s.compliance_score * 100)
+                    if s.compliance_score is not None
+                    else None,
+                    "score_class": (
+                        "green"
+                        if s.compliance_score and s.compliance_score >= 0.8
+                        else "amber"
+                        if s.compliance_score and s.compliance_score >= 0.6
+                        else "red"
+                        if s.compliance_score is not None
+                        else "dim"
+                    ),
+                }
+            )
 
-        overall_pct = round(workout.compliance_score * 100) if workout.compliance_score is not None else None
+        overall_pct = (
+            round(workout.compliance_score * 100)
+            if workout.compliance_score is not None
+            else None
+        )
 
         return templates.TemplateResponse(
             request,
@@ -595,13 +693,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "name": workout.name,
                     "sport_type": workout.sport_type,
                     "status": workout.status,
-                    "linked_at": workout.linked_at.strftime("%d %b %Y") if workout.linked_at else None,
+                    "linked_at": workout.linked_at.strftime("%d %b %Y")
+                    if workout.linked_at
+                    else None,
                     "compliance_score": workout.compliance_score,
                     "compliance_pct": overall_pct,
                     "score_class": (
-                        "green" if overall_pct and overall_pct >= 80
-                        else "amber" if overall_pct and overall_pct >= 60
-                        else "red" if overall_pct is not None
+                        "green"
+                        if overall_pct and overall_pct >= 80
+                        else "amber"
+                        if overall_pct and overall_pct >= 60
+                        else "red"
+                        if overall_pct is not None
                         else "dim"
                     ),
                     "notes": workout.notes,

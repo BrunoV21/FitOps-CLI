@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import markdown as md_lib
-
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,7 +12,18 @@ _HERE = Path(__file__).parent
 
 
 def create_app(port: int = 8888) -> FastAPI:
-    from fitops.dashboard.routes import activities, analytics, api, notes, overview, profile, workouts, weather, race, setup
+    from fitops.dashboard.routes import (
+        activities,
+        analytics,
+        api,
+        notes,
+        overview,
+        profile,
+        race,
+        setup,
+        weather,
+        workouts,
+    )
 
     app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None)
     app.state.dashboard_port = port
@@ -63,27 +73,27 @@ def create_app(port: int = 8888) -> FastAPI:
     _DEFAULT = f'<svg {_S}><path d="M13 2L4 14h8l-1 8 9-12h-8l1-8z"/></svg>'
 
     _SPORT_ICONS: dict[str, Markup] = {
-        "Run":              Markup(_RUN),
-        "VirtualRun":       Markup(_RUN),
-        "TrailRun":         Markup(_TRAIL),
-        "Walk":             Markup(_WALK),
-        "Hike":             Markup(_HIKE),
-        "Ride":             Markup(_BIKE),
-        "VirtualRide":      Markup(_BIKE),
-        "EBikeRide":        Markup(_EBIKE),
-        "Swim":             Markup(_SWIM),
-        "Rowing":           Markup(_ROW),
-        "Yoga":             Markup(_YOGA),
-        "WeightTraining":   Markup(_DUMBBELL),
-        "Workout":          Markup(_DUMBBELL),
-        "Crossfit":         Markup(_DUMBBELL),
-        "Soccer":           Markup(_SOCCER),
-        "Tennis":           Markup(_TENNIS),
-        "Golf":             Markup(_GOLF),
-        "AlpineSki":        Markup(_SKI),
-        "NordicSki":        Markup(_SKI),
-        "StandUpPaddling":  Markup(_SURF),
-        "Surfing":          Markup(_SURF),
+        "Run": Markup(_RUN),
+        "VirtualRun": Markup(_RUN),
+        "TrailRun": Markup(_TRAIL),
+        "Walk": Markup(_WALK),
+        "Hike": Markup(_HIKE),
+        "Ride": Markup(_BIKE),
+        "VirtualRide": Markup(_BIKE),
+        "EBikeRide": Markup(_EBIKE),
+        "Swim": Markup(_SWIM),
+        "Rowing": Markup(_ROW),
+        "Yoga": Markup(_YOGA),
+        "WeightTraining": Markup(_DUMBBELL),
+        "Workout": Markup(_DUMBBELL),
+        "Crossfit": Markup(_DUMBBELL),
+        "Soccer": Markup(_SOCCER),
+        "Tennis": Markup(_TENNIS),
+        "Golf": Markup(_GOLF),
+        "AlpineSki": Markup(_SKI),
+        "NordicSki": Markup(_SKI),
+        "StandUpPaddling": Markup(_SURF),
+        "Surfing": Markup(_SURF),
     }
 
     def sport_icon(sport: str) -> Markup:

@@ -7,15 +7,23 @@ app = typer.Typer(no_args_is_help=True)
 
 @app.command("serve")
 def serve(
-    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the dashboard server to."),
-    port: int = typer.Option(8888, "--port", help="Port to bind the dashboard server to."),
-    no_open: bool = typer.Option(False, "--no-open", help="Don't open the browser automatically."),
+    host: str = typer.Option(
+        "127.0.0.1", "--host", help="Host to bind the dashboard server to."
+    ),
+    port: int = typer.Option(
+        8888, "--port", help="Port to bind the dashboard server to."
+    ),
+    no_open: bool = typer.Option(
+        False, "--no-open", help="Don't open the browser automatically."
+    ),
 ) -> None:
     """Launch the FitOps local dashboard server."""
     try:
         import uvicorn
     except ImportError:
-        typer.echo("uvicorn is required. Run: pip install 'fitops-cli[dashboard]'", err=True)
+        typer.echo(
+            "uvicorn is required. Run: pip install 'fitops-cli[dashboard]'", err=True
+        )
         raise typer.Exit(1)
 
     from fitops.db.migrations import init_db

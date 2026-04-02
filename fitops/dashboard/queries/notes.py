@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
+from datetime import UTC
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,9 +12,9 @@ from fitops.notes.loader import NoteFile
 
 async def get_all_notes(
     session: AsyncSession,
-    tag: Optional[str] = None,
-    activity_id: Optional[int] = None,
-    q: Optional[str] = None,
+    tag: str | None = None,
+    activity_id: int | None = None,
+    q: str | None = None,
 ) -> list[Note]:
     stmt = select(Note).order_by(Note.created_at.desc())
     result = await session.execute(stmt)
@@ -31,7 +31,7 @@ async def get_all_notes(
     return notes
 
 
-async def get_note_by_slug(session: AsyncSession, slug: str) -> Optional[Note]:
+async def get_note_by_slug(session: AsyncSession, slug: str) -> Note | None:
     result = await session.execute(select(Note).where(Note.slug == slug))
     return result.scalar_one_or_none()
 
@@ -55,14 +55,13 @@ async def get_all_tags(session: AsyncSession) -> list[dict]:
 
 async def upsert_note(session: AsyncSession, note: NoteFile) -> None:
     """Sync a NoteFile into the DB."""
-    from datetime import timezone
 
     result = await session.execute(select(Note).where(Note.slug == note.slug))
     row = result.scalar_one_or_none()
 
     preview = note.body[:200].strip() if note.body else None
     tags_json = json.dumps(note.tags)
-    created_at = note.created.replace(tzinfo=timezone.utc) if note.created else None
+    created_at = note.created.replace(tzinfo=UTC) if note.created else None
 
     if row:
         row.title = note.title

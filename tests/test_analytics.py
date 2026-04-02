@@ -1,11 +1,33 @@
 """Tests for analytics calculations."""
-import pytest
+
 from datetime import date
 
-from fitops.analytics.training_load import ALPHA_ATL, ALPHA_CTL, CTL_DAYS, ATL_DAYS, TrainingLoadResult, DailyLoad, _compute_overtraining_indicators
-from fitops.analytics.vo2max import _vdot, _mcardle, _costill, _confidence, _extract_high_intensity_segments, VO2MaxResult
-from fitops.analytics.zones import compute_lthr_zones, compute_max_hr_zones, compute_hrr_zones, compute_zones
+import pytest
+
 from fitops.analytics.activity_insights import compute_hr_drift
+from fitops.analytics.training_load import (
+    ALPHA_ATL,
+    ALPHA_CTL,
+    ATL_DAYS,
+    CTL_DAYS,
+    DailyLoad,
+    TrainingLoadResult,
+    _compute_overtraining_indicators,
+)
+from fitops.analytics.vo2max import (
+    VO2MaxResult,
+    _confidence,
+    _costill,
+    _extract_high_intensity_segments,
+    _mcardle,
+    _vdot,
+)
+from fitops.analytics.zones import (
+    compute_hrr_zones,
+    compute_lthr_zones,
+    compute_max_hr_zones,
+    compute_zones,
+)
 
 
 def test_alpha_values():
@@ -105,6 +127,7 @@ def test_zones_dispatch():
 # _extract_high_intensity_segments tests
 # ---------------------------------------------------------------------------
 
+
 def _make_streams(entries):
     """Build (hr_data, time_data, speed_data) from list of (hr, speed, dt) tuples."""
     hr_data = []
@@ -160,9 +183,13 @@ def test_extract_segments_speed_filter():
 # Minimum sample guard tests
 # ---------------------------------------------------------------------------
 
+
 def _make_daily_load(n: int, tss: float = 50.0) -> list:
     """Create n DailyLoad entries with constant TSS/CTL/ATL for guard testing."""
-    return [DailyLoad(date=date.today(), daily_tss=tss, ctl=40.0, atl=50.0, tsb=-10.0) for _ in range(n)]
+    return [
+        DailyLoad(date=date.today(), daily_tss=tss, ctl=40.0, atl=50.0, tsb=-10.0)
+        for _ in range(n)
+    ]
 
 
 def test_overtraining_acwr_requires_21_days():
@@ -189,16 +216,20 @@ def test_overtraining_monotony_requires_5_days():
 
 def test_volume_trend_insufficient_data():
     """< 6 weeks of data → vol_direction is 'insufficient_data'."""
-    from fitops.analytics.trends import TrendResult
     # We test the direction logic directly via a small helper
     # The weekly_data list drives the branch; simulate it with 3 entries
     from fitops.analytics.trends import _linear_regression
+
     weekly_data = [{"distance_km": float(i), "activity_count": 1} for i in range(3)]
     if len(weekly_data) >= 6:
         x = list(range(len(weekly_data)))
         y = [w["distance_km"] for w in weekly_data]
         vol_slope, _ = _linear_regression(x, y)
-        vol_direction = "increasing" if vol_slope > 0.5 else ("decreasing" if vol_slope < -0.5 else "stable")
+        vol_direction = (
+            "increasing"
+            if vol_slope > 0.5
+            else ("decreasing" if vol_slope < -0.5 else "stable")
+        )
     else:
         vol_slope, vol_direction = 0.0, "insufficient_data"
     assert vol_direction == "insufficient_data"
@@ -208,6 +239,7 @@ def test_pace_trend_insufficient_data():
     """< 4 months of pace data → pace_direction is 'insufficient_data'."""
     # Build a monthly_pace dict with 2 keys
     from collections import defaultdict
+
     monthly_pace = defaultdict(list)
     monthly_pace[(2026, 1)].append((5.0, 10000))
     monthly_pace[(2026, 2)].append((4.9, 10000))

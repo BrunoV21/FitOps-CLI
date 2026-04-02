@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -11,21 +10,22 @@ class WorkoutSegmentDef:
 
     index: int
     name: str
-    step_type: str              # warmup | interval | recovery | cooldown | main
-    target_zone: Optional[int]  # 1–5, derived from "Z4" / "Zone 4" in text
-    duration_min: Optional[float]
+    step_type: str  # warmup | interval | recovery | cooldown | main
+    target_zone: int | None  # 1–5, derived from "Z4" / "Zone 4" in text
+    duration_min: float | None
 
     # Extended target fields (set by JSON parser; None for markdown-based segments)
-    target_hr_min_bpm: Optional[float] = None
-    target_hr_max_bpm: Optional[float] = None
-    target_pace_min_s_per_km: Optional[float] = None
-    target_pace_max_s_per_km: Optional[float] = None
+    target_hr_min_bpm: float | None = None
+    target_hr_max_bpm: float | None = None
+    target_pace_min_s_per_km: float | None = None
+    target_pace_max_s_per_km: float | None = None
     target_focus_type: str = "hr_zone"  # hr_zone | hr_range | pace_range | none
 
 
 # ---------------------------------------------------------------------------
 # Inference helpers
 # ---------------------------------------------------------------------------
+
 
 def _infer_step_type(heading: str) -> str:
     h = heading.lower()
@@ -35,12 +35,15 @@ def _infer_step_type(heading: str) -> str:
         return "cooldown"
     if any(w in h for w in ("recovery", "rest", "jog", "walk")):
         return "recovery"
-    if any(w in h for w in ("interval", "rep", "set", "effort", "hard", "threshold", "main")):
+    if any(
+        w in h
+        for w in ("interval", "rep", "set", "effort", "hard", "threshold", "main")
+    ):
         return "interval"
     return "main"
 
 
-def _extract_target_zone(text: str) -> Optional[int]:
+def _extract_target_zone(text: str) -> int | None:
     """Extract the highest target zone number mentioned in a text block.
 
     Matches: Z4, Zone 4, z4, zone4, Z4-Z5, Z3–Z4 (takes upper bound).
@@ -56,7 +59,7 @@ def _extract_target_zone(text: str) -> Optional[int]:
     return None
 
 
-def _extract_duration_min(text: str) -> Optional[float]:
+def _extract_duration_min(text: str) -> float | None:
     """Extract total effective duration in minutes from a text block.
 
     Handles:
@@ -79,6 +82,7 @@ def _extract_duration_min(text: str) -> Optional[float]:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def parse_segments_from_body(body: str) -> list[WorkoutSegmentDef]:
     """Parse workout segments from markdown body using ## headings.

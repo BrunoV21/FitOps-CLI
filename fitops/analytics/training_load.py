@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import statistics as _stats
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -32,14 +31,14 @@ class DailyLoad:
 @dataclass
 class TrainingLoadResult:
     history: list[DailyLoad] = field(default_factory=list)
-    sport_filter: Optional[str] = None
+    sport_filter: str | None = None
 
     @property
-    def current(self) -> Optional[DailyLoad]:
+    def current(self) -> DailyLoad | None:
         return self.history[-1] if self.history else None
 
     @property
-    def ramp_rate_pct(self) -> Optional[float]:
+    def ramp_rate_pct(self) -> float | None:
         if len(self.history) < 8:
             return None
         ctl_now = self.history[-1].ctl
@@ -85,18 +84,22 @@ def _estimate_tss(activity: Activity) -> float:
     if sport in RIDE_TYPES and activity.average_watts:
         ftp = settings.ftp if settings.ftp else (activity.average_watts / 0.75)
         intensity_factor = min(activity.average_watts / ftp, 1.5)
-        return round(duration_h * (intensity_factor ** 2) * 100, 2)
+        return round(duration_h * (intensity_factor**2) * 100, 2)
 
     # --- Running with pace + threshold pace from settings ---
-    if sport in RUN_TYPES and activity.average_speed_ms and activity.average_speed_ms > 0:
+    if (
+        sport in RUN_TYPES
+        and activity.average_speed_ms
+        and activity.average_speed_ms > 0
+    ):
         threshold_pace_s = settings.threshold_pace_per_km_s  # seconds per km
         if threshold_pace_s and threshold_pace_s > 0:
             avg_pace_s = 1000 / activity.average_speed_ms  # seconds per km
             intensity_factor = min(threshold_pace_s / avg_pace_s, 2.0)
-            return round(duration_h * (intensity_factor ** 2) * 100, 2)
+            return round(duration_h * (intensity_factor**2) * 100, 2)
         else:
             intensity_factor = min(1.1, 2.0)
-            return round(duration_h * (intensity_factor ** 2) * 100, 2)
+            return round(duration_h * (intensity_factor**2) * 100, 2)
 
     # --- HR fallback ---
     if activity.average_heartrate:
@@ -114,7 +117,7 @@ def _estimate_tss(activity: Activity) -> float:
             hr_ratio = avg_hr / estimated_max_hr
 
         intensity_factor = min(hr_ratio, 2.0)
-        return round(duration_h * (intensity_factor ** 2) * 100, 2)
+        return round(duration_h * (intensity_factor**2) * 100, 2)
 
     return round(duration_h * 50, 2)
 
@@ -122,8 +125,8 @@ def _estimate_tss(activity: Activity) -> float:
 async def compute_training_load(
     athlete_id: int,
     days: int = 90,
-    sport_filter: Optional[str] = None,
-    sport_types: Optional[frozenset] = None,
+    sport_filter: str | None = None,
+    sport_types: frozenset | None = None,
 ) -> TrainingLoadResult:
     end_date = date.today()
     warmup_days = CTL_DAYS * 2
@@ -133,7 +136,8 @@ async def compute_training_load(
     async with get_async_session() as session:
         stmt = select(Activity).where(
             Activity.athlete_id == athlete_id,
-            Activity.start_date >= datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc),
+            Activity.start_date
+            >= datetime(start_date.year, start_date.month, start_date.day, tzinfo=UTC),
         )
         if sport_filter:
             stmt = stmt.where(Activity.sport_type == sport_filter)
@@ -162,7 +166,13 @@ async def compute_training_load(
         tsb = ctl - atl
         if current >= (end_date - timedelta(days=days)):
             result_obj.history.append(
-                DailyLoad(date=current, daily_tss=round(tss, 2), ctl=round(ctl, 2), atl=round(atl, 2), tsb=round(tsb, 2))
+                DailyLoad(
+                    date=current,
+                    daily_tss=round(tss, 2),
+                    ctl=round(ctl, 2),
+                    atl=round(atl, 2),
+                    tsb=round(tsb, 2),
+                )
             )
         current += timedelta(days=1)
 

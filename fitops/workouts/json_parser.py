@@ -57,8 +57,12 @@ def parse_segments_from_json(workout_meta: dict) -> list[WorkoutSegmentDef]:
                 step_type="warmup",
                 target_zone=None,
                 duration_min=duration_min,
-                target_hr_min_bpm=float(hr["min"]) if hr.get("min") is not None else None,
-                target_hr_max_bpm=float(hr["max"]) if hr.get("max") is not None else None,
+                target_hr_min_bpm=float(hr["min"])
+                if hr.get("min") is not None
+                else None,
+                target_hr_max_bpm=float(hr["max"])
+                if hr.get("max") is not None
+                else None,
                 target_focus_type="hr_range" if hr else "none",
             )
         )
@@ -78,8 +82,12 @@ def parse_segments_from_json(workout_meta: dict) -> list[WorkoutSegmentDef]:
         pace_max_s = _parse_pace_str(run_pace["max"]) if run_pace.get("max") else None
 
         rest_pace = rest.get("pace_per_km", {})
-        rest_pace_min_s = _parse_pace_str(rest_pace["min"]) if rest_pace.get("min") else None
-        rest_pace_max_s = _parse_pace_str(rest_pace["max"]) if rest_pace.get("max") else None
+        rest_pace_min_s = (
+            _parse_pace_str(rest_pace["min"]) if rest_pace.get("min") else None
+        )
+        rest_pace_max_s = (
+            _parse_pace_str(rest_pace["max"]) if rest_pace.get("max") else None
+        )
 
         run_label = _duration_label(run_s)
         rest_label = _duration_label(rest_s)
@@ -95,7 +103,9 @@ def parse_segments_from_json(workout_meta: dict) -> list[WorkoutSegmentDef]:
                     duration_min=run_s / 60.0 if run_s > 0 else None,
                     target_pace_min_s_per_km=pace_min_s,
                     target_pace_max_s_per_km=pace_max_s,
-                    target_focus_type="pace_range" if (pace_min_s or pace_max_s) else "none",
+                    target_focus_type="pace_range"
+                    if (pace_min_s or pace_max_s)
+                    else "none",
                 )
             )
             idx += 1
@@ -111,7 +121,9 @@ def parse_segments_from_json(workout_meta: dict) -> list[WorkoutSegmentDef]:
                         duration_min=rest_s / 60.0,
                         target_pace_min_s_per_km=rest_pace_min_s,
                         target_pace_max_s_per_km=rest_pace_max_s,
-                        target_focus_type="pace_range" if (rest_pace_min_s or rest_pace_max_s) else "none",
+                        target_focus_type="pace_range"
+                        if (rest_pace_min_s or rest_pace_max_s)
+                        else "none",
                     )
                 )
                 idx += 1
@@ -128,8 +140,12 @@ def parse_segments_from_json(workout_meta: dict) -> list[WorkoutSegmentDef]:
                 step_type="cooldown",
                 target_zone=None,
                 duration_min=duration_min,
-                target_hr_min_bpm=float(hr["min"]) if hr.get("min") is not None else None,
-                target_hr_max_bpm=float(hr["max"]) if hr.get("max") is not None else None,
+                target_hr_min_bpm=float(hr["min"])
+                if hr.get("min") is not None
+                else None,
+                target_hr_max_bpm=float(hr["max"])
+                if hr.get("max") is not None
+                else None,
                 target_focus_type="hr_range" if hr else "none",
             )
         )

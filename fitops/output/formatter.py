@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 RUN_SPORT_TYPES = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
-RIDE_SPORT_TYPES = {"Ride", "VirtualRide", "EBikeRide", "MountainBikeRide", "GravelRide"}
+RIDE_SPORT_TYPES = {
+    "Ride",
+    "VirtualRide",
+    "EBikeRide",
+    "MountainBikeRide",
+    "GravelRide",
+}
 
 METERS_PER_MILE = 1609.344
 
 
-def _fmt_seconds(seconds: Optional[int]) -> Optional[str]:
+def _fmt_seconds(seconds: int | None) -> str | None:
     if seconds is None:
         return None
     h = seconds // 3600
@@ -20,7 +25,7 @@ def _fmt_seconds(seconds: Optional[int]) -> Optional[str]:
     return f"{m}:{s:02d}"
 
 
-def _fmt_pace_per_km(speed_ms: Optional[float]) -> Optional[str]:
+def _fmt_pace_per_km(speed_ms: float | None) -> str | None:
     if not speed_ms or speed_ms <= 0:
         return None
     seconds_per_km = 1000 / speed_ms
@@ -29,7 +34,7 @@ def _fmt_pace_per_km(speed_ms: Optional[float]) -> Optional[str]:
     return f"{m}:{s:02d}"
 
 
-def _fmt_pace_per_mile(speed_ms: Optional[float]) -> Optional[str]:
+def _fmt_pace_per_mile(speed_ms: float | None) -> str | None:
     if not speed_ms or speed_ms <= 0:
         return None
     seconds_per_mile = METERS_PER_MILE / speed_ms
@@ -38,7 +43,7 @@ def _fmt_pace_per_mile(speed_ms: Optional[float]) -> Optional[str]:
     return f"{m}:{s:02d}"
 
 
-def _round2(val: Optional[float]) -> Optional[float]:
+def _round2(val: float | None) -> float | None:
     return round(val, 2) if val is not None else None
 
 
@@ -91,7 +96,9 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
         "strava_activity_id": row.get("strava_id"),
         "name": row.get("name", ""),
         "sport_type": sport_type,
-        "start_date_local": str(row["start_date_local"]) if row.get("start_date_local") else None,
+        "start_date_local": str(row["start_date_local"])
+        if row.get("start_date_local")
+        else None,
         "start_date_utc": str(row["start_date"]) if row.get("start_date") else None,
         "timezone": row.get("timezone"),
         "duration": {
@@ -149,13 +156,13 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
 
 
 def make_meta(
-    total_count: Optional[int] = None,
-    filters_applied: Optional[dict] = None,
+    total_count: int | None = None,
+    filters_applied: dict | None = None,
 ) -> dict:
     return {
         "tool": "fitops-cli",
         "version": "0.1.0",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "total_count": total_count,
         "filters_applied": filters_applied or {},
     }

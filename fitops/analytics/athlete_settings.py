@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from fitops.config.settings import get_settings
 
@@ -30,55 +29,55 @@ class AthleteSettings:
         self._data = _load()
 
     @property
-    def weight_kg(self) -> Optional[float]:
+    def weight_kg(self) -> float | None:
         return self._data.get("weight_kg")
 
     @property
-    def height_cm(self) -> Optional[float]:
+    def height_cm(self) -> float | None:
         return self._data.get("height_cm")
 
     @property
-    def max_hr(self) -> Optional[int]:
+    def max_hr(self) -> int | None:
         return self._data.get("max_hr")
 
     @property
-    def resting_hr(self) -> Optional[int]:
+    def resting_hr(self) -> int | None:
         return self._data.get("resting_hr")
 
     @property
-    def lthr(self) -> Optional[int]:
+    def lthr(self) -> int | None:
         return self._data.get("lthr")
 
     @property
-    def ftp(self) -> Optional[float]:
+    def ftp(self) -> float | None:
         return self._data.get("ftp")
 
     @property
-    def threshold_pace_per_km_s(self) -> Optional[float]:
+    def threshold_pace_per_km_s(self) -> float | None:
         return self._data.get("threshold_pace_per_km_s")
 
     @property
-    def lt1_pace_s(self) -> Optional[float]:
+    def lt1_pace_s(self) -> float | None:
         return self._data.get("lt1_pace_s")
 
     @property
-    def vo2max_pace_s(self) -> Optional[float]:
+    def vo2max_pace_s(self) -> float | None:
         return self._data.get("vo2max_pace_s")
 
     @property
-    def lt1_hr(self) -> Optional[int]:
+    def lt1_hr(self) -> int | None:
         return self._data.get("lt1_hr")
 
     @property
-    def lt2_hr(self) -> Optional[int]:
+    def lt2_hr(self) -> int | None:
         return self._data.get("lt2_hr")
 
     @property
-    def age(self) -> Optional[int]:
+    def age(self) -> int | None:
         return self._data.get("age")
 
     @property
-    def vo2max_override(self) -> Optional[float]:
+    def vo2max_override(self) -> float | None:
         return self._data.get("vo2max_override")
 
     def set(self, **kwargs) -> None:
@@ -105,7 +104,7 @@ class AthleteSettings:
         return "none"
 
 
-_instance: Optional[AthleteSettings] = None
+_instance: AthleteSettings | None = None
 
 
 def get_athlete_settings() -> AthleteSettings:

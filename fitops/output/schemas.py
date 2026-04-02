@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel, ConfigDict
 
 
@@ -9,8 +7,8 @@ class MetaBlock(BaseModel):
     tool: str = "fitops-cli"
     version: str = "0.1.0"
     generated_at: str
-    total_count: Optional[int] = None
-    filters_applied: Optional[dict] = None
+    total_count: int | None = None
+    filters_applied: dict | None = None
 
 
 class ActivitySummaryOutput(BaseModel):
@@ -19,8 +17,8 @@ class ActivitySummaryOutput(BaseModel):
     strava_activity_id: int
     name: str
     sport_type: str
-    start_date_local: Optional[str] = None
-    start_date_utc: Optional[str] = None
+    start_date_local: str | None = None
+    start_date_utc: str | None = None
 
 
 class SyncResultOutput(BaseModel):

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 
 from fitops.db.models.activity import Activity
 from fitops.db.models.athlete import Athlete
@@ -14,7 +13,7 @@ RUN_TYPES = {"Run", "TrailRun", "VirtualRun"}
 RIDE_TYPES = {"Ride", "VirtualRide", "EBikeRide"}
 
 
-def _percentile(values: list[float], pct: float) -> Optional[float]:
+def _percentile(values: list[float], pct: float) -> float | None:
     if not values:
         return None
     sv = sorted(values)
@@ -38,16 +37,16 @@ def _cv(values: list[float]) -> float:
 class PerformanceMetricsResult:
     sport: str
     activity_count: int
-    running: Optional[dict]
-    cycling: Optional[dict]
-    overall_reliability: Optional[float]
+    running: dict | None
+    cycling: dict | None
+    overall_reliability: float | None
 
 
 async def compute_performance_metrics(
     athlete_id: int,
-    sport: Optional[str] = None,
-) -> Optional[PerformanceMetricsResult]:
-    lookback = datetime.now(timezone.utc) - timedelta(days=365)
+    sport: str | None = None,
+) -> PerformanceMetricsResult | None:
+    lookback = datetime.now(UTC) - timedelta(days=365)
 
     # Normalise sport arg
     if sport and sport.lower() in ("run", "running"):
@@ -86,7 +85,8 @@ async def compute_performance_metrics(
     if target == "Run":
         paces = [
             1000 / a.average_speed_ms / 60
-            for a in activities if a.average_speed_ms and a.average_speed_ms > 0
+            for a in activities
+            if a.average_speed_ms and a.average_speed_ms > 0
         ]
         # Only use peak HR (max_heartrate field), not average HR — pooling them biases 98th percentile low
         all_hr = [float(a.max_heartrate) for a in activities if a.max_heartrate]
@@ -96,8 +96,10 @@ async def compute_performance_metrics(
         # Uses Daniels VO2 demand quadratic, same formula as VDOT calculation
         if avg_pace and avg_pace > 0:
             v_mpm = 1000.0 / avg_pace  # m/min (avg_pace is min/km)
-            vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm ** 2
-            economy = round(max(100.0, min(350.0, vo2_demand / (v_mpm / 1000))), 1)  # ml/kg/km
+            vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm**2
+            economy = round(
+                max(100.0, min(350.0, vo2_demand / (v_mpm / 1000))), 1
+            )  # ml/kg/km
         else:
             economy = None
         pace_cv = _cv(paces)
@@ -151,7 +153,9 @@ async def compute_performance_metrics(
             "power_consistency": power_consistency,
             "variability_index": variability,
         }
-        overall_reliability = round(power_consistency / 100, 3) if power_consistency else None
+        overall_reliability = (
+            round(power_consistency / 100, 3) if power_consistency else None
+        )
         running = None
 
     return PerformanceMetricsResult(

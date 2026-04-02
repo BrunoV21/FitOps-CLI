@@ -1,12 +1,13 @@
 """Tests for targeted improvements: ACWR, HR drift, Daniels VDOT, workout_type."""
+
 from __future__ import annotations
 
 from datetime import date
 
-
 # ---------------------------------------------------------------------------
 # Section 1: workout_type / is_race
 # ---------------------------------------------------------------------------
+
 
 def test_workout_type_is_race():
     from fitops.db.models.activity import Activity
@@ -78,20 +79,34 @@ def test_format_activity_row_is_race_flag():
 # Section 3: ACWR and overtraining indicators
 # ---------------------------------------------------------------------------
 
+
 def _make_daily_load(ctl: float, atl: float, daily_tss: float = 50.0) -> object:
     from fitops.analytics.training_load import DailyLoad
-    return DailyLoad(date=date.today(), daily_tss=daily_tss, ctl=ctl, atl=atl, tsb=round(ctl - atl, 2))
+
+    return DailyLoad(
+        date=date.today(),
+        daily_tss=daily_tss,
+        ctl=ctl,
+        atl=atl,
+        tsb=round(ctl - atl, 2),
+    )
 
 
 def _pad_to_21(entry) -> list:
     """Pad a single DailyLoad to 21 entries to satisfy the ACWR history gate."""
     from fitops.analytics.training_load import DailyLoad
-    filler = DailyLoad(date=date.today(), daily_tss=50.0, ctl=entry.ctl, atl=entry.atl, tsb=entry.tsb)
+
+    filler = DailyLoad(
+        date=date.today(), daily_tss=50.0, ctl=entry.ctl, atl=entry.atl, tsb=entry.tsb
+    )
     return [filler] * 20 + [entry]
 
 
 def test_acwr_optimal():
-    from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
+    from fitops.analytics.training_load import (
+        DailyLoad,
+        _compute_overtraining_indicators,
+    )
 
     entry = DailyLoad(date=date.today(), daily_tss=50.0, ctl=50.0, atl=55.0, tsb=-5.0)
     result = _compute_overtraining_indicators(_pad_to_21(entry))
@@ -100,7 +115,10 @@ def test_acwr_optimal():
 
 
 def test_acwr_detraining():
-    from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
+    from fitops.analytics.training_load import (
+        DailyLoad,
+        _compute_overtraining_indicators,
+    )
 
     entry = DailyLoad(date=date.today(), daily_tss=10.0, ctl=50.0, atl=30.0, tsb=20.0)
     result = _compute_overtraining_indicators(_pad_to_21(entry))
@@ -109,7 +127,10 @@ def test_acwr_detraining():
 
 
 def test_acwr_danger():
-    from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
+    from fitops.analytics.training_load import (
+        DailyLoad,
+        _compute_overtraining_indicators,
+    )
 
     entry = DailyLoad(date=date.today(), daily_tss=200.0, ctl=40.0, atl=75.0, tsb=-35.0)
     result = _compute_overtraining_indicators(_pad_to_21(entry))
@@ -117,7 +138,10 @@ def test_acwr_danger():
 
 
 def test_acwr_zero_ctl():
-    from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
+    from fitops.analytics.training_load import (
+        DailyLoad,
+        _compute_overtraining_indicators,
+    )
 
     entry = DailyLoad(date=date.today(), daily_tss=0.0, ctl=0.0, atl=0.0, tsb=0.0)
     result = _compute_overtraining_indicators(_pad_to_21(entry))
@@ -133,7 +157,10 @@ def test_acwr_empty_history():
 
 
 def test_monotony_varied():
-    from fitops.analytics.training_load import _compute_overtraining_indicators, DailyLoad
+    from fitops.analytics.training_load import (
+        DailyLoad,
+        _compute_overtraining_indicators,
+    )
 
     # Highly varied TSS → low monotony
     history = [
@@ -148,6 +175,7 @@ def test_monotony_varied():
 # ---------------------------------------------------------------------------
 # Section 4: HR drift
 # ---------------------------------------------------------------------------
+
 
 def test_hr_drift_well_coupled():
     from fitops.analytics.activity_insights import compute_hr_drift
@@ -194,6 +222,7 @@ def test_hr_drift_zero_hr_filtered():
 # ---------------------------------------------------------------------------
 # Section 5: Daniels VDOT + Cooper VO2max
 # ---------------------------------------------------------------------------
+
 
 def test_daniels_vdot_10k():
     from fitops.analytics.vo2max import _daniels_vdot
@@ -253,6 +282,7 @@ def test_mcardle_backward_compat():
 # ---------------------------------------------------------------------------
 # Section 2: TSS smoke test (no DB)
 # ---------------------------------------------------------------------------
+
 
 def test_tss_uses_threshold_pace():
     """Smoke test: TSS does not crash without athlete settings configured."""

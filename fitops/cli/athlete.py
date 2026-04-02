@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Optional
 
 import typer
 from sqlalchemy import select
@@ -26,7 +25,9 @@ app = typer.Typer(no_args_is_help=True)
 
 @app.command("profile")
 def profile(
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Show athlete profile and equipment."""
     settings = get_settings()
@@ -46,7 +47,9 @@ def profile(
             athlete = result.scalar_one_or_none()
 
         if athlete is None:
-            typer.echo("Athlete profile not found locally. Run `fitops sync run` first.")
+            typer.echo(
+                "Athlete profile not found locally. Run `fitops sync run` first."
+            )
             raise typer.Exit(1)
 
         return {
@@ -77,7 +80,9 @@ def profile(
 
 @app.command("stats")
 def stats(
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Show Strava cumulative athlete statistics."""
     settings = get_settings()
@@ -101,7 +106,9 @@ def stats(
 
 @app.command("zones")
 def zones(
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Show HR and power zones configured in Strava."""
     settings = get_settings()
@@ -125,17 +132,22 @@ def zones(
 
 @app.command("set")
 def set_physiology(
-    weight: Optional[float] = typer.Option(None, "--weight", help="Body weight in kg."),
-    height: Optional[float] = typer.Option(None, "--height", help="Height in cm."),
-    birthday: Optional[str] = typer.Option(None, "--birthday", help="Date of birth (YYYY-MM-DD)."),
-    ftp: Optional[float] = typer.Option(None, "--ftp", help="FTP in watts (cyclists)."),
+    weight: float | None = typer.Option(None, "--weight", help="Body weight in kg."),
+    height: float | None = typer.Option(None, "--height", help="Height in cm."),
+    birthday: str | None = typer.Option(
+        None, "--birthday", help="Date of birth (YYYY-MM-DD)."
+    ),
+    ftp: float | None = typer.Option(None, "--ftp", help="FTP in watts (cyclists)."),
 ) -> None:
     """Set physiology values (weight, height, birthday, ftp) used for analytics."""
     if weight is None and height is None and birthday is None and ftp is None:
-        typer.echo("Provide at least one of: --weight, --height, --birthday, --ftp", err=True)
+        typer.echo(
+            "Provide at least one of: --weight, --height, --birthday, --ftp", err=True
+        )
         raise typer.Exit(1)
 
     from fitops.analytics.athlete_settings import get_athlete_settings
+
     s = get_athlete_settings()
     updates = {}
     if weight is not None:
@@ -173,8 +185,12 @@ def set_physiology(
 
 @app.command("equipment")
 def equipment(
-    type_filter: Optional[str] = typer.Option(None, "--type", help="Filter by type: shoes or bikes."),
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted text."),
+    type_filter: str | None = typer.Option(
+        None, "--type", help="Filter by type: shoes or bikes."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Show equipment (shoes/bikes) with distance and activity counts."""
     settings = get_settings()
@@ -196,18 +212,30 @@ def equipment(
         if athlete is None:
             return None
 
-        from fitops.db.models.activity import Activity
         from sqlalchemy import func
+
+        from fitops.db.models.activity import Activity
 
         async with get_async_session() as session:
             act_res = await session.execute(
-                select(Activity.gear_id, func.count(Activity.id).label("count"),
-                       func.sum(Activity.distance_m).label("total_m"))
-                .where(Activity.athlete_id == settings.athlete_id, Activity.gear_id.isnot(None))
+                select(
+                    Activity.gear_id,
+                    func.count(Activity.id).label("count"),
+                    func.sum(Activity.distance_m).label("total_m"),
+                )
+                .where(
+                    Activity.athlete_id == settings.athlete_id,
+                    Activity.gear_id.isnot(None),
+                )
                 .group_by(Activity.gear_id)
             )
-            gear_stats = {row.gear_id: {"activity_count": row.count, "distance_m": row.total_m or 0}
-                          for row in act_res.fetchall()}
+            gear_stats = {
+                row.gear_id: {
+                    "activity_count": row.count,
+                    "distance_m": row.total_m or 0,
+                }
+                for row in act_res.fetchall()
+            }
 
         result = []
         items = []
@@ -222,27 +250,39 @@ def equipment(
             stats = gear_stats.get(gid, {})
             strava_dist_km = round(item.get("distance_m", 0) / 1000, 2)
             local_dist_km = round(stats.get("distance_m", 0) / 1000, 2)
-            result.append({
-                "gear_id": gid,
-                "name": item.get("name"),
-                "type": entry["type"],
-                "strava_total_distance_km": strava_dist_km,
-                "local_activity_distance_km": local_dist_km,
-                "local_activity_count": stats.get("activity_count", 0),
-                "primary": item.get("primary", False),
-            })
+            result.append(
+                {
+                    "gear_id": gid,
+                    "name": item.get("name"),
+                    "type": entry["type"],
+                    "strava_total_distance_km": strava_dist_km,
+                    "local_activity_distance_km": local_dist_km,
+                    "local_activity_count": stats.get("activity_count", 0),
+                    "primary": item.get("primary", False),
+                }
+            )
 
         return result
 
     items = asyncio.run(_fetch())
     if items is None:
-        typer.echo("Athlete profile not found locally. Run `fitops sync run` first.", err=True)
+        typer.echo(
+            "Athlete profile not found locally. Run `fitops sync run` first.", err=True
+        )
         raise typer.Exit(1)
 
     if json_output:
-        typer.echo(json.dumps({
-            "_meta": make_meta(total_count=len(items), filters_applied={"type": type_filter}),
-            "equipment": items,
-        }, indent=2, default=str))
+        typer.echo(
+            json.dumps(
+                {
+                    "_meta": make_meta(
+                        total_count=len(items), filters_applied={"type": type_filter}
+                    ),
+                    "equipment": items,
+                },
+                indent=2,
+                default=str,
+            )
+        )
     else:
         print_equipment_table(items)

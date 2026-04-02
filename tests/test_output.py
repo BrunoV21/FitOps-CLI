@@ -1,5 +1,11 @@
 """Tests for output formatting."""
-from fitops.output.formatter import _fmt_seconds, _fmt_pace_per_km, format_activity_row, make_meta
+
+from fitops.output.formatter import (
+    _fmt_pace_per_km,
+    _fmt_seconds,
+    format_activity_row,
+    make_meta,
+)
 
 
 def test_fmt_seconds_with_hours():

@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fitops.config.settings import get_settings
 
@@ -19,6 +19,7 @@ def notes_dir() -> Path:
 # ---------------------------------------------------------------------------
 # Frontmatter parser (no PyYAML dependency)
 # ---------------------------------------------------------------------------
+
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     if not text.startswith("---"):
@@ -66,7 +67,7 @@ def _title_to_slug(title: str) -> str:
     return slug or "note"
 
 
-def _parse_created(val: Any) -> Optional[datetime]:
+def _parse_created(val: Any) -> datetime | None:
     if isinstance(val, datetime):
         return val
     if isinstance(val, str):
@@ -81,6 +82,7 @@ def _parse_created(val: Any) -> Optional[datetime]:
 # NoteFile dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class NoteFile:
     """A note loaded from a .md file in ~/.fitops/notes/."""
@@ -90,8 +92,8 @@ class NoteFile:
     file_path: Path
     title: str
     tags: list[str] = field(default_factory=list)
-    activity_id: Optional[int] = None
-    created: Optional[datetime] = None
+    activity_id: int | None = None
+    created: datetime | None = None
     body: str = ""
     raw: str = ""
 
@@ -99,6 +101,7 @@ class NoteFile:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def load_note_file(path: Path) -> NoteFile:
     raw = path.read_text(encoding="utf-8")
@@ -124,7 +127,7 @@ def list_note_files() -> list[NoteFile]:
     return notes
 
 
-def get_note_file(slug: str) -> Optional[NoteFile]:
+def get_note_file(slug: str) -> NoteFile | None:
     """Find a note by slug (filename stem)."""
     path = notes_dir() / f"{slug}.md"
     if path.exists():
@@ -136,8 +139,8 @@ def create_note_file(
     title: str,
     tags: list[str],
     body: str,
-    activity_id: Optional[int] = None,
-    slug: Optional[str] = None,
+    activity_id: int | None = None,
+    slug: str | None = None,
 ) -> NoteFile:
     """Write a new note .md file and return the loaded NoteFile."""
     if not slug:
@@ -175,8 +178,8 @@ def update_note_file(
     title: str,
     tags: list[str],
     body: str,
-    activity_id: Optional[int] = None,
-) -> Optional[NoteFile]:
+    activity_id: int | None = None,
+) -> NoteFile | None:
     """Overwrite an existing note file preserving the original created timestamp."""
     existing = get_note_file(slug)
     if existing is None:

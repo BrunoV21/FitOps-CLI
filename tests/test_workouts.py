@@ -1,4 +1,5 @@
 """Tests for Phase 3.1 — Markdown workout definitions."""
+
 from __future__ import annotations
 
 import json
@@ -6,15 +7,12 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from fitops.workouts.loader import (
     WorkoutFile,
     _parse_frontmatter,
     _stem_to_name,
     load_workout_file,
 )
-
 
 # ---------------------------------------------------------------------------
 # Frontmatter parser
@@ -125,6 +123,7 @@ def test_parse_frontmatter_body_stripped():
 # Stem-to-name helper
 # ---------------------------------------------------------------------------
 
+
 def test_stem_to_name_hyphens():
     assert _stem_to_name("threshold-tuesday") == "Threshold Tuesday"
 
@@ -140,6 +139,7 @@ def test_stem_to_name_mixed():
 # ---------------------------------------------------------------------------
 # load_workout_file
 # ---------------------------------------------------------------------------
+
 
 def _write_tmp_workout(content: str) -> Path:
     """Write content to a temporary .md file and return the path."""
@@ -194,6 +194,7 @@ def test_load_workout_file_fields():
 # WorkoutFile dataclass
 # ---------------------------------------------------------------------------
 
+
 def test_workout_file_is_dataclass():
     w = WorkoutFile(
         file_name="test.md",
@@ -215,14 +216,17 @@ def test_workout_file_is_dataclass():
 # Workout DB model helpers
 # ---------------------------------------------------------------------------
 
+
 def test_workout_model_get_meta_empty():
     from fitops.db.models.workout import Workout
+
     w = Workout(name="x", sport_type="Run")
     assert w.get_workout_meta() == {}
 
 
 def test_workout_model_get_meta_valid_json():
     from fitops.db.models.workout import Workout
+
     w = Workout(name="x", sport_type="Run")
     w.workout_meta = json.dumps({"sport": "Run", "tags": ["z4"]})
     assert w.get_workout_meta()["sport"] == "Run"
@@ -231,6 +235,7 @@ def test_workout_model_get_meta_valid_json():
 
 def test_workout_model_get_meta_invalid_json():
     from fitops.db.models.workout import Workout
+
     w = Workout(name="x", sport_type="Run")
     w.workout_meta = "not-json{{"
     assert w.get_workout_meta() == {}
@@ -238,6 +243,7 @@ def test_workout_model_get_meta_invalid_json():
 
 def test_workout_model_get_physiology_snapshot():
     from fitops.db.models.workout import Workout
+
     snap = {"ctl": 72.4, "atl": 68.1, "tsb": 4.3, "vo2max": 52.8}
     w = Workout(name="x", sport_type="Run")
     w.physiology_snapshot = json.dumps(snap)
@@ -248,6 +254,7 @@ def test_workout_model_get_physiology_snapshot():
 
 def test_workout_model_to_summary_dict():
     from fitops.db.models.workout import Workout
+
     w = Workout(name="Threshold Tuesday", sport_type="Run", status="completed")
     d = w.to_summary_dict()
     assert d["name"] == "Threshold Tuesday"

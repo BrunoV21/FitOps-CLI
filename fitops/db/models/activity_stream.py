@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Index, Integer, Text, UniqueConstraint
+from sqlalchemy import DateTime, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from fitops.db.base import Base
@@ -17,9 +16,9 @@ class ActivityStream(Base):
     activity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     stream_type: Mapped[str] = mapped_column(Text, nullable=False)
     data_json: Mapped[str] = mapped_column(Text, nullable=False)
-    data_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    data_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (
@@ -31,7 +30,9 @@ class ActivityStream(Base):
         return json.loads(self.data_json)
 
     @classmethod
-    def from_strava_stream(cls, activity_id: int, stream_type: str, data: list) -> "ActivityStream":
+    def from_strava_stream(
+        cls, activity_id: int, stream_type: str, data: list
+    ) -> ActivityStream:
         return cls(
             activity_id=activity_id,
             stream_type=stream_type,
