@@ -4,8 +4,7 @@ import asyncio
 import json
 import os
 import subprocess
-import tempfile
-from typing import Optional
+from datetime import UTC
 
 import typer
 from sqlalchemy import delete, select
@@ -20,9 +19,13 @@ from fitops.notes.loader import (
     get_note_file,
     list_note_files,
     notes_dir,
-    update_note_file,
 )
 from fitops.output.formatter import make_meta
+from fitops.output.text_formatter import (
+    print_note_detail,
+    print_note_tags,
+    print_notes_list,
+)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -31,9 +34,9 @@ app = typer.Typer(no_args_is_help=True)
 # DB helpers
 # ---------------------------------------------------------------------------
 
+
 async def _upsert_note(note: NoteFile) -> None:
     """Insert or update a Note DB row from a NoteFile."""
-    from datetime import timezone
 
     async with get_async_session() as session:
         res = await session.execute(select(Note).where(Note.slug == note.slug))
@@ -41,7 +44,7 @@ async def _upsert_note(note: NoteFile) -> None:
 
         preview = note.body[:200].strip() if note.body else None
         tags_json = json.dumps(note.tags)
-        created_at = note.created.replace(tzinfo=timezone.utc) if note.created else None
+        created_at = note.created.replace(tzinfo=UTC) if note.created else None
 
         if row:
             row.title = note.title
@@ -88,12 +91,18 @@ async def _sync_all() -> int:
 # Commands
 # ---------------------------------------------------------------------------
 
+
 @app.command("create")
 def create_note(
     title: str = typer.Option(..., "--title", "-t", help="Note title."),
-    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags."),
-    body: Optional[str] = typer.Option(None, "--body", help="Note body (markdown)."),
-    activity: Optional[int] = typer.Option(None, "--activity", "-a", help="Link to a Strava activity ID."),
+    tags: str | None = typer.Option(None, "--tags", help="Comma-separated tags."),
+    body: str | None = typer.Option(None, "--body", help="Note body (markdown)."),
+    activity: int | None = typer.Option(
+        None, "--activity", "-a", help="Link to a Strava activity ID."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Create a new note and save it to ~/.fitops/notes/."""
     init_db()
@@ -101,32 +110,41 @@ def create_note(
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     note_body = body or ""
 
-    note = create_note_file(title=title, tags=tag_list, body=note_body, activity_id=activity)
+    note = create_note_file(
+        title=title, tags=tag_list, body=note_body, activity_id=activity
+    )
     asyncio.run(_upsert_note(note))
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(),
-                "created": {
-                    "slug": note.slug,
-                    "title": note.title,
-                    "tags": note.tags,
-                    "activity_id": note.activity_id,
-                    "file_path": str(note.file_path),
-                    "created": note.created.isoformat() if note.created else None,
-                },
-            },
-            indent=2,
-        )
-    )
+    out = {
+        "_meta": make_meta(),
+        "created": {
+            "slug": note.slug,
+            "title": note.title,
+            "tags": note.tags,
+            "activity_id": note.activity_id,
+            "file_path": str(note.file_path),
+            "created": note.created.isoformat() if note.created else None,
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2))
+    else:
+        typer.echo(f"Created note: {note.title}  ({note.slug}.md)")
+        if note.tags:
+            typer.echo(f"  Tags: {', '.join(note.tags)}")
+        typer.echo(f"  File: {note.file_path}")
 
 
 @app.command("list")
 def list_notes(
-    tag: Optional[str] = typer.Option(None, "--tag", help="Filter by tag."),
-    activity: Optional[int] = typer.Option(None, "--activity", "-a", help="Filter by activity ID."),
+    tag: str | None = typer.Option(None, "--tag", help="Filter by tag."),
+    activity: int | None = typer.Option(
+        None, "--activity", "-a", help="Filter by activity ID."
+    ),
     limit: int = typer.Option(50, "--limit", help="Max results."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """List notes, newest first. Re-syncs DB index from disk."""
     init_db()
@@ -150,60 +168,58 @@ def list_notes(
     if activity:
         filters["activity_id"] = activity
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(total_count=len(notes), filters_applied=filters or None),
-                "notes_dir": str(notes_dir()),
-                "notes": [
-                    {
-                        "slug": n.slug,
-                        "title": n.title,
-                        "tags": n.tags,
-                        "activity_id": n.activity_id,
-                        "created": n.created.isoformat() if n.created else None,
-                        "body_preview": n.body[:200].strip() if n.body else "",
-                    }
-                    for n in notes
-                ],
-            },
-            indent=2,
-        )
-    )
+    notes_data = [
+        {
+            "slug": n.slug,
+            "title": n.title,
+            "tags": n.tags,
+            "activity_id": n.activity_id,
+            "created": n.created.isoformat() if n.created else None,
+            "body_preview": n.body[:200].strip() if n.body else "",
+        }
+        for n in notes
+    ]
+
+    out = {
+        "_meta": make_meta(total_count=len(notes), filters_applied=filters or None),
+        "notes_dir": str(notes_dir()),
+        "notes": notes_data,
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2))
+    else:
+        print_notes_list(out)
 
 
 @app.command("get")
 def get_note(
     slug: str = typer.Argument(..., help="Note slug (filename without .md)."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Display a note's full content."""
     note = get_note_file(slug)
     if note is None:
-        typer.echo(
-            json.dumps(
-                {"error": f"Note '{slug}' not found.", "hint": "Run `fitops notes list` to see available notes."},
-                indent=2,
-            )
-        )
+        typer.echo(f"Note '{slug}' not found. Run `fitops notes list` to see available notes.", err=True)
         raise typer.Exit(1)
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(),
-                "note": {
-                    "slug": note.slug,
-                    "title": note.title,
-                    "tags": note.tags,
-                    "activity_id": note.activity_id,
-                    "created": note.created.isoformat() if note.created else None,
-                    "body": note.body,
-                    "file_path": str(note.file_path),
-                },
-            },
-            indent=2,
-        )
-    )
+    out = {
+        "_meta": make_meta(),
+        "note": {
+            "slug": note.slug,
+            "title": note.title,
+            "tags": note.tags,
+            "activity_id": note.activity_id,
+            "created": note.created.isoformat() if note.created else None,
+            "body": note.body,
+            "file_path": str(note.file_path),
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2))
+    else:
+        print_note_detail(out)
 
 
 @app.command("edit")
@@ -213,20 +229,13 @@ def edit_note(
     """Open a note in $EDITOR, then re-sync DB."""
     note = get_note_file(slug)
     if note is None:
-        typer.echo(json.dumps({"error": f"Note '{slug}' not found."}, indent=2))
+        typer.echo(f"Note '{slug}' not found.", err=True)
         raise typer.Exit(1)
 
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
     if not editor:
-        typer.echo(
-            json.dumps(
-                {
-                    "hint": f"Set $EDITOR env var to edit in your preferred editor.",
-                    "file_path": str(note.file_path),
-                },
-                indent=2,
-            )
-        )
+        typer.echo(f"Set $EDITOR to edit in your preferred editor.")
+        typer.echo(f"  File: {note.file_path}")
         return
 
     subprocess.call([editor, str(note.file_path)])
@@ -237,7 +246,7 @@ def edit_note(
     if reloaded:
         asyncio.run(_upsert_note(reloaded))
 
-    typer.echo(json.dumps({"_meta": make_meta(), "edited": slug}, indent=2))
+    typer.echo(f"Saved: {slug}")
 
 
 @app.command("delete")
@@ -248,7 +257,7 @@ def delete_note(
     """Delete a note file and remove it from the DB index."""
     note = get_note_file(slug)
     if note is None:
-        typer.echo(json.dumps({"error": f"Note '{slug}' not found."}, indent=2))
+        typer.echo(f"Note '{slug}' not found.", err=True)
         raise typer.Exit(1)
 
     if not yes:
@@ -258,11 +267,15 @@ def delete_note(
     delete_note_file(slug)
     asyncio.run(_delete_note_db(slug))
 
-    typer.echo(json.dumps({"_meta": make_meta(), "deleted": slug}, indent=2))
+    typer.echo(f"Deleted: {slug}")
 
 
 @app.command("tags")
-def list_tags() -> None:
+def list_tags(
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
     """List all tags with usage counts."""
     notes = list_note_files()
 
@@ -273,15 +286,14 @@ def list_tags() -> None:
 
     sorted_tags = sorted(counts.items(), key=lambda x: x[1], reverse=True)
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(total_count=len(sorted_tags)),
-                "tags": [{"tag": t, "count": c} for t, c in sorted_tags],
-            },
-            indent=2,
-        )
-    )
+    out = {
+        "_meta": make_meta(total_count=len(sorted_tags)),
+        "tags": [{"tag": t, "count": c} for t, c in sorted_tags],
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2))
+    else:
+        print_note_tags(out)
 
 
 @app.command("sync")
@@ -289,4 +301,4 @@ def sync_notes() -> None:
     """Re-index all note files into the DB (runs automatically on `list`)."""
     init_db()
     count = asyncio.run(_sync_all())
-    typer.echo(json.dumps({"_meta": make_meta(), "synced": count}, indent=2))
+    typer.echo(f"Synced {count} notes.")
