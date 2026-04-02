@@ -248,8 +248,18 @@
 
 {% else %}
 <div class="empty-state mt-4">
-  <p>No run data found.</p>
+  {% if not hr_configured %}
+  <p style="font-weight:600;margin-bottom:6px;">HR reference required</p>
+  <p class="panel-sub" style="max-width:480px;margin:0 auto 16px;">
+    VO₂max estimation requires a minimum effort threshold — either <strong>90% of your LTHR</strong> or <strong>80% of your max HR</strong>.
+    Neither is configured yet.
+  </p>
+  <a href="/profile#hr-zones" class="btn btn-primary">Set up HR zones in Profile</a>
+  {% else %}
+  <p>No qualifying run activities found.</p>
+  <p class="panel-sub" style="margin-top:6px;">Activities must be at least 1500 m and meet the effort threshold (90% LTHR or 80% HRmax).</p>
   <button class="btn btn-primary" style="margin-top:12px;" onclick="triggerSync()">Import activities</button>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
