@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Optional
+from datetime import UTC
 
 import typer
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
@@ -15,11 +15,17 @@ from fitops.db.models.workout import Workout
 from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
 from fitops.output.formatter import make_meta
+from fitops.output.text_formatter import (
+    print_workout_compliance,
+    print_workout_detail,
+    print_workout_history,
+    print_workout_simulate,
+    print_workouts_list,
+)
 from fitops.utils.exceptions import NotAuthenticatedError
 from fitops.workouts.compliance import compute_compliance, overall_compliance_score
 from fitops.workouts.json_parser import generate_markdown_body, parse_segments_from_json
 from fitops.workouts.loader import (
-    WorkoutFile,
     get_workout_file,
     list_workout_files,
     workouts_dir,
@@ -33,12 +39,14 @@ app = typer.Typer(no_args_is_help=True)
 # Physiology snapshot helper
 # ---------------------------------------------------------------------------
 
+
 async def _build_physiology_snapshot(athlete_id: int) -> dict:
     """Compute a physiology snapshot (CTL, ATL, TSB, VO2max, LT1/LT2)."""
     snapshot: dict = {}
 
     try:
         from fitops.analytics.training_load import compute_training_load
+
         tl = await compute_training_load(athlete_id=athlete_id, days=1)
         if tl.current:
             snapshot["ctl"] = tl.current.ctl
@@ -50,6 +58,7 @@ async def _build_physiology_snapshot(athlete_id: int) -> dict:
 
     try:
         from fitops.analytics.vo2max import estimate_vo2max
+
         vo2 = await estimate_vo2max(athlete_id=athlete_id)
         if vo2:
             snapshot["vo2max"] = vo2.estimate
@@ -59,6 +68,7 @@ async def _build_physiology_snapshot(athlete_id: int) -> dict:
 
     try:
         from fitops.analytics.athlete_settings import get_athlete_settings
+
         s = get_athlete_settings()
         if s.lthr:
             snapshot["lt2_hr"] = s.lthr
@@ -68,6 +78,7 @@ async def _build_physiology_snapshot(athlete_id: int) -> dict:
         snapshot["zones_method"] = s.best_zone_method()
         if snapshot["zones_method"] != "none":
             from fitops.analytics.zones import compute_zones
+
             zr = compute_zones(
                 method=snapshot["zones_method"],
                 lthr=s.lthr,
@@ -86,88 +97,80 @@ async def _build_physiology_snapshot(athlete_id: int) -> dict:
 # Commands
 # ---------------------------------------------------------------------------
 
+
 @app.command("list")
-def list_workouts() -> None:
+def list_workouts(
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
     """List workout definition files in ~/.fitops/workouts/."""
     d = workouts_dir()
     files = list_workout_files()
 
-    if not files:
-        typer.echo(
-            json.dumps(
-                {
-                    "_meta": make_meta(total_count=0),
-                    "workouts": [],
-                    "hint": f"Add .md workout files to {d}",
-                },
-                indent=2,
-            )
-        )
-        return
-
-    typer.echo(
-        json.dumps(
+    out = {
+        "_meta": make_meta(total_count=len(files)),
+        "workouts_dir": str(d),
+        "workouts": [
             {
-                "_meta": make_meta(total_count=len(files)),
-                "workouts_dir": str(d),
-                "workouts": [
-                    {
-                        "file_name": w.file_name,
-                        "name": w.name,
-                        "sport": w.sport,
-                        "target_duration_min": w.target_duration_min,
-                        "tags": w.tags,
-                    }
-                    for w in files
-                ],
-            },
-            indent=2,
-        )
-    )
+                "file_name": w.file_name,
+                "name": w.name,
+                "sport": w.sport,
+                "target_duration_min": w.target_duration_min,
+                "tags": w.tags,
+            }
+            for w in files
+        ],
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2))
+    else:
+        print_workouts_list(out)
 
 
 @app.command("show")
 def show_workout(
-    name: str = typer.Argument(..., help="Workout filename or name (e.g. threshold-tuesday)"),
+    name: str = typer.Argument(
+        ..., help="Workout filename or name (e.g. threshold-tuesday)"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Display a workout definition file."""
     w = get_workout_file(name)
     if w is None:
         typer.echo(
-            json.dumps(
-                {
-                    "error": f"Workout '{name}' not found.",
-                    "hint": f"Run `fitops workouts list` to see available workouts.",
-                },
-                indent=2,
-            )
+            f"Workout '{name}' not found. Run `fitops workouts list` to see available workouts.",
+            err=True,
         )
         raise typer.Exit(1)
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(),
-                "workout": {
-                    "file_name": w.file_name,
-                    "name": w.name,
-                    "sport": w.sport,
-                    "target_duration_min": w.target_duration_min,
-                    "tags": w.tags,
-                    "meta": w.meta,
-                    "body": w.body,
-                },
-            },
-            indent=2,
-        )
-    )
+    out = {
+        "_meta": make_meta(),
+        "workout": {
+            "file_name": w.file_name,
+            "name": w.name,
+            "sport": w.sport,
+            "target_duration_min": w.target_duration_min,
+            "tags": w.tags,
+            "meta": w.meta,
+            "body": w.body,
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2))
+    else:
+        print_workout_detail(out)
 
 
 @app.command("link")
 def link_workout(
     name: str = typer.Argument(..., help="Workout filename or name."),
     activity_id: int = typer.Argument(..., help="Strava activity ID to link to."),
-    notes: Optional[str] = typer.Option(None, "--notes", help="Optional notes for this workout instance."),
+    notes: str | None = typer.Option(
+        None, "--notes", help="Optional notes for this workout instance."
+    ),
 ) -> None:
     """Link a workout definition to a synced activity and capture a physiology snapshot."""
     settings = get_settings()
@@ -190,7 +193,7 @@ def link_workout(
     init_db()
 
     async def _link():
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         async with get_async_session() as session:
             # Verify the activity exists locally
@@ -219,7 +222,7 @@ def link_workout(
             )
             existing = res2.scalar_one_or_none()
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             if existing:
                 # Update the existing link
@@ -349,8 +352,13 @@ def get_workout(
 
 @app.command("history")
 def history(
-    limit: int = typer.Option(20, "--limit", help="Max number of linked workouts to show."),
-    sport: Optional[str] = typer.Option(None, "--sport", help="Filter by sport type."),
+    limit: int = typer.Option(
+        20, "--limit", help="Max number of linked workouts to show."
+    ),
+    sport: str | None = typer.Option(None, "--sport", help="Filter by sport type."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """List workouts that have been linked to activities."""
     init_db()
@@ -374,22 +382,25 @@ def history(
     if sport:
         filters["sport"] = sport
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(total_count=len(workouts), filters_applied=filters),
-                "workouts": [w.to_summary_dict() for w in workouts],
-            },
-            indent=2,
-            default=str,
-        )
-    )
+    out = {
+        "_meta": make_meta(total_count=len(workouts), filters_applied=filters),
+        "workouts": [w.to_summary_dict() for w in workouts],
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_workout_history(out)
 
 
 @app.command("compliance")
 def compliance(
     activity_id: int = typer.Argument(..., help="Strava activity ID."),
-    recalculate: bool = typer.Option(False, "--recalculate", help="Force re-score even if segments already exist."),
+    recalculate: bool = typer.Option(
+        False, "--recalculate", help="Force re-score even if segments already exist."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Score each workout segment against the activity's heart rate stream."""
     settings = get_settings()
@@ -428,7 +439,11 @@ def compliance(
                 )
                 cached = res3.scalars().all()
                 if cached:
-                    return {"workout": workout, "segments": cached, "cached": True}, None
+                    return {
+                        "workout": workout,
+                        "segments": cached,
+                        "cached": True,
+                    }, None
 
             # 4. Fetch all streams from Strava if not cached locally
             res_streams = await session.execute(
@@ -440,6 +455,7 @@ def compliance(
             if not streams_dict:
                 # Fetch streams from Strava
                 from fitops.strava.client import StravaClient
+
                 client = StravaClient()
                 stream_data = await client.get_activity_streams(activity_id)
                 for stream_type, stream_obj in stream_data.items():
@@ -456,13 +472,18 @@ def compliance(
                     )
                     if existing.scalar_one_or_none() is None:
                         session.add(
-                            ActivityStream.from_strava_stream(activity.id, stream_type, data_list)
+                            ActivityStream.from_strava_stream(
+                                activity.id, stream_type, data_list
+                            )
                         )
                         streams_dict[stream_type] = data_list
                 activity.streams_fetched = True
                 await session.flush()
 
-            if "heartrate" not in streams_dict and "velocity_smooth" not in streams_dict:
+            if (
+                "heartrate" not in streams_dict
+                and "velocity_smooth" not in streams_dict
+            ):
                 return None, "no_heartrate_stream"
 
         # 5. Parse workout segments and zones (outside session — pure computation)
@@ -489,18 +510,33 @@ def compliance(
 
         from fitops.analytics.athlete_settings import get_athlete_settings
         from fitops.analytics.zones import compute_zones
+
         athlete_s = get_athlete_settings()
         method = athlete_s.best_zone_method()
-        zones = compute_zones(
-            method=method,
-            lthr=athlete_s.lthr,
-            max_hr=athlete_s.max_hr,
-            resting_hr=athlete_s.resting_hr,
-        ) if method != "none" else None
+        zones = (
+            compute_zones(
+                method=method,
+                lthr=athlete_s.lthr,
+                max_hr=athlete_s.max_hr,
+                resting_hr=athlete_s.resting_hr,
+            )
+            if method != "none"
+            else None
+        )
 
-        is_run = (activity.sport_type or "Run") in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
-        moving_time_s = activity.moving_time_s or len(streams_dict.get("heartrate", streams_dict.get("velocity_smooth", [])))
-        results = compute_compliance(segments, streams_dict, moving_time_s, zones, is_run=is_run)
+        is_run = (activity.sport_type or "Run") in {
+            "Run",
+            "TrailRun",
+            "Walk",
+            "Hike",
+            "VirtualRun",
+        }
+        moving_time_s = activity.moving_time_s or len(
+            streams_dict.get("heartrate", streams_dict.get("velocity_smooth", []))
+        )
+        results = compute_compliance(
+            segments, streams_dict, moving_time_s, zones, is_run=is_run
+        )
         overall = overall_compliance_score(results)
 
         # 6. Persist segment rows (upsert by workout_id + segment_index)
@@ -513,7 +549,9 @@ def compliance(
                     )
                 )
                 existing_row = existing.scalar_one_or_none()
-                new_row = WorkoutSegment.from_compliance_result(workout.id, activity.id, r)
+                new_row = WorkoutSegment.from_compliance_result(
+                    workout.id, activity.id, r
+                )
                 if existing_row:
                     for col in WorkoutSegment.__table__.columns:
                         if col.name not in ("id",):
@@ -529,21 +567,57 @@ def compliance(
             if w and overall is not None:
                 w.compliance_score = overall
 
-        return {"workout": workout, "results": results, "overall": overall, "cached": False}, None
+        return {
+            "workout": workout,
+            "results": results,
+            "overall": overall,
+            "cached": False,
+        }, None
 
     data, err = asyncio.run(_run())
 
     if err == "activity_not_found":
-        typer.echo(json.dumps({"error": f"Activity {activity_id} not found locally.", "hint": "Run `fitops sync run` first."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"Activity {activity_id} not found locally.",
+                    "hint": "Run `fitops sync run` first.",
+                },
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
     if err == "no_workout_linked":
-        typer.echo(json.dumps({"error": f"No workout linked to activity {activity_id}.", "hint": "Use `fitops workouts link <name> <activity_id>` first."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"No workout linked to activity {activity_id}.",
+                    "hint": "Use `fitops workouts link <name> <activity_id>` first.",
+                },
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
     if err == "no_heartrate_stream":
-        typer.echo(json.dumps({"error": "No heart rate data for this activity. Compliance requires an HR stream."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "error": "No heart rate data for this activity. Compliance requires an HR stream."
+                },
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
     if err == "no_segments_parsed":
-        typer.echo(json.dumps({"error": "No ## segments found in the workout file.", "hint": "Add ## Warmup / ## Main Set / ## Cooldown headings to your workout .md file."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "error": "No ## segments found in the workout file.",
+                    "hint": "Add ## Warmup / ## Main Set / ## Cooldown headings to your workout .md file.",
+                },
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
 
     workout = data["workout"]
@@ -551,11 +625,10 @@ def compliance(
     if data.get("cached"):
         segments_out = [s.to_dict() for s in data["segments"]]
         overall_score = (
-            workout.compliance_score
-            if hasattr(workout, "compliance_score")
-            else None
+            workout.compliance_score if hasattr(workout, "compliance_score") else None
         )
     else:
+
         def _fmt_pace(pace_s):
             if pace_s is None:
                 return None
@@ -570,7 +643,10 @@ def compliance(
                 "target_focus_type": r.segment.target_focus_type,
                 "target_zone": r.segment.target_zone,
                 "target_hr_range": (
-                    {"min_bpm": r.segment.target_hr_min_bpm, "max_bpm": r.segment.target_hr_max_bpm}
+                    {
+                        "min_bpm": r.segment.target_hr_min_bpm,
+                        "max_bpm": r.segment.target_hr_max_bpm,
+                    }
                     if r.segment.target_hr_min_bpm is not None
                     else None
                 ),
@@ -593,7 +669,9 @@ def compliance(
                     "avg_pace_per_km": r.avg_pace_per_km,
                     "avg_pace_formatted": _fmt_pace(r.avg_pace_per_km),
                     "avg_speed_ms": r.avg_speed_ms,
-                    "avg_speed_kmh": round(r.avg_speed_ms * 3.6, 2) if r.avg_speed_ms else None,
+                    "avg_speed_kmh": round(r.avg_speed_ms * 3.6, 2)
+                    if r.avg_speed_ms
+                    else None,
                     "avg_cadence": r.avg_cadence,
                     "avg_gap_per_km": r.avg_gap_per_km,
                     "avg_gap_formatted": _fmt_pace(r.avg_gap_per_km),
@@ -617,29 +695,29 @@ def compliance(
         ]
         overall_score = data["overall"]
 
-    typer.echo(
-        json.dumps(
-            {
-                "_meta": make_meta(total_count=len(segments_out)),
-                "workout_name": workout.name,
-                "activity_strava_id": activity_id,
-                "overall_compliance_score": overall_score,
-                "zones_method": (
-                    workout.get_physiology_snapshot().get("zones_method")
-                    if hasattr(workout, "get_physiology_snapshot")
-                    else None
-                ),
-                "segments": segments_out,
-            },
-            indent=2,
-            default=str,
-        )
-    )
+    out = {
+        "_meta": make_meta(total_count=len(segments_out)),
+        "workout_name": workout.name,
+        "activity_strava_id": activity_id,
+        "overall_compliance_score": overall_score,
+        "zones_method": (
+            workout.get_physiology_snapshot().get("zones_method")
+            if hasattr(workout, "get_physiology_snapshot")
+            else None
+        ),
+        "segments": segments_out,
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_workout_compliance(out)
 
 
 @app.command("create")
 def create_workout(
-    name: str = typer.Argument(..., help="Workout display name (e.g. '10 Mar Intervals')."),
+    name: str = typer.Argument(
+        ..., help="Workout display name (e.g. '10 Mar Intervals')."
+    ),
     source: str = typer.Argument(
         "-",
         help="Path to JSON file, or '-' to read from stdin.",
@@ -675,11 +753,15 @@ def create_workout(
     try:
         segments = parse_segments_from_json(workout_json)
     except Exception as e:
-        typer.echo(json.dumps({"error": f"Failed to parse workout JSON: {e}"}, indent=2))
+        typer.echo(
+            json.dumps({"error": f"Failed to parse workout JSON: {e}"}, indent=2)
+        )
         raise typer.Exit(1)
 
     if not segments:
-        typer.echo(json.dumps({"error": "No segments found in workout JSON."}, indent=2))
+        typer.echo(
+            json.dumps({"error": "No segments found in workout JSON."}, indent=2)
+        )
         raise typer.Exit(1)
 
     # Compute total planned duration
@@ -728,7 +810,9 @@ def create_workout(
                         {
                             "name": s.name,
                             "step_type": s.step_type,
-                            "duration_min": round(s.duration_min, 1) if s.duration_min else None,
+                            "duration_min": round(s.duration_min, 1)
+                            if s.duration_min
+                            else None,
                             "target_focus_type": s.target_focus_type,
                         }
                         for s in segments
@@ -742,22 +826,50 @@ def create_workout(
 
 @app.command("simulate")
 def simulate_workout(
-    name: str = typer.Argument(..., help="Workout name or filename (e.g. threshold-tuesday)."),
-    course_id: Optional[int] = typer.Option(None, "--course", help="RaceCourse ID (from `fitops race courses`)."),
-    activity_id: Optional[int] = typer.Option(None, "--activity", help="Strava activity ID — build course on the fly from cached streams."),
-    base_pace: Optional[str] = typer.Option(None, "--base-pace", help="Base pace MM:SS/km for HR-zone segments with no pace target."),
-    temp: Optional[float] = typer.Option(None, "--temp", help="Temperature °C (manual override)."),
-    humidity: Optional[float] = typer.Option(None, "--humidity", help="Relative humidity % (manual override)."),
-    wind: Optional[float] = typer.Option(None, "--wind", help="Wind speed m/s."),
-    wind_dir: Optional[float] = typer.Option(None, "--wind-dir", help="Wind direction degrees (0=N)."),
-    sim_date: Optional[str] = typer.Option(None, "--date", help="Date YYYY-MM-DD for weather fetch."),
-    sim_hour: int = typer.Option(9, "--hour", help="Start hour local time (0-23) for weather fetch."),
+    name: str = typer.Argument(
+        ..., help="Workout name or filename (e.g. threshold-tuesday)."
+    ),
+    course_id: int | None = typer.Option(
+        None, "--course", help="RaceCourse ID (from `fitops race courses`)."
+    ),
+    activity_id: int | None = typer.Option(
+        None,
+        "--activity",
+        help="Strava activity ID — build course on the fly from cached streams.",
+    ),
+    base_pace: str | None = typer.Option(
+        None,
+        "--base-pace",
+        help="Base pace MM:SS/km for HR-zone segments with no pace target.",
+    ),
+    temp: float | None = typer.Option(
+        None, "--temp", help="Temperature °C (manual override)."
+    ),
+    humidity: float | None = typer.Option(
+        None, "--humidity", help="Relative humidity % (manual override)."
+    ),
+    wind: float | None = typer.Option(None, "--wind", help="Wind speed m/s."),
+    wind_dir: float | None = typer.Option(
+        None, "--wind-dir", help="Wind direction degrees (0=N)."
+    ),
+    sim_date: str | None = typer.Option(
+        None, "--date", help="Date YYYY-MM-DD for weather fetch."
+    ),
+    sim_hour: int = typer.Option(
+        9, "--hour", help="Start hour local time (0-23) for weather fetch."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
 ) -> None:
     """Simulate a workout on a course: per-segment terrain + weather adjusted paces."""
     import datetime as _dt
 
+    from fitops.dashboard.queries.race import get_course
     from fitops.race.course_parser import (
         _parse_time as _parse_pace_time,
+    )
+    from fitops.race.course_parser import (
         build_km_segments,
         compute_total_elevation_gain,
         parse_strava_activity,
@@ -768,25 +880,42 @@ def simulate_workout(
         simulate_workout_on_course,
         validate_distance_mismatch,
     )
-    from fitops.dashboard.queries.race import get_course
 
     init_db()
 
     # --- validate options ---
     if course_id is None and activity_id is None:
-        typer.echo(json.dumps({"error": "Provide --course <id> or --activity <strava_id>."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"error": "Provide --course <id> or --activity <strava_id>."}, indent=2
+            )
+        )
         raise typer.Exit(1)
     if course_id is not None and activity_id is not None:
-        typer.echo(json.dumps({"error": "Provide only one of --course or --activity, not both."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"error": "Provide only one of --course or --activity, not both."},
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
     if (temp is None) != (humidity is None):
-        typer.echo(json.dumps({"error": "--temp and --humidity must be used together."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"error": "--temp and --humidity must be used together."}, indent=2
+            )
+        )
         raise typer.Exit(1)
 
     # --- load workout ---
     wf = get_workout_file(name)
     if wf is None:
-        typer.echo(json.dumps({"error": f"Workout {name!r} not found in ~/.fitops/workouts/."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"error": f"Workout {name!r} not found in ~/.fitops/workouts/."},
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
 
     if wf.meta.get("training"):
@@ -795,32 +924,45 @@ def simulate_workout(
         segments = parse_segments_from_body(wf.body)
 
     if not segments:
-        typer.echo(json.dumps({"error": f"No segments found in workout {name!r}."}, indent=2))
+        typer.echo(
+            json.dumps({"error": f"No segments found in workout {name!r}."}, indent=2)
+        )
         raise typer.Exit(1)
 
     # --- base pace ---
-    base_pace_s: Optional[float] = None
+    base_pace_s: float | None = None
     if base_pace is not None:
         try:
             base_pace_s = _parse_pace_time(base_pace)
         except (ValueError, IndexError):
-            typer.echo(json.dumps({"error": f"Invalid --base-pace format: {base_pace!r}. Use MM:SS."}, indent=2))
+            typer.echo(
+                json.dumps(
+                    {"error": f"Invalid --base-pace format: {base_pace!r}. Use MM:SS."},
+                    indent=2,
+                )
+            )
             raise typer.Exit(1)
 
     # --- load / build course km-segments ---
     course_summary: dict = {}
     km_segs: list[dict] = []
-    course_start_lat: Optional[float] = None
-    course_start_lon: Optional[float] = None
+    course_start_lat: float | None = None
+    course_start_lon: float | None = None
 
     if course_id is not None:
         course = asyncio.run(get_course(course_id))
         if course is None:
-            typer.echo(json.dumps({"error": f"Course {course_id} not found."}, indent=2))
+            typer.echo(
+                json.dumps({"error": f"Course {course_id} not found."}, indent=2)
+            )
             raise typer.Exit(1)
         km_segs = course.get_km_segments()
         if not km_segs:
-            typer.echo(json.dumps({"error": "Course has no segments. Re-import the course."}, indent=2))
+            typer.echo(
+                json.dumps(
+                    {"error": "Course has no segments. Re-import the course."}, indent=2
+                )
+            )
             raise typer.Exit(1)
         course_start_lat = course.start_lat
         course_start_lon = course.start_lon
@@ -828,7 +970,9 @@ def simulate_workout(
 
     else:
         # Build course on the fly from Strava activity streams
-        async def _build_from_activity() -> tuple[list[dict], Optional[float], Optional[float]]:
+        async def _build_from_activity() -> tuple[
+            list[dict], float | None, float | None
+        ]:
             async with get_async_session() as session:
                 try:
                     points = await parse_strava_activity(activity_id, session)  # type: ignore[arg-type]
@@ -842,13 +986,20 @@ def simulate_workout(
                 return segs, lat, lon, total_m, elev_gain
 
         try:
-            km_segs, course_start_lat, course_start_lon, _total_m, _elev_gain = asyncio.run(_build_from_activity())
+            km_segs, course_start_lat, course_start_lon, _total_m, _elev_gain = (
+                asyncio.run(_build_from_activity())
+            )
         except ValueError as exc:
             typer.echo(json.dumps({"error": str(exc)}, indent=2))
             raise typer.Exit(1)
 
         if not km_segs:
-            typer.echo(json.dumps({"error": f"No course points found for activity {activity_id}."}, indent=2))
+            typer.echo(
+                json.dumps(
+                    {"error": f"No course points found for activity {activity_id}."},
+                    indent=2,
+                )
+            )
             raise typer.Exit(1)
 
         course_summary = {
@@ -878,24 +1029,40 @@ def simulate_workout(
         }
         weather_source = "manual"
 
-    elif sim_date is not None and course_start_lat is not None and course_start_lon is not None:
-        from fitops.weather.client import fetch_forecast_weather, fetch_activity_weather
+    elif (
+        sim_date is not None
+        and course_start_lat is not None
+        and course_start_lon is not None
+    ):
+        from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
 
         try:
             parsed_date = _dt.date.fromisoformat(sim_date)
         except ValueError:
-            typer.echo(json.dumps({"error": f"Invalid date format: {sim_date!r}. Use YYYY-MM-DD."}, indent=2))
+            typer.echo(
+                json.dumps(
+                    {"error": f"Invalid date format: {sim_date!r}. Use YYYY-MM-DD."},
+                    indent=2,
+                )
+            )
             raise typer.Exit(1)
 
         today = _dt.date.today()
 
         if parsed_date > today:
-            fetched = asyncio.run(fetch_forecast_weather(
-                course_start_lat, course_start_lon, sim_date, sim_hour
-            ))
+            fetched = asyncio.run(
+                fetch_forecast_weather(
+                    course_start_lat, course_start_lon, sim_date, sim_hour
+                )
+            )
             if fetched is None:
                 typer.echo(
-                    json.dumps({"warning": "Forecast unavailable (beyond 16-day window). Using neutral conditions."}, indent=2),
+                    json.dumps(
+                        {
+                            "warning": "Forecast unavailable (beyond 16-day window). Using neutral conditions."
+                        },
+                        indent=2,
+                    ),
                     err=True,
                 )
             else:
@@ -908,13 +1075,25 @@ def simulate_workout(
                 weather_source = "forecast"
         else:
             sim_datetime = _dt.datetime(
-                parsed_date.year, parsed_date.month, parsed_date.day,
-                sim_hour, 0, 0, tzinfo=_dt.timezone.utc
+                parsed_date.year,
+                parsed_date.month,
+                parsed_date.day,
+                sim_hour,
+                0,
+                0,
+                tzinfo=_dt.UTC,
             )
-            fetched = asyncio.run(fetch_activity_weather(course_start_lat, course_start_lon, sim_datetime))
+            fetched = asyncio.run(
+                fetch_activity_weather(course_start_lat, course_start_lon, sim_datetime)
+            )
             if fetched is None:
                 typer.echo(
-                    json.dumps({"warning": "Historical weather unavailable, using neutral conditions."}, indent=2),
+                    json.dumps(
+                        {
+                            "warning": "Historical weather unavailable, using neutral conditions."
+                        },
+                        indent=2,
+                    ),
                     err=True,
                 )
             else:
@@ -936,7 +1115,8 @@ def simulate_workout(
     total_est_s = sum(r.est_segment_time_s for r in results)
 
     from fitops.race.course_parser import _fmt_duration
-    typer.echo(json.dumps({
+
+    out = {
         "_meta": make_meta(),
         "workout_name": wf.name,
         "course": course_summary,
@@ -946,7 +1126,11 @@ def simulate_workout(
         "total_est_workout_time_fmt": _fmt_duration(total_est_s),
         "distance_mismatch_warning": mismatch_warning,
         "segments": [result_to_dict(r) for r in results],
-    }, indent=2, default=str))
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_workout_simulate(out)
 
 
 @app.command("unlink")
@@ -957,7 +1141,7 @@ def unlink_workout(
     init_db()
 
     async def _unlink():
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         async with get_async_session() as session:
             # Resolve strava_id → internal activity_id
@@ -991,18 +1175,31 @@ def unlink_workout(
             workout.status = "planned"
             workout.compliance_score = None
             workout.physiology_snapshot = None
-            from datetime import datetime, timezone
-            workout.updated_at = datetime.now(timezone.utc)
+            from datetime import datetime
+
+            workout.updated_at = datetime.now(UTC)
 
             return workout_name, None
 
     workout_name, err = asyncio.run(_unlink())
 
     if err == "activity_not_found":
-        typer.echo(json.dumps({"error": f"Activity {activity_id} not found locally.", "hint": "Run `fitops sync run` first."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"Activity {activity_id} not found locally.",
+                    "hint": "Run `fitops sync run` first.",
+                },
+                indent=2,
+            )
+        )
         raise typer.Exit(1)
     if err == "no_workout_linked":
-        typer.echo(json.dumps({"error": f"No workout linked to activity {activity_id}."}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"error": f"No workout linked to activity {activity_id}."}, indent=2
+            )
+        )
         raise typer.Exit(1)
 
     typer.echo(

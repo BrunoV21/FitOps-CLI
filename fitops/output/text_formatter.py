@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 console = Console(highlight=False)
 
@@ -10,6 +10,7 @@ console = Console(highlight=False)
 # ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
+
 
 def print_activities_table(activities: list[dict]) -> None:
     if not activities:
@@ -44,7 +45,11 @@ def print_activities_table(activities: list[dict]) -> None:
         else:
             perf = "-"
         hr_block = a.get("heart_rate")
-        hr = str(int(hr_block["average_bpm"])) if hr_block and hr_block.get("average_bpm") else "-"
+        hr = (
+            str(int(hr_block["average_bpm"]))
+            if hr_block and hr_block.get("average_bpm")
+            else "-"
+        )
         table.add_row(activity_id, date_str, name, sport, dist_str, dur, perf, hr)
 
     console.print(table)
@@ -64,8 +69,10 @@ def print_activity_detail(activity: dict) -> None:
     insights = activity.get("insights") or {}
 
     date_str = (activity.get("start_date_local") or "")[:10]
-    console.print(f"\n[bold]{activity.get('name', 'Activity')}[/bold]  "
-                  f"[dim]{activity.get('sport_type', '')}  |  {date_str}[/dim]")
+    console.print(
+        f"\n[bold]{activity.get('name', 'Activity')}[/bold]  "
+        f"[dim]{activity.get('sport_type', '')}  |  {date_str}[/dim]"
+    )
     console.print()
 
     # Overview
@@ -77,21 +84,29 @@ def print_activity_detail(activity: dict) -> None:
     console.print(f"  Distance   {dist_str}")
     console.print(f"  Duration   {dur.get('moving_time_formatted') or '-'}")
     if pace.get("average_per_km"):
-        console.print(f"  Pace       {pace['average_per_km']}/km  |  {pace.get('average_per_mile', '-')}/mi")
+        console.print(
+            f"  Pace       {pace['average_per_km']}/km  |  {pace.get('average_per_mile', '-')}/mi"
+        )
     elif speed.get("average_kmh"):
         console.print(f"  Speed      {speed['average_kmh']} km/h")
     if elev.get("total_gain_m"):
         console.print(f"  Elevation  +{elev['total_gain_m']} m")
     if hr.get("average_bpm"):
-        console.print(f"  Heart Rate {int(hr['average_bpm'])} avg bpm  |  {hr.get('max_bpm') or '-'} max")
+        console.print(
+            f"  Heart Rate {int(hr['average_bpm'])} avg bpm  |  {hr.get('max_bpm') or '-'} max"
+        )
     if power.get("average_watts"):
-        console.print(f"  Power      {power['average_watts']} avg W  |  {power.get('weighted_average_watts') or '-'} NP")
+        console.print(
+            f"  Power      {power['average_watts']} avg W  |  {power.get('weighted_average_watts') or '-'} NP"
+        )
     if training.get("calories"):
         console.print(f"  Calories   {training['calories']}")
     if training.get("suffer_score"):
         console.print(f"  Suffer     {training['suffer_score']}")
     if equip.get("gear_name"):
-        console.print(f"  Gear       {equip['gear_name']} ({equip.get('gear_type', '')})")
+        console.print(
+            f"  Gear       {equip['gear_name']} ({equip.get('gear_type', '')})"
+        )
 
     active_flags = [k for k, v in flags.items() if v]
     if active_flags:
@@ -100,7 +115,9 @@ def print_activity_detail(activity: dict) -> None:
     if insights:
         drift = insights.get("hr_drift")
         if drift and drift.get("drift_bpm") is not None:
-            console.print(f"  HR Drift   {drift['drift_bpm']:+.1f} bpm  ({drift.get('label', '')})")
+            console.print(
+                f"  HR Drift   {drift['drift_bpm']:+.1f} bpm  ({drift.get('label', '')})"
+            )
 
     console.print()
 
@@ -155,6 +172,7 @@ def print_streams_summary(streams: dict, activity_id: int) -> None:
 # Athlete
 # ---------------------------------------------------------------------------
 
+
 def print_athlete_profile(athlete: dict) -> None:
     console.print()
     console.print(f"[bold]{athlete.get('name') or 'Athlete'}[/bold]")
@@ -183,18 +201,26 @@ def print_athlete_stats(stats: dict) -> None:
         if not block:
             return
         count = block.get("count", 0)
-        dist_km = round(block.get("distance", 0) / 1000, 1) if block.get("distance") else 0
-        time_h = round(block.get("moving_time", 0) / 3600, 1) if block.get("moving_time") else 0
+        dist_km = (
+            round(block.get("distance", 0) / 1000, 1) if block.get("distance") else 0
+        )
+        time_h = (
+            round(block.get("moving_time", 0) / 3600, 1)
+            if block.get("moving_time")
+            else 0
+        )
         elev = block.get("elevation_gain", 0) or 0
-        console.print(f"  [bold]{label}[/bold]   {count} activities  |  {dist_km} km  |  {time_h} h  |  +{int(elev)} m")
+        console.print(
+            f"  [bold]{label}[/bold]   {count} activities  |  {dist_km} km  |  {time_h} h  |  +{int(elev)} m"
+        )
 
     _print_totals("All Runs (recent)", stats.get("recent_run_totals"))
-    _print_totals("All Runs (YTD)",    stats.get("ytd_run_totals"))
-    _print_totals("All Runs (total)",  stats.get("all_run_totals"))
+    _print_totals("All Runs (YTD)", stats.get("ytd_run_totals"))
+    _print_totals("All Runs (total)", stats.get("all_run_totals"))
     console.print()
     _print_totals("All Rides (recent)", stats.get("recent_ride_totals"))
-    _print_totals("All Rides (YTD)",    stats.get("ytd_ride_totals"))
-    _print_totals("All Rides (total)",  stats.get("all_ride_totals"))
+    _print_totals("All Rides (YTD)", stats.get("ytd_ride_totals"))
+    _print_totals("All Rides (total)", stats.get("all_ride_totals"))
     console.print()
 
 
@@ -263,6 +289,7 @@ def print_equipment_table(items: list[dict]) -> None:
 # Sync
 # ---------------------------------------------------------------------------
 
+
 def print_sync_result(result: dict) -> None:
     sync_type = result.get("sync_type", "sync")
     created = result.get("activities_created", 0)
@@ -275,7 +302,9 @@ def print_sync_result(result: dict) -> None:
     )
     streams = result.get("streams")
     if streams:
-        console.print(f"  Streams: {streams.get('streams_fetched', 0)} fetched, {streams.get('errors', 0)} errors")
+        console.print(
+            f"  Streams: {streams.get('streams_fetched', 0)} fetched, {streams.get('errors', 0)} errors"
+        )
 
 
 def print_sync_streams_result(result: dict) -> None:
@@ -308,6 +337,7 @@ def print_sync_status(state: dict) -> None:
 # ---------------------------------------------------------------------------
 # Analytics
 # ---------------------------------------------------------------------------
+
 
 def print_training_load(data: dict, today_only: bool) -> None:
     tl = data.get("training_load") or {}
@@ -354,12 +384,26 @@ def print_training_load(data: dict, today_only: bool) -> None:
         lm = vol.get("last_month") or {}
         wpct = (vol.get("pct_change_week") or {}).get("distance")
         mpct = (vol.get("pct_change_month") or {}).get("distance")
-        wpct_str = f"  ({'+' if wpct > 0 else ''}{wpct:.0f}% WoW)" if wpct is not None else ""
-        mpct_str = f"  ({'+' if mpct > 0 else ''}{mpct:.0f}% vs same period last month)" if mpct is not None else ""
-        console.print(f"  This week       {tw.get('distance_km', 0):.1f} km  /  {tw.get('duration_h', 0):.1f} h{wpct_str}")
-        console.print(f"  Last week       {lw.get('distance_km', 0):.1f} km  /  {lw.get('duration_h', 0):.1f} h")
-        console.print(f"  This month      {tm.get('distance_km', 0):.0f} km  /  {tm.get('duration_h', 0):.1f} h{mpct_str}")
-        console.print(f"  Last month      {lm.get('distance_km', 0):.0f} km  /  {lm.get('duration_h', 0):.1f} h")
+        wpct_str = (
+            f"  ({'+' if wpct > 0 else ''}{wpct:.0f}% WoW)" if wpct is not None else ""
+        )
+        mpct_str = (
+            f"  ({'+' if mpct > 0 else ''}{mpct:.0f}% vs same period last month)"
+            if mpct is not None
+            else ""
+        )
+        console.print(
+            f"  This week       {tw.get('distance_km', 0):.1f} km  /  {tw.get('duration_h', 0):.1f} h{wpct_str}"
+        )
+        console.print(
+            f"  Last week       {lw.get('distance_km', 0):.1f} km  /  {lw.get('duration_h', 0):.1f} h"
+        )
+        console.print(
+            f"  This month      {tm.get('distance_km', 0):.0f} km  /  {tm.get('duration_h', 0):.1f} h{mpct_str}"
+        )
+        console.print(
+            f"  Last month      {lm.get('distance_km', 0):.0f} km  /  {lm.get('duration_h', 0):.1f} h"
+        )
 
     if not today_only:
         history = tl.get("history") or []
@@ -403,17 +447,25 @@ def print_vo2max(data: dict) -> None:
     based = v.get("based_on_activity") or {}
     if based.get("name"):
         console.print(f"  Based on        {based['name']}  ({based.get('date') or ''})")
-        console.print(f"                  {based.get('distance_km') or '-'} km  |  {based.get('pace_per_km') or '-'}/km")
+        console.print(
+            f"                  {based.get('distance_km') or '-'} km  |  {based.get('pace_per_km') or '-'}/km"
+        )
     age_adj = v.get("age_adjusted") or {}
     if age_adj.get("adjusted_estimate"):
-        console.print(f"  Age-adjusted    {age_adj['adjusted_estimate']:.1f} ml/kg/min  (age {age_adj.get('age')})")
+        console.print(
+            f"  Age-adjusted    {age_adj['adjusted_estimate']:.1f} ml/kg/min  (age {age_adj.get('age')})"
+        )
     race = v.get("race_predictions") or {}
     preds = race.get("predictions") or {}
     if preds:
         console.print()
-        console.print(f"  [bold]Race Predictions[/bold]  [dim]{race.get('method', 'riegel').upper()} · from {race.get('source_distance_km', '?')} km @ {race.get('source_pace', '?')}/km[/dim]")
+        console.print(
+            f"  [bold]Race Predictions[/bold]  [dim]{race.get('method', 'riegel').upper()} · from {race.get('source_distance_km', '?')} km @ {race.get('source_pace', '?')}/km[/dim]"
+        )
         for label, pred in preds.items():
-            console.print(f"  {label:<12} {pred.get('hms', '-'):<10}  {pred.get('predicted_pace', '-')}/km")
+            console.print(
+                f"  {label:<12} {pred.get('hms', '-'):<10}  {pred.get('predicted_pace', '-')}/km"
+            )
     console.print()
 
 
@@ -424,10 +476,14 @@ def print_analytics_zones(data: dict) -> None:
         console.print("[bold]Zone Inference[/bold]")
         console.print(f"  LTHR     {inference.get('lthr_inferred') or '-'} bpm")
         if inference.get("lt2_pace_inferred"):
-            console.print(f"  LT2 pace {inference.get('lt2_pace_inferred')}  [dim](grade-adjusted)[/dim]")
+            console.print(
+                f"  LT2 pace {inference.get('lt2_pace_inferred')}  [dim](grade-adjusted)[/dim]"
+            )
         console.print(f"  Max HR   {inference.get('max_hr_inferred') or '-'} bpm")
         console.print(f"  Rest HR  {inference.get('resting_hr_inferred') or '-'} bpm")
-        console.print(f"  Confidence  {inference.get('confidence') or '-'}  ({inference.get('activity_count')} activities)")
+        console.print(
+            f"  Confidence  {inference.get('confidence') or '-'}  ({inference.get('activity_count')} activities)"
+        )
         console.print()
         return
 
@@ -437,14 +493,18 @@ def print_analytics_zones(data: dict) -> None:
     console.print()
     console.print(f"[bold]HR Zones[/bold]  [dim]method: {method}[/dim]")
     if zones.get("lthr"):
-        console.print(f"  LTHR {zones['lthr']} bpm  |  Max HR {zones.get('max_hr') or '-'} bpm")
+        console.print(
+            f"  LTHR {zones['lthr']} bpm  |  Max HR {zones.get('max_hr') or '-'} bpm"
+        )
     thresholds = zones.get("thresholds") or {}
     if thresholds.get("lt1_pace_fmt"):
         console.print(f"  LT1 pace   {thresholds['lt1_pace_fmt']}  [dim](GAP)[/dim]")
     if thresholds.get("lt2_pace_fmt"):
         console.print(f"  LT2 pace   {thresholds['lt2_pace_fmt']}  [dim](GAP)[/dim]")
     if thresholds.get("vo2max_pace_fmt"):
-        console.print(f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]")
+        console.print(
+            f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]"
+        )
     console.print()
     if zone_list:
         table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -463,7 +523,9 @@ def print_analytics_zones(data: dict) -> None:
 def print_trends(data: dict) -> None:
     t = data.get("trends") or {}
     console.print()
-    console.print(f"[bold]Training Trends[/bold]  [dim]{t.get('summary_label') or ''}[/dim]")
+    console.print(
+        f"[bold]Training Trends[/bold]  [dim]{t.get('summary_label') or ''}[/dim]"
+    )
     console.print(f"  Activities     {t.get('activity_count') or 0}")
     vol = t.get("volume_trend") or {}
     if vol.get("weekly_avg_km"):
@@ -482,7 +544,9 @@ def print_trends(data: dict) -> None:
 def print_performance(data: dict) -> None:
     p = data.get("performance") or {}
     console.print()
-    console.print(f"[bold]Performance Metrics[/bold]  [dim]{p.get('sport') or ''}[/dim]")
+    console.print(
+        f"[bold]Performance Metrics[/bold]  [dim]{p.get('sport') or ''}[/dim]"
+    )
     console.print(f"  Activities     {p.get('activity_count') or 0}")
     console.print(f"  Reliability    {p.get('overall_reliability') or '-'}")
     running = p.get("running") or {}
@@ -501,7 +565,9 @@ def print_performance(data: dict) -> None:
 def print_power_curve(data: dict) -> None:
     pc = data.get("power_curve") or {}
     console.print()
-    console.print(f"[bold]Power Curve[/bold]  [dim]{pc.get('sport') or ''} | {pc.get('activity_count') or 0} activities[/dim]")
+    console.print(
+        f"[bold]Power Curve[/bold]  [dim]{pc.get('sport') or ''} | {pc.get('activity_count') or 0} activities[/dim]"
+    )
     if pc.get("critical_power_watts"):
         console.print(f"  Critical Power   {pc['critical_power_watts']:.0f} W")
     if pc.get("w_prime_joules"):
@@ -515,7 +581,9 @@ def print_power_curve(data: dict) -> None:
     if mmp:
         console.print()
         console.print("  Mean Maximal Power:")
-        for duration, watts in sorted(mmp.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0):
+        for duration, watts in sorted(
+            mmp.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0
+        ):
             if watts:
                 console.print(f"    {duration}s  ->  {watts:.0f} W")
     console.print()
@@ -524,7 +592,9 @@ def print_power_curve(data: dict) -> None:
 def print_pace_zones(data: dict) -> None:
     pz = data.get("pace_zones") or {}
     console.print()
-    console.print(f"[bold]Pace Zones[/bold]  [dim]threshold: {pz.get('threshold_pace') or '-'}  ({pz.get('source') or ''})[/dim]")
+    console.print(
+        f"[bold]Pace Zones[/bold]  [dim]threshold: {pz.get('threshold_pace') or '-'}  ({pz.get('source') or ''})[/dim]"
+    )
     zone_list = pz.get("zones") or []
     if zone_list:
         table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -570,7 +640,11 @@ def print_weather_forecast(forecast: dict) -> None:
     bearing = forecast.get("course_bearing_deg")
 
     # Header
-    loc_str = f"[dim]{lat:.4f}, {lng:.4f}[/dim]" if lat is not None and lng is not None else ""
+    loc_str = (
+        f"[dim]{lat:.4f}, {lng:.4f}[/dim]"
+        if lat is not None and lng is not None
+        else ""
+    )
     console.print()
     console.print(
         f"[bold]Race Day Forecast[/bold]  [dim]{date}  {hour:02d}:00 local  ({tz})[/dim]  {loc_str}"
@@ -578,7 +652,9 @@ def print_weather_forecast(forecast: dict) -> None:
     console.print()
 
     # Conditions table
-    cond_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold", expand=False)
+    cond_table = Table(
+        box=box.SIMPLE_HEAD, show_header=True, header_style="bold", expand=False
+    )
     cond_table.add_column("Condition", style="dim")
     cond_table.add_column("Value", justify="right")
 
@@ -586,37 +662,68 @@ def print_weather_forecast(forecast: dict) -> None:
         return f"{v:{fmt}}{suffix}" if v is not None else "-"
 
     # WBGT flag colour
-    _flag_colour = {"green": "green", "yellow": "yellow", "red": "red", "black": "bold red"}
-    flag_markup = f"[{_flag_colour.get(wbgt_flag_val, 'dim')}]{wbgt_flag_val.upper()}[/]" if wbgt_flag_val != "-" else "-"
+    _flag_colour = {
+        "green": "green",
+        "yellow": "yellow",
+        "red": "red",
+        "black": "bold red",
+    }
+    flag_markup = (
+        f"[{_flag_colour.get(wbgt_flag_val, 'dim')}]{wbgt_flag_val.upper()}[/]"
+        if wbgt_flag_val != "-"
+        else "-"
+    )
 
-    cond_table.add_row("Temperature",     f"{_c(temp_c, suffix=' °C')}  (feels {_c(apparent_c, suffix=' °C')})")
-    cond_table.add_row("Humidity",        _c(humidity, fmt=".0f", suffix=" %"))
-    cond_table.add_row("Dew Point",       _c(dew_c, suffix=" °C"))
-    cond_table.add_row("Precipitation",   _c(precip, fmt=".1f", suffix=" mm"))
-    cond_table.add_row("Condition",       condition)
-    cond_table.add_row("Wind Speed",      f"{_c(wind_speed, fmt='.1f', suffix=' m/s')}  (gusts {_c(wind_gusts, fmt='.1f', suffix=' m/s')})")
-    cond_table.add_row("Wind Direction",  f"{wind_compass}  ({_c(wind_dir_deg, fmt='.0f', suffix='°')})")
+    cond_table.add_row(
+        "Temperature",
+        f"{_c(temp_c, suffix=' °C')}  (feels {_c(apparent_c, suffix=' °C')})",
+    )
+    cond_table.add_row("Humidity", _c(humidity, fmt=".0f", suffix=" %"))
+    cond_table.add_row("Dew Point", _c(dew_c, suffix=" °C"))
+    cond_table.add_row("Precipitation", _c(precip, fmt=".1f", suffix=" mm"))
+    cond_table.add_row("Condition", condition)
+    cond_table.add_row(
+        "Wind Speed",
+        f"{_c(wind_speed, fmt='.1f', suffix=' m/s')}  (gusts {_c(wind_gusts, fmt='.1f', suffix=' m/s')})",
+    )
+    cond_table.add_row(
+        "Wind Direction", f"{wind_compass}  ({_c(wind_dir_deg, fmt='.0f', suffix='°')})"
+    )
     console.print(cond_table)
 
     # Race factors table
     console.print("[bold]Race Adjustment Factors[/bold]")
     console.print()
-    factors_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold", expand=False)
+    factors_table = Table(
+        box=box.SIMPLE_HEAD, show_header=True, header_style="bold", expand=False
+    )
     factors_table.add_column("Factor", style="dim")
     factors_table.add_column("Value", justify="right")
     factors_table.add_column("Meaning")
 
     wbgt_str = f"{wbgt:.2f} °C" if wbgt is not None else "-"
     pace_heat_str = f"{pace_heat:.4f}" if pace_heat is not None else "-"
-    pace_pct = f"+{(pace_heat - 1) * 100:.1f}% slower" if pace_heat and pace_heat > 1 else ("no penalty" if pace_heat else "-")
+    pace_pct = (
+        f"+{(pace_heat - 1) * 100:.1f}% slower"
+        if pace_heat and pace_heat > 1
+        else ("no penalty" if pace_heat else "-")
+    )
     vo2_str = f"{vo2_heat:.4f}" if vo2_heat is not None else "-"
-    vo2_pct = f"{(vo2_heat - 1) * 100:.1f}% capacity" if vo2_heat and vo2_heat < 1 else ("full capacity" if vo2_heat else "-")
+    vo2_pct = (
+        f"{(vo2_heat - 1) * 100:.1f}% capacity"
+        if vo2_heat and vo2_heat < 1
+        else ("full capacity" if vo2_heat else "-")
+    )
 
     hw_str = "-"
     hw_meaning = "provide --course-bearing for wind calc"
     if headwind is not None:
         hw_str = f"{headwind:+.2f} m/s"
-        hw_meaning = "tailwind" if headwind < 0 else ("headwind" if headwind > 0 else "crosswind")
+        hw_meaning = (
+            "tailwind"
+            if headwind < 0
+            else ("headwind" if headwind > 0 else "crosswind")
+        )
 
     wap_str = "-"
     wap_meaning = "provide --course-bearing for full WAP"
@@ -624,18 +731,406 @@ def print_weather_forecast(forecast: dict) -> None:
         wap_str = f"{wap:.4f}"
         wap_pct = (wap - 1) * 100
         sign = "+" if wap_pct > 0 else ""
-        wap_meaning = f"{sign}{wap_pct:.1f}% pace {'penalty' if wap_pct > 0 else 'benefit'}"
+        wap_meaning = (
+            f"{sign}{wap_pct:.1f}% pace {'penalty' if wap_pct > 0 else 'benefit'}"
+        )
 
     bearing_str = f"{bearing:.0f}°" if bearing is not None else "-"
 
-    factors_table.add_row("WBGT",              wbgt_str,      flag_markup)
-    factors_table.add_row("Pace heat factor",  pace_heat_str, pace_pct)
-    factors_table.add_row("VO2max heat factor", vo2_str,      vo2_pct)
-    factors_table.add_row("Headwind",          hw_str,        hw_meaning)
-    factors_table.add_row("WAP factor",        wap_str,       wap_meaning)
-    factors_table.add_row("Course bearing",    bearing_str,   "")
+    factors_table.add_row("WBGT", wbgt_str, flag_markup)
+    factors_table.add_row("Pace heat factor", pace_heat_str, pace_pct)
+    factors_table.add_row("VO2max heat factor", vo2_str, vo2_pct)
+    factors_table.add_row("Headwind", hw_str, hw_meaning)
+    factors_table.add_row("WAP factor", wap_str, wap_meaning)
+    factors_table.add_row("Course bearing", bearing_str, "")
     console.print(factors_table)
     console.print()
+
+
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+
+
+def print_notes_list(data: dict) -> None:
+    notes = data.get("notes") or []
+    if not notes:
+        console.print("[dim]No notes found.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Slug", style="dim", no_wrap=True)
+    table.add_column("Title")
+    table.add_column("Tags", no_wrap=True)
+    table.add_column("Date", no_wrap=True)
+    table.add_column("Preview", style="dim")
+
+    for n in notes:
+        tags = ", ".join(n.get("tags") or []) or "-"
+        date = (n.get("created") or "")[:10]
+        preview = (n.get("body_preview") or "").replace("\n", " ")[:60]
+        table.add_row(n.get("slug") or "", n.get("title") or "", tags, date, preview)
+
+    console.print(table)
+
+
+def print_note_detail(data: dict) -> None:
+    n = data.get("note") or {}
+    console.print()
+    console.print(f"[bold]{n.get('title') or 'Note'}[/bold]  [dim]{(n.get('created') or '')[:10]}[/dim]")
+    tags = ", ".join(n.get("tags") or [])
+    if tags:
+        console.print(f"  Tags   {tags}")
+    if n.get("activity_id"):
+        console.print(f"  Activity  {n['activity_id']}")
+    console.print()
+    body = n.get("body") or ""
+    if body:
+        console.print(body)
+    console.print()
+
+
+def print_note_tags(data: dict) -> None:
+    tags = data.get("tags") or []
+    if not tags:
+        console.print("[dim]No tags found.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Tag")
+    table.add_column("Count", justify="right")
+
+    for t in tags:
+        table.add_row(t.get("tag") or "", str(t.get("count") or 0))
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Workouts
+# ---------------------------------------------------------------------------
+
+
+def print_workouts_list(data: dict) -> None:
+    workouts = data.get("workouts") or []
+    if not workouts:
+        d = data.get("workouts_dir") or "~/.fitops/workouts/"
+        console.print(f"[dim]No workout files found in {d}.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("File", style="dim", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("Sport", no_wrap=True)
+    table.add_column("Duration", justify="right", no_wrap=True)
+    table.add_column("Tags")
+
+    for w in workouts:
+        dur = w.get("target_duration_min")
+        dur_str = f"{dur} min" if dur else "-"
+        tags = ", ".join(w.get("tags") or []) or "-"
+        table.add_row(w.get("file_name") or "", w.get("name") or "", w.get("sport") or "-", dur_str, tags)
+
+    console.print(table)
+
+
+def print_workout_detail(data: dict) -> None:
+    w = data.get("workout") or {}
+    console.print()
+    console.print(f"[bold]{w.get('name') or 'Workout'}[/bold]  [dim]{w.get('sport') or ''}[/dim]")
+    if w.get("target_duration_min"):
+        console.print(f"  Duration   {w['target_duration_min']} min")
+    tags = ", ".join(w.get("tags") or [])
+    if tags:
+        console.print(f"  Tags       {tags}")
+    console.print()
+    body = w.get("body") or ""
+    if body:
+        console.print(body)
+    console.print()
+
+
+def print_workout_history(data: dict) -> None:
+    workouts = data.get("workouts") or []
+    if not workouts:
+        console.print("[dim]No linked workouts found.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Date", no_wrap=True)
+    table.add_column("Workout")
+    table.add_column("Sport", no_wrap=True)
+    table.add_column("Activity ID", no_wrap=True, style="dim")
+    table.add_column("Compliance", justify="right", no_wrap=True)
+    table.add_column("Status", no_wrap=True)
+
+    for w in workouts:
+        date = str(w.get("linked_at") or "")[:10]
+        score = w.get("compliance_score")
+        score_str = f"{score:.0f}%" if score is not None else "-"
+        act_id = str(w.get("activity_strava_id") or w.get("activity_id") or "-")
+        table.add_row(date, w.get("name") or "", w.get("sport_type") or "-", act_id, score_str, w.get("status") or "-")
+
+    console.print(table)
+
+
+def print_workout_compliance(data: dict) -> None:
+    workout_name = data.get("workout_name") or "Workout"
+    overall = data.get("overall_compliance_score")
+    segments = data.get("segments") or []
+
+    console.print()
+    score_str = f"{overall:.0f}%" if overall is not None else "N/A"
+    console.print(f"[bold]{workout_name}[/bold]  overall compliance: [bold]{score_str}[/bold]")
+    console.print()
+
+    if not segments:
+        console.print("[dim]No segments.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("#", justify="right")
+    table.add_column("Segment")
+    table.add_column("Target")
+    table.add_column("Actual HR", justify="right", no_wrap=True)
+    table.add_column("Actual Pace", justify="right", no_wrap=True)
+    table.add_column("Score", justify="right", no_wrap=True)
+    table.add_column("In Target", justify="right", no_wrap=True)
+
+    for seg in segments:
+        idx = str(seg.get("segment_index", ""))
+        name = seg.get("segment_name") or "-"
+        target_z = seg.get("target_zone") or "-"
+        target_hr = seg.get("target_hr_range") or {}
+        if target_hr.get("min_bpm") and target_hr.get("max_bpm"):
+            target = f"Z{target_z} ({target_hr['min_bpm']}–{target_hr['max_bpm']} bpm)"
+        else:
+            target = f"Z{target_z}" if target_z != "-" else "-"
+        actuals = seg.get("actuals") or {}
+        hr = actuals.get("avg_heartrate_bpm")
+        hr_str = str(int(hr)) if hr else "-"
+        pace = actuals.get("avg_pace_formatted") or actuals.get("avg_gap_formatted") or "-"
+        comp = seg.get("compliance") or {}
+        score = comp.get("compliance_score")
+        score_str = f"{score:.0f}%" if score is not None else "-"
+        in_target = comp.get("time_in_target_pct")
+        in_str = f"{in_target:.0f}%" if in_target is not None else "-"
+        table.add_row(idx, name, target, hr_str, pace, score_str, in_str)
+
+    console.print(table)
+    console.print()
+
+
+def print_workout_simulate(data: dict) -> None:
+    segments = data.get("segments") or []
+    workout_name = data.get("workout_name") or "Workout"
+    total_time = data.get("total_est_workout_time_fmt") or "-"
+    total_km = data.get("total_est_workout_distance_km") or "-"
+    weather = data.get("weather") or {}
+    weather_source = data.get("weather_source") or "neutral"
+
+    console.print()
+    console.print(f"[bold]{workout_name}[/bold]  est. {total_km} km  ·  {total_time}")
+    temp = weather.get("temperature_c")
+    hum = weather.get("humidity_pct")
+    if temp is not None:
+        console.print(f"  Weather  {temp}°C  {hum}% RH  [{weather_source}]")
+
+    mismatch = data.get("distance_mismatch_warning")
+    if mismatch:
+        console.print(f"  [yellow]Warning: {mismatch}[/yellow]")
+    console.print()
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Segment")
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Target", no_wrap=True)
+    table.add_column("Est. Pace", justify="right", no_wrap=True)
+    table.add_column("Est. Time", justify="right", no_wrap=True)
+    table.add_column("Est. Dist", justify="right", no_wrap=True)
+
+    for seg in segments:
+        name = seg.get("segment_name") or seg.get("name") or "-"
+        step_type = seg.get("step_type") or "-"
+        target = seg.get("target_label") or seg.get("target_zone") or "-"
+        pace = seg.get("est_pace_fmt") or seg.get("est_adjusted_pace_fmt") or "-"
+        time_fmt = seg.get("est_time_fmt") or seg.get("est_segment_time_fmt") or "-"
+        dist = seg.get("est_distance_km")
+        dist_str = f"{dist:.2f} km" if dist is not None else "-"
+        table.add_row(name, step_type, str(target), pace, time_fmt, dist_str)
+
+    console.print(table)
+    console.print()
+
+
+# ---------------------------------------------------------------------------
+# Race
+# ---------------------------------------------------------------------------
+
+
+def print_courses_list(data: dict) -> None:
+    courses = data.get("courses") or []
+    if not courses:
+        console.print("[dim]No courses imported yet.[/dim]")
+        console.print("  Import one with: fitops race import <file.gpx> --name <name>")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("ID", justify="right", style="dim", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("Source", no_wrap=True)
+    table.add_column("Distance", justify="right", no_wrap=True)
+    table.add_column("Elevation", justify="right", no_wrap=True)
+    table.add_column("Imported", no_wrap=True)
+
+    for c in courses:
+        dist_m = c.get("total_distance_m") or 0
+        dist_str = f"{dist_m / 1000:.2f} km" if dist_m else "-"
+        elev = c.get("total_elevation_gain_m")
+        elev_str = f"+{elev:.0f} m" if elev else "-"
+        date = str(c.get("created_at") or "")[:10]
+        table.add_row(str(c.get("id") or ""), c.get("name") or "", c.get("source") or "-", dist_str, elev_str, date)
+
+    console.print(table)
+
+
+def print_course_detail(data: dict) -> None:
+    c = data.get("course") or {}
+    segs = data.get("km_segments") or []
+
+    console.print()
+    dist_m = c.get("total_distance_m") or 0
+    elev = c.get("total_elevation_gain_m") or 0
+    console.print(f"[bold]{c.get('name') or 'Course'}[/bold]  [dim]ID {c.get('id')}[/dim]")
+    console.print(f"  Distance   {dist_m / 1000:.2f} km")
+    console.print(f"  Elevation  +{elev:.0f} m")
+    console.print(f"  Source     {c.get('source') or '-'}")
+    console.print()
+
+    if segs:
+        table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        table.add_column("km", justify="right")
+        table.add_column("Dist", justify="right", no_wrap=True)
+        table.add_column("Elev Δ", justify="right", no_wrap=True)
+        table.add_column("Avg Grade", justify="right", no_wrap=True)
+        table.add_column("GAF", justify="right", no_wrap=True)
+
+        for s in segs:
+            km = s.get("km_marker") or s.get("km") or ""
+            dist = s.get("distance_m") or 0
+            dist_str = f"{dist:.0f} m"
+            elev_delta = s.get("elevation_delta_m") or s.get("elev_delta_m")
+            elev_str = f"{elev_delta:+.1f} m" if elev_delta is not None else "-"
+            grade = s.get("avg_grade_pct") or s.get("grade_pct")
+            grade_str = f"{grade:+.1f}%" if grade is not None else "-"
+            gaf = s.get("grade_adjusted_factor") or s.get("gaf")
+            gaf_str = f"{gaf:.3f}" if gaf is not None else "-"
+            table.add_row(str(km), dist_str, elev_str, grade_str, gaf_str)
+
+        console.print(table)
+    console.print()
+
+
+def print_race_simulate(data: dict) -> None:
+    sim = data.get("simulation") or {}
+    course = data.get("course") or {}
+    splits = sim.get("splits") or []
+
+    console.print()
+    console.print(f"[bold]{course.get('name') or 'Course'}[/bold]  target: [bold]{sim.get('target_time') or '-'}[/bold]  strategy: {sim.get('strategy') or sim.get('mode') or '-'}")
+    weather = sim.get("weather") or {}
+    wsrc = sim.get("weather_source") or "neutral"
+    temp = weather.get("temperature_c")
+    if temp is not None:
+        console.print(f"  Weather  {temp}°C  {weather.get('humidity_pct', '-')}% RH  [{wsrc}]")
+    console.print()
+
+    if not splits:
+        console.print("[dim]No splits generated.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right")
+    table.add_column("Pace", justify="right", no_wrap=True)
+    table.add_column("Elapsed", justify="right", no_wrap=True)
+    table.add_column("Elev Δ", justify="right", no_wrap=True)
+    table.add_column("Adj Factor", justify="right", no_wrap=True)
+
+    for s in splits:
+        km = s.get("km_marker") or s.get("km") or ""
+        pace = s.get("adjusted_pace_fmt") or s.get("pace_fmt") or s.get("pace") or "-"
+        elapsed = s.get("elapsed_fmt") or s.get("elapsed") or "-"
+        elev = s.get("elevation_delta_m") or s.get("elev_delta_m")
+        elev_str = f"{elev:+.1f} m" if elev is not None else "-"
+        factor = s.get("total_adjustment_factor") or s.get("adj_factor")
+        factor_str = f"{factor:.3f}" if factor is not None else "-"
+        table.add_row(str(km), pace, elapsed, elev_str, factor_str)
+
+    console.print(table)
+    console.print()
+
+
+# ---------------------------------------------------------------------------
+# Weather (activity)
+# ---------------------------------------------------------------------------
+
+
+def print_weather_activity(data: dict) -> None:
+    """Print stored weather data for a single activity (fetch/show result)."""
+    w = data.get("weather") or data
+    console.print()
+    temp = w.get("temperature_c")
+    hum = w.get("humidity_pct")
+    cond = w.get("condition") or "-"
+    wbgt = w.get("wbgt_c")
+    flag = w.get("wbgt_flag") or "-"
+    source = w.get("source") or "-"
+    act_id = w.get("activity_id")
+
+    if act_id:
+        console.print(f"[bold]Weather[/bold]  activity {act_id}  [dim]{source}[/dim]")
+    else:
+        console.print(f"[bold]Weather[/bold]  [dim]{source}[/dim]")
+    console.print()
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=False, header_style="bold")
+    table.add_column("Field", style="dim")
+    table.add_column("Value", justify="right")
+
+    def _v(val, fmt=".1f", suffix=""):
+        return f"{val:{fmt}}{suffix}" if val is not None else "-"
+
+    table.add_row("Temperature", f"{_v(temp, suffix=' °C')}  ({_v(hum, fmt='.0f', suffix='% RH')})")
+    table.add_row("Condition", cond)
+    wind = w.get("wind_speed_ms")
+    wind_dir = w.get("wind_direction_deg")
+    wind_str = _v(wind, fmt=".1f", suffix=" m/s")
+    if wind_dir is not None:
+        wind_str += f"  {_v(wind_dir, fmt='.0f', suffix='°')}"
+    table.add_row("Wind", wind_str)
+    table.add_row("WBGT", f"{_v(wbgt, fmt='.2f', suffix=' °C')}  [{flag.upper()}]")
+    table.add_row("Pace heat factor", _v(w.get("pace_heat_factor"), fmt=".4f"))
+    table.add_row("VO2max heat factor", _v(w.get("vo2max_heat_factor"), fmt=".4f"))
+    table.add_row("WAP factor", _v(w.get("wap_factor"), fmt=".4f"))
+    if w.get("actual_pace"):
+        table.add_row("Actual pace", w["actual_pace"])
+    if w.get("wap"):
+        table.add_row("WAP (adj. pace)", w["wap"])
+
+    console.print(table)
+    console.print()
+
+
+def print_weather_fetch_all(data: dict) -> None:
+    """Print summary of bulk weather fetch."""
+    fetched = data.get("fetched", 0)
+    activities = data.get("activities") or []
+    console.print(f"[green]OK[/green] Weather fetched for {fetched} activities")
+    errors = [a for a in activities if "error" in (a.get("result") or {})]
+    if errors:
+        console.print(f"  [yellow]{len(errors)} errors[/yellow]")
+        for e in errors:
+            console.print(f"    {e.get('activity_id')}  {e['result'].get('error')}")
 
 
 def print_snapshot(data: dict) -> None:
