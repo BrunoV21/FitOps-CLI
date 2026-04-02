@@ -1,24 +1,27 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.training_load import _compute_overtraining_indicators
-from fitops.analytics.vo2max import estimate_vo2max, compute_vo2max_rolling, vo2max_from_lt2_pace
-from fitops.config.settings import get_settings
-from fitops.analytics.vo2max import compute_race_predictions
+from fitops.analytics.vo2max import (
+    compute_race_predictions,
+    compute_vo2max_rolling,
+    estimate_vo2max,
+    vo2max_from_lt2_pace,
+)
 from fitops.analytics.zone_inference import paces_from_vdot
+from fitops.config.settings import get_settings
 from fitops.dashboard.queries.analytics import (
+    RIDING_SPORTS,
+    RUNNING_SPORTS,
     get_training_load_data,
     get_vo2max_history,
     get_volume_summary,
     get_weekly_volume,
-    RUNNING_SPORTS,
-    RIDING_SPORTS,
 )
 
 _VIEW_SPORT_TYPES = {
@@ -50,9 +53,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
         weekly: list = []
 
         if athlete_id:
-            tl = await get_training_load_data(athlete_id, days=days, sport_types=sport_types)
-            volume_summary = await get_volume_summary(athlete_id, sport_types=sport_types)
-            weekly = await get_weekly_volume(athlete_id, weeks=weeks, sport_types=sport_types)
+            tl = await get_training_load_data(
+                athlete_id, days=days, sport_types=sport_types
+            )
+            volume_summary = await get_volume_summary(
+                athlete_id, sport_types=sport_types
+            )
+            weekly = await get_weekly_volume(
+                athlete_id, weeks=weeks, sport_types=sport_types
+            )
 
         if tl:
             chart_data = [
@@ -98,10 +107,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
         settings = get_settings()
         athlete_id = settings.athlete_id
 
+        from fitops.analytics.athlete_settings import get_athlete_settings
+
+        athlete_settings = get_athlete_settings()
+        hr_configured = bool(athlete_settings.lthr or athlete_settings.max_hr)
+
         best_vo2max = None
         history = []
 
-        if athlete_id:
+        if athlete_id and hr_configured:
             best_vo2max = await estimate_vo2max(athlete_id)
             history = await get_vo2max_history(athlete_id, days=days)
             # Anchor rolling model at the known best estimate so the starting
@@ -109,21 +123,20 @@ def register(templates: Jinja2Templates) -> APIRouter:
             compute_vo2max_rolling(
                 history, initial=best_vo2max.estimate if best_vo2max else None
             )
-
-        from fitops.analytics.athlete_settings import get_athlete_settings
-        athlete_settings = get_athlete_settings()
         lt2_pace_s = athlete_settings.threshold_pace_per_km_s
         lt1_pace_s = athlete_settings.lt1_pace_s
         vo2max_pace_s = athlete_settings.vo2max_pace_s
 
-        def _fmt_pace(pace_s: Optional[float]) -> Optional[str]:
+        def _fmt_pace(pace_s: float | None) -> str | None:
             if not pace_s:
                 return None
             return f"{int(pace_s // 60)}:{int(pace_s % 60):02d}/km"
 
         race_predictions = None
         if best_vo2max:
-            race_predictions = compute_race_predictions(best_vo2max, lt2_pace_s=lt2_pace_s)
+            race_predictions = compute_race_predictions(
+                best_vo2max, lt2_pace_s=lt2_pace_s
+            )
 
         # Enrich each history row with pace thresholds.
         #
@@ -140,7 +153,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         #    can't spike the LT2 line up by 20 sec/km. Back-calculate implied VDOT from
         #    the smoothed LT2 and re-derive all three paces — ordering guaranteed.
         _LT2_EWMA_ALPHA = 0.3
-        smoothed_lt2_speed: Optional[float] = None  # running EWMA in m/s (history is oldest-first)
+        smoothed_lt2_speed: float | None = (
+            None  # running EWMA in m/s (history is oldest-first)
+        )
 
         for row in history:
             # Prefer rolling_vo2max (smoothed); fall back to raw vdot for early rows
@@ -149,8 +164,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if rolling_vdot:
                 lt1_s, lt2_s, vo2s = paces_from_vdot(rolling_vdot)
 
-            if row.get("estimation_method") == "streams" and row.get("measured_lt2_pace_s"):
-                raw_speed = 1000.0 / row["measured_lt2_pace_s"]  # pace (s/km) → speed (m/s)
+            if row.get("estimation_method") == "streams" and row.get(
+                "measured_lt2_pace_s"
+            ):
+                raw_speed = (
+                    1000.0 / row["measured_lt2_pace_s"]
+                )  # pace (s/km) → speed (m/s)
                 if smoothed_lt2_speed is None:
                     smoothed_lt2_speed = raw_speed
                 else:
@@ -184,6 +203,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "lt2_pace_fmt": _fmt_pace(lt2_pace_s),
                 "vo2max_pace_fmt": _fmt_pace(vo2max_pace_s),
                 "race_predictions": race_predictions,
+                "hr_configured": hr_configured,
                 "active_page": "performance",
             },
         )
