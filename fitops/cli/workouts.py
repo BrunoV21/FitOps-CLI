@@ -635,6 +635,17 @@ def compliance(
             m, s = divmod(int(pace_s), 60)
             return f"{m}:{s:02d}"
 
+        def _fmt_gap(gap_s_per_km, is_cycling: bool):
+            if gap_s_per_km is None:
+                return None
+            if is_cycling:
+                return f"{3600 / gap_s_per_km:.1f} km/h"
+            m, s = divmod(int(gap_s_per_km), 60)
+            return f"{m}:{s:02d}"
+
+        _ride_types = {"Ride", "VirtualRide", "EBikeRide", "MountainBikeRide", "GravelRide"}
+        is_cycling = (workout.sport_type or "") in _ride_types
+
         segments_out = [
             {
                 "segment_index": r.segment.index,
@@ -674,7 +685,7 @@ def compliance(
                     else None,
                     "avg_cadence": r.avg_cadence,
                     "avg_gap_per_km": r.avg_gap_per_km,
-                    "avg_gap_formatted": _fmt_pace(r.avg_gap_per_km),
+                    "avg_gap_formatted": _fmt_gap(r.avg_gap_per_km, is_cycling),
                     "hr_zone_distribution": r.hr_zone_distribution,
                 },
                 "compliance": {
