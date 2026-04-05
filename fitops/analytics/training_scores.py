@@ -42,64 +42,45 @@ def _intensity_factor(activity: Activity, settings: AthleteSettings) -> float:
 
 def compute_aerobic_score(activity: Activity, settings: AthleteSettings) -> float:
     """
-    Aerobic training score 0.0–5.0.
+    Aerobic training score (unbounded, typically 0–6+).
 
-    Measures how much aerobic base stimulus the activity provided.
-    Zone 2 training is the sweet spot; longer duration at moderate intensity = higher score.
+    Power-law model calibrated against Huawei watch reference values:
+      score = 4.0 × IF^0.58 × duration_h^0.24
 
-    Calibration: 1h40min at Z2 intensity = 5.0, 1h Z2 = 3.0, 30min Z2 = 1.5.
+    Calibration data points:
+      2.22h ride IF=0.812 → 4.3, 0.78h threshold run IF=1.002 → 3.8,
+      0.96h easy run IF=0.684 → 3.2
     """
     duration_h = (activity.moving_time_s or 0) / 3600.0
     if duration_h <= 0:
         return 0.0
 
     intensity = _intensity_factor(activity, settings)
+    if intensity <= 0:
+        return 0.0
 
-    # Aerobic efficiency per zone — Z2 is optimal; high intensity shifts energy to anaerobic
-    if intensity < 0.50:
-        eff = 0.2  # very easy / rest
-    elif intensity < 0.75:
-        eff = 0.5  # recovery / Z1
-    elif intensity < 0.88:
-        eff = 1.0  # Z2 aerobic sweet spot
-    elif intensity < 1.00:
-        eff = 0.85  # Z3 tempo — still aerobic-dominant
-    elif intensity < 1.06:
-        eff = 0.55  # Z4 threshold — split energy systems
-    else:
-        eff = 0.30  # Z5 VO2max+ — anaerobic dominant
-
-    # Normalizer: 5/3 hours at Z2 = 5.0
-    return min(5.0, round(duration_h * eff * 3.0, 1))
+    return round(4.0 * (intensity ** 0.58) * (duration_h ** 0.24), 1)
 
 
 def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> float:
     """
-    Anaerobic training score 0.0–5.0.
+    Anaerobic training score (unbounded, typically 0–6+).
 
-    Measures high-intensity / threshold stress above LT2.
-    Ramps sharply above threshold; minimal for easy aerobic work.
+    Power-law model calibrated against Huawei watch reference values:
+      score = 4.7 × IF^5.8 × duration_h^0.24
 
-    Calibration: 45min race effort at Z4/Z5 ≈ 4.5, 40min threshold session = 4.0.
+    The steep IF exponent (5.8) captures how anaerobic stress ramps sharply
+    above threshold — a small intensity increase drives a large anaerobic response.
+
+    Calibration data points:
+      2.22h ride IF=0.812 → 1.7, 0.78h threshold run IF=1.002 → 4.5
     """
     duration_h = (activity.moving_time_s or 0) / 3600.0
     if duration_h <= 0:
         return 0.0
 
     intensity = _intensity_factor(activity, settings)
+    if intensity <= 0:
+        return 0.0
 
-    if intensity < 0.88:
-        # Below tempo: negligible anaerobic contribution
-        raw = duration_h * 0.05
-    elif intensity < 1.00:
-        # Tempo zone: linear ramp from minimal to moderate anaerobic
-        raw = duration_h * 0.3 * (intensity - 0.88) / 0.12
-    elif intensity < 1.06:
-        # Threshold zone: meaningful anaerobic stress
-        raw = duration_h * 1.5
-    else:
-        # VO2max+: sharp ramp — supramaximal efforts are highly anaerobic
-        raw = duration_h * (1.5 + (intensity - 1.0) * 8.0)
-
-    # Normalizer: 40min at threshold (IF=1.02) ≈ 4.0
-    return min(5.0, round(raw * 4.0, 1))
+    return round(4.7 * (intensity ** 5.8) * (duration_h ** 0.24), 1)

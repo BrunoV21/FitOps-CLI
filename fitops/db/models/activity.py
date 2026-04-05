@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Float, Index, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from fitops.db.base import Base
 
@@ -89,6 +90,15 @@ class Activity(Base):
         Index("ix_activities_athlete_start", "athlete_id", "start_date"),
         Index("ix_activities_sport_start", "sport_type", "start_date"),
     )
+
+    @hybrid_property
+    def strava_activity_id(self) -> int:
+        return self.strava_id
+
+    @strava_activity_id.expression
+    @classmethod
+    def strava_activity_id(cls):
+        return cls.strava_id
 
     @property
     def is_race(self) -> bool:

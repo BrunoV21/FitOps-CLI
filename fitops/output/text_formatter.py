@@ -113,6 +113,14 @@ def print_activity_detail(activity: dict) -> None:
         console.print(f"  Flags      {', '.join(active_flags)}")
 
     if insights:
+        ae = insights.get("aerobic_training_score")
+        an = insights.get("anaerobic_training_score")
+        if ae is not None or an is not None:
+            ae_str = f"{ae}" if ae is not None else "-"
+            an_str = f"{an}" if an is not None else "-"
+            console.print(
+                f"  Training   Aerobic [bold]{ae_str}[/bold]  |  Anaerobic [bold]{an_str}[/bold]"
+            )
         drift = insights.get("hr_drift")
         if drift and drift.get("drift_bpm") is not None:
             console.print(

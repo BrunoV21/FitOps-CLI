@@ -45,3 +45,7 @@ async def get_async_session() -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+
+
+# Alias — `get_session` and `get_async_session` are the same thing.
+get_session = get_async_session
