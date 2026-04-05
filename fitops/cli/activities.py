@@ -194,6 +194,22 @@ def get_activity(
         row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
         formatted = format_activity_row(row_dict, gear_lookup)
 
+        # Compute aerobic / anaerobic training scores
+        from fitops.analytics.athlete_settings import get_athlete_settings
+        from fitops.analytics.training_scores import (
+            compute_aerobic_score,
+            compute_anaerobic_score,
+        )
+
+        _settings = get_athlete_settings()
+        formatted.setdefault("insights", {})
+        formatted["insights"]["aerobic_training_score"] = compute_aerobic_score(
+            row, _settings
+        )
+        formatted["insights"]["anaerobic_training_score"] = compute_anaerobic_score(
+            row, _settings
+        )
+
         # Enrich with HR drift if streams are available
         if row.streams_fetched:
             from fitops.analytics.activity_insights import compute_hr_drift
@@ -216,7 +232,7 @@ def get_activity(
             if hr_row and vel_row:
                 drift = compute_hr_drift(hr_row.data or [], vel_row.data or [])
                 if drift:
-                    formatted["insights"] = {"hr_drift": drift}
+                    formatted["insights"]["hr_drift"] = drift
 
         return {"_meta": make_meta(total_count=1), "activity": formatted}
 
