@@ -1,4 +1,6 @@
-{
+{  
+  "name": "cfitops-cli-docs",
+  "homepage": "https://BrunoV21.github.io/FitOps-CLI/",
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
