@@ -158,4 +158,4 @@ fitops analytics pace-zones
 
 See [Output Examples → Analytics](../output-examples/analytics.md) for the zones JSON response.
 
-← [Concepts](./README.md)
+← [Concepts](./index.md)

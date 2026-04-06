@@ -6,17 +6,17 @@ Welcome to FitOps-CLI — a local Strava analytics CLI designed for AI-assisted 
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](./getting-started/README.md) | Install, authenticate, and run your first sync |
-| [Commands](./commands/README.md) | Complete reference for all CLI commands |
-| [Concepts](./concepts/README.md) | Training science behind the metrics |
-| [Output Examples](./output-examples/README.md) | Sample JSON output for every command |
+| [Getting Started](./getting-started/) | Install, authenticate, and run your first sync |
+| [Commands](./commands/) | Complete reference for all CLI commands |
+| [Concepts](./concepts/) | Training science behind the metrics |
+| [Output Examples](./output-examples/) | Sample JSON output for every command |
 | [Roadmap](./roadmap.md) | What's coming — more data sources and cloud backup |
 
 ## Quick Navigation
 
-**New here?** → [Getting Started](./getting-started/README.md)
+**New here?** → [Getting Started](./getting-started/)
 
-**Looking for a command?** → [Commands Reference](./commands/README.md)
+**Looking for a command?** → [Commands Reference](./commands/)
 
 **What is CTL/ATL/TSB?** → [Training Load](./concepts/training-load.md)
 

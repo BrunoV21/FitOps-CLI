@@ -152,4 +152,4 @@ For hilly or windy courses, using raw pace can significantly distort zone assign
 - Sawka M.N., Kenefick R.W. (2012). Physiological adaptations to heat and humidity. *Journal of Experimental Biology.*
 - Pugh L.G.C.E. (1971). The influence of wind resistance in running. *Journal of Physiology.*
 
-← [Concepts](./README.md)
+← [Concepts](./index.md)

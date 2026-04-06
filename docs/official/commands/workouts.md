@@ -2,6 +2,8 @@
 
 Markdown-based workout definitions with activity linking and segment compliance scoring.
 
+Commands print human-readable output by default. Add `--json` for raw JSON (useful for scripting or AI agents).
+
 Workouts are plain `.md` files you write and store in `~/.fitops/workouts/`. When you link a workout to a Strava activity, FitOps captures a physiology snapshot (CTL, ATL, TSB, VO2max, LT1/LT2) and — if the workout has named segments — scores each segment against the activity's heart rate stream.
 
 ## Workout File Format
@@ -120,7 +122,90 @@ Each `##` segment in the workout file is matched to a time slice of the HR strea
 |------|-------------|
 | `--recalculate` | Force re-score even if segment results are already cached |
 
-See [Output Examples → Workouts](../output-examples/workouts.md) for the full JSON response.
+See [Output Examples → Workouts](../output-examples/workouts.md) for sample output.
+
+---
+
+### `fitops workouts unlink <activity_id>`
+
+Remove the workout–activity association for an activity.
+
+```bash
+fitops workouts unlink 12345678901
+```
+
+The workout file itself is not deleted — only the DB record linking it to the activity is removed.
+
+---
+
+### `fitops workouts create <name> <source>`
+
+Create a workout markdown file from a JSON definition.
+
+```bash
+fitops workouts create "Threshold Tuesday" workout.json
+cat workout.json | fitops workouts create "Threshold Tuesday" -
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `NAME` | Display name for the workout (e.g. `"10 Mar Intervals"`) |
+| `SOURCE` | Path to a JSON file, or `-` to read from stdin |
+
+**JSON format:**
+
+```json
+{
+  "sport": "run",
+  "segments": [
+    { "name": "Warmup", "type": "warmup", "duration_min": 10, "zone": 2 },
+    { "name": "Intervals", "type": "interval", "reps": 5, "duration_min": 4, "zone": 4 },
+    { "name": "Recovery", "type": "recovery", "reps": 5, "duration_min": 2, "zone": 1 },
+    { "name": "Cooldown", "type": "cooldown", "duration_min": 10, "zone": 1 }
+  ]
+}
+```
+
+The command generates a `.md` file in `~/.fitops/workouts/` with YAML frontmatter and human-readable segment headings that the compliance scorer can parse.
+
+---
+
+### `fitops workouts simulate <name>`
+
+Simulate a workout on a course or past activity route, applying terrain and weather adjustments per segment.
+
+```bash
+fitops workouts simulate threshold-tuesday --course 3
+fitops workouts simulate tempo-run --activity 12345678901 --base-pace 5:10
+fitops workouts simulate long-run --course 1 --date 2026-04-20 --hour 8
+fitops workouts simulate tempo-run --course 2 --temp 28 --humidity 70
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `NAME` | Workout filename or name (e.g. `threshold-tuesday`) |
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--course ID` | — | RaceCourse ID (from `fitops race courses`) |
+| `--activity ID` | — | Strava activity ID — uses cached GPS streams as the course |
+| `--base-pace MM:SS` | — | Base pace per km for HR-zone segments with no explicit pace target |
+| `--temp C` | — | Temperature °C (manual override) |
+| `--humidity PCT` | — | Relative humidity % (manual override) |
+| `--wind MS` | — | Wind speed m/s |
+| `--wind-dir DEG` | — | Wind direction degrees (0=N) |
+| `--date YYYY-MM-DD` | — | Fetch weather for this date (future = forecast, past = archive) |
+| `--hour N` | 9 | Start hour local time (0–23) for weather fetch |
+
+Either `--course` or `--activity` is required (not both). Manual `--temp`/`--humidity` override auto-fetched weather when both are provided.
+
+**Output:** Per-segment plan showing segment name, target zone, planned duration, GAP/WAP-adjusted pace, estimated HR, and cumulative time.
 
 ---
 
@@ -161,7 +246,7 @@ The `overall_compliance_score` is a duration-weighted average across all scored 
 ## See Also
 
 - [Concepts → Zones](../concepts/zones.md) — zone methods and thresholds
-- [Output Examples → Workouts](../output-examples/workouts.md) — full JSON samples
+- [Output Examples → Workouts](../output-examples/workouts.md) — sample output
 - [`fitops analytics zones`](./analytics.md) — configure your HR zones
 
-← [Commands Reference](./README.md)
+← [Commands Reference](./index.md)

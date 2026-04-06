@@ -2,6 +2,8 @@
 
 View athlete profile, cumulative stats, and HR/power zones from Strava.
 
+Output is human-readable by default. Add `--json` to any command for raw JSON output.
+
 ## Commands
 
 ### `fitops athlete profile`
@@ -100,4 +102,4 @@ Requires a prior `fitops sync run`.
 - [Output Examples → Athlete](../output-examples/athlete.md) — full response samples
 - [`fitops analytics zones`](./analytics.md) — computed HR zones from physiology settings
 
-← [Commands Reference](./README.md)
+← [Commands Reference](./index.md)

@@ -12,14 +12,13 @@ This fetches all activities not yet stored locally. Progress is printed as it ru
 
 ```
 Starting incremental sync...
-{
-  "sync_type": "incremental",
-  "activities_created": 142,
-  "activities_updated": 3,
-  "pages_fetched": 8,
-  "duration_s": 14.23,
-  "synced_at": "2026-03-11T09:15:00+00:00"
-}
+Sync complete
+  Type       incremental
+  Created    142 activities
+  Updated    3 activities
+  Pages      8
+  Duration   14.23s
+  Synced at  2026-03-11T09:15:00
 ```
 
 ## Full Historical Sync
@@ -54,4 +53,4 @@ Each sync upserts your athlete profile and all activities into `~/.fitops/fitops
 - [`fitops analytics training-load`](../commands/analytics.md) — See your fitness trend
 - [`fitops athlete profile`](../commands/athlete.md) — View your profile and gear
 
-← [← Authentication](./authentication.md) | [Commands Reference →](../commands/README.md)
+← [← Authentication](./authentication.md) | [Commands Reference →](../commands/)

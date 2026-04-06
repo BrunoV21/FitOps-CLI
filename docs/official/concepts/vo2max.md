@@ -87,4 +87,4 @@ fitops analytics vo2max --age-adjusted     # include age-adjusted estimate
 
 See [Output Examples → Analytics](../output-examples/analytics.md) for the VO2max JSON response.
 
-← [Concepts](./README.md)
+← [Concepts](./index.md)
