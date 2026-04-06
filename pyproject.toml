@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fitops-cli"
 version = "0.1.0"
-description = "Local Strava analytics CLI with LLM-friendly JSON output"
+description = "Local Strava analytics CLI with native support for LLM operations"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.11"

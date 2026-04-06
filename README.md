@@ -374,7 +374,7 @@ Override the base directory with the `FITOPS_DIR` environment variable.
 
 ## Output Format
 
-FitOps uses **Rich** for human-facing output (formatted tables, colour-coded metrics, panels). Commands that return structured data for agent consumption output **JSON** with a `_meta` block:
+FitOps uses **Rich** for human-facing output (formatted tables, colour-coded metrics, panels). Commands that return structured data for agent consumption can output **JSON** with a `_meta` block by passing the `--json` flag:
 
 ```json
 {
