@@ -785,7 +785,9 @@ def print_notes_list(data: dict) -> None:
 def print_note_detail(data: dict) -> None:
     n = data.get("note") or {}
     console.print()
-    console.print(f"[bold]{n.get('title') or 'Note'}[/bold]  [dim]{(n.get('created') or '')[:10]}[/dim]")
+    console.print(
+        f"[bold]{n.get('title') or 'Note'}[/bold]  [dim]{(n.get('created') or '')[:10]}[/dim]"
+    )
     tags = ", ".join(n.get("tags") or [])
     if tags:
         console.print(f"  Tags   {tags}")
@@ -837,7 +839,13 @@ def print_workouts_list(data: dict) -> None:
         dur = w.get("target_duration_min")
         dur_str = f"{dur} min" if dur else "-"
         tags = ", ".join(w.get("tags") or []) or "-"
-        table.add_row(w.get("file_name") or "", w.get("name") or "", w.get("sport") or "-", dur_str, tags)
+        table.add_row(
+            w.get("file_name") or "",
+            w.get("name") or "",
+            w.get("sport") or "-",
+            dur_str,
+            tags,
+        )
 
     console.print(table)
 
@@ -845,7 +853,9 @@ def print_workouts_list(data: dict) -> None:
 def print_workout_detail(data: dict) -> None:
     w = data.get("workout") or {}
     console.print()
-    console.print(f"[bold]{w.get('name') or 'Workout'}[/bold]  [dim]{w.get('sport') or ''}[/dim]")
+    console.print(
+        f"[bold]{w.get('name') or 'Workout'}[/bold]  [dim]{w.get('sport') or ''}[/dim]"
+    )
     if w.get("target_duration_min"):
         console.print(f"  Duration   {w['target_duration_min']} min")
     tags = ", ".join(w.get("tags") or [])
@@ -877,7 +887,14 @@ def print_workout_history(data: dict) -> None:
         score = w.get("compliance_score")
         score_str = f"{score:.0f}%" if score is not None else "-"
         act_id = str(w.get("activity_strava_id") or w.get("activity_id") or "-")
-        table.add_row(date, w.get("name") or "", w.get("sport_type") or "-", act_id, score_str, w.get("status") or "-")
+        table.add_row(
+            date,
+            w.get("name") or "",
+            w.get("sport_type") or "-",
+            act_id,
+            score_str,
+            w.get("status") or "-",
+        )
 
     console.print(table)
 
@@ -889,7 +906,9 @@ def print_workout_compliance(data: dict) -> None:
 
     console.print()
     score_str = f"{overall:.0f}%" if overall is not None else "N/A"
-    console.print(f"[bold]{workout_name}[/bold]  overall compliance: [bold]{score_str}[/bold]")
+    console.print(
+        f"[bold]{workout_name}[/bold]  overall compliance: [bold]{score_str}[/bold]"
+    )
     console.print()
 
     if not segments:
@@ -917,7 +936,9 @@ def print_workout_compliance(data: dict) -> None:
         actuals = seg.get("actuals") or {}
         hr = actuals.get("avg_heartrate_bpm")
         hr_str = str(int(hr)) if hr else "-"
-        pace = actuals.get("avg_pace_formatted") or actuals.get("avg_gap_formatted") or "-"
+        pace = (
+            actuals.get("avg_pace_formatted") or actuals.get("avg_gap_formatted") or "-"
+        )
         comp = seg.get("compliance") or {}
         score = comp.get("compliance_score")
         score_str = f"{score:.0f}%" if score is not None else "-"
@@ -997,7 +1018,14 @@ def print_courses_list(data: dict) -> None:
         elev = c.get("total_elevation_gain_m")
         elev_str = f"+{elev:.0f} m" if elev else "-"
         date = str(c.get("created_at") or "")[:10]
-        table.add_row(str(c.get("id") or ""), c.get("name") or "", c.get("source") or "-", dist_str, elev_str, date)
+        table.add_row(
+            str(c.get("id") or ""),
+            c.get("name") or "",
+            c.get("source") or "-",
+            dist_str,
+            elev_str,
+            date,
+        )
 
     console.print(table)
 
@@ -1009,7 +1037,9 @@ def print_course_detail(data: dict) -> None:
     console.print()
     dist_m = c.get("total_distance_m") or 0
     elev = c.get("total_elevation_gain_m") or 0
-    console.print(f"[bold]{c.get('name') or 'Course'}[/bold]  [dim]ID {c.get('id')}[/dim]")
+    console.print(
+        f"[bold]{c.get('name') or 'Course'}[/bold]  [dim]ID {c.get('id')}[/dim]"
+    )
     console.print(f"  Distance   {dist_m / 1000:.2f} km")
     console.print(f"  Elevation  +{elev:.0f} m")
     console.print(f"  Source     {c.get('source') or '-'}")
@@ -1045,12 +1075,16 @@ def print_race_simulate(data: dict) -> None:
     splits = sim.get("splits") or []
 
     console.print()
-    console.print(f"[bold]{course.get('name') or 'Course'}[/bold]  target: [bold]{sim.get('target_time') or '-'}[/bold]  strategy: {sim.get('strategy') or sim.get('mode') or '-'}")
+    console.print(
+        f"[bold]{course.get('name') or 'Course'}[/bold]  target: [bold]{sim.get('target_time') or '-'}[/bold]  strategy: {sim.get('strategy') or sim.get('mode') or '-'}"
+    )
     weather = sim.get("weather") or {}
     wsrc = sim.get("weather_source") or "neutral"
     temp = weather.get("temperature_c")
     if temp is not None:
-        console.print(f"  Weather  {temp}°C  {weather.get('humidity_pct', '-')}% RH  [{wsrc}]")
+        console.print(
+            f"  Weather  {temp}°C  {weather.get('humidity_pct', '-')}% RH  [{wsrc}]"
+        )
     console.print()
 
     if not splits:
@@ -1108,7 +1142,10 @@ def print_weather_activity(data: dict) -> None:
     def _v(val, fmt=".1f", suffix=""):
         return f"{val:{fmt}}{suffix}" if val is not None else "-"
 
-    table.add_row("Temperature", f"{_v(temp, suffix=' °C')}  ({_v(hum, fmt='.0f', suffix='% RH')})")
+    table.add_row(
+        "Temperature",
+        f"{_v(temp, suffix=' °C')}  ({_v(hum, fmt='.0f', suffix='% RH')})",
+    )
     table.add_row("Condition", cond)
     wind = w.get("wind_speed_ms")
     wind_dir = w.get("wind_direction_deg")

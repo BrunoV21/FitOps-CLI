@@ -45,9 +45,7 @@ def _register_subapps() -> None:
     app.add_typer(
         dashboard_app, name="dashboard", help="Launch local training dashboards."
     )
-    app.add_typer(
-        backup_app, name="backup", help="Backup and restore FitOps data."
-    )
+    app.add_typer(backup_app, name="backup", help="Backup and restore FitOps data.")
 
 
 _register_subapps()

@@ -74,7 +74,9 @@ async def infer_zones(athlete_id: int) -> ZoneInferenceResult:
     async with get_async_session() as session:
         stmt = (
             select(Activity)
-            .where(Activity.athlete_id == athlete_id, Activity.streams_fetched.is_(True))
+            .where(
+                Activity.athlete_id == athlete_id, Activity.streams_fetched.is_(True)
+            )
             .order_by(Activity.start_date.desc())
         )
         result = await session.execute(stmt)

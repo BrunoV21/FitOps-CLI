@@ -40,7 +40,9 @@ async def _fetch_streams_for_activities(
     fetched = 0
     errors = 0
     total = len(activity_ids)
-    for idx, (internal_id, strava_id) in enumerate(zip(activity_ids, strava_ids, strict=False), 1):
+    for idx, (internal_id, strava_id) in enumerate(
+        zip(activity_ids, strava_ids, strict=False), 1
+    ):
         typer.echo(f"  [{idx}/{total}] activity {strava_id}...", err=True)
         try:
             if force:

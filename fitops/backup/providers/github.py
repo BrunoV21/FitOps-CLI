@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """GitHub Releases backup provider.
 
 Each FitOps backup is stored as a GitHub Release on a user-supplied private
@@ -9,6 +7,8 @@ are easy to identify directly on GitHub.
 Authentication: a Personal Access Token (PAT) with the ``repo`` scope.
 No extra dependencies — uses ``httpx`` which is already in the project.
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 

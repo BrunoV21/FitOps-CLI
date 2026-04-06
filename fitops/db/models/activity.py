@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Float, Index, Integer, Text
-from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column
 
 from fitops.db.base import Base
 

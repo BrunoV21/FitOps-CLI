@@ -201,7 +201,10 @@ def get_note(
     """Display a note's full content."""
     note = get_note_file(slug)
     if note is None:
-        typer.echo(f"Note '{slug}' not found. Run `fitops notes list` to see available notes.", err=True)
+        typer.echo(
+            f"Note '{slug}' not found. Run `fitops notes list` to see available notes.",
+            err=True,
+        )
         raise typer.Exit(1)
 
     out = {
@@ -234,7 +237,7 @@ def edit_note(
 
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
     if not editor:
-        typer.echo(f"Set $EDITOR to edit in your preferred editor.")
+        typer.echo("Set $EDITOR to edit in your preferred editor.")
         typer.echo(f"  File: {note.file_path}")
         return
 

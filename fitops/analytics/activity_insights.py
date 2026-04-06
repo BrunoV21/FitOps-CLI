@@ -9,7 +9,9 @@ def compute_hr_drift(hr_stream: list[float], pace_stream: list[float]) -> dict |
     <5% = well coupled (aerobic), 5-10% = moderate drift, >10% = significant decoupling
     """
     valid = [
-        (h, p) for h, p in zip(hr_stream, pace_stream, strict=False) if h and h > 0 and p and p > 0
+        (h, p)
+        for h, p in zip(hr_stream, pace_stream, strict=False)
+        if h and h > 0 and p and p > 0
     ]
     if (
         len(valid) < 600

@@ -42,7 +42,9 @@ def create_app(port: int = 8888) -> FastAPI:
             except asyncio.CancelledError:
                 pass
 
-    app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app = FastAPI(
+        title="FitOps Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan
+    )
     app.state.dashboard_port = port
 
     app.mount(

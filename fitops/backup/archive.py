@@ -5,7 +5,6 @@ import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 MANIFEST_NAME = "manifest.json"
 
 # Files and directories (relative to fitops_dir) that are included in a backup.

@@ -643,7 +643,13 @@ def compliance(
             m, s = divmod(int(gap_s_per_km), 60)
             return f"{m}:{s:02d}"
 
-        _ride_types = {"Ride", "VirtualRide", "EBikeRide", "MountainBikeRide", "GravelRide"}
+        _ride_types = {
+            "Ride",
+            "VirtualRide",
+            "EBikeRide",
+            "MountainBikeRide",
+            "GravelRide",
+        }
         is_cycling = (workout.sport_type or "") in _ride_types
 
         segments_out = [

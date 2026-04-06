@@ -203,7 +203,8 @@ def _compute_true_pace_stream(streams: dict, weather) -> list | None:
         gap_speed = gap_raw
     elif grade and len(grade) >= n_v * 0.8:
         gap_speed = [
-            v * (1 + 0.033 * g) if (v and v > 0.1) else 0.0 for v, g in zip(vel, grade, strict=False)
+            v * (1 + 0.033 * g) if (v and v > 0.1) else 0.0
+            for v, g in zip(vel, grade, strict=False)
         ]
     else:
         return None  # No gradient data available
@@ -816,12 +817,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "index": (lap.lap_index or 0) + 1,
                     "name": lap.name or f"Lap {(lap.lap_index or 0) + 1}",
                     "duration": _fmt_seconds(lap.moving_time_s),
-                    "distance_km": round(lap.distance_m / 1000, 2) if lap.distance_m else None,
+                    "distance_km": round(lap.distance_m / 1000, 2)
+                    if lap.distance_m
+                    else None,
                     "pace": _pace_str(spd, activity.sport_type),
                     "pace_s": pace_s,
-                    "avg_hr": round(lap.average_heartrate) if lap.average_heartrate else None,
+                    "avg_hr": round(lap.average_heartrate)
+                    if lap.average_heartrate
+                    else None,
                     "max_hr": lap.max_heartrate,
-                    "avg_watts": round(lap.average_watts) if lap.average_watts else None,
+                    "avg_watts": round(lap.average_watts)
+                    if lap.average_watts
+                    else None,
                 }
             )
 
@@ -860,13 +867,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "id": w.id,
                     "name": w.name,
                     "compliance_score": w.compliance_score,
-                    "compliance_pct": round(w.compliance_score * 100) if w.compliance_score is not None else None,
+                    "compliance_pct": round(w.compliance_score * 100)
+                    if w.compliance_score is not None
+                    else None,
                     "segments": [
                         {
                             **s.to_dict(),
                             "target_label": (
                                 f"HR {int(s.target_hr_min_bpm)}–{int(s.target_hr_max_bpm)} bpm"
-                                if s.target_focus_type == "hr_range" and s.target_hr_min_bpm and s.target_hr_max_bpm
+                                if s.target_focus_type == "hr_range"
+                                and s.target_hr_min_bpm
+                                and s.target_hr_max_bpm
                                 else f"{_fmt_pace_local(s.target_pace_min_s_per_km)}–{_fmt_pace_local(s.target_pace_max_s_per_km)}/km"
                                 if s.target_focus_type == "pace_range"
                                 else f"Zone {s.target_zone}"
@@ -874,7 +885,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                                 else "—"
                             ),
                             "actual_zone": _derive_zone(s.avg_heartrate, _lthr),
-                            "compliance_pct": round(s.compliance_score * 100) if s.compliance_score is not None else None,
+                            "compliance_pct": round(s.compliance_score * 100)
+                            if s.compliance_score is not None
+                            else None,
                         }
                         for s in segs
                     ],
@@ -905,11 +918,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     bisect.bisect_left(dist_ds, end_dist),
                     len(dist_ds) - 1,
                 )
-                laps_json_list.append({
-                    **lap_rows[i],
-                    "start_idx": start_idx,
-                    "end_idx": end_idx,
-                })
+                laps_json_list.append(
+                    {
+                        **lap_rows[i],
+                        "start_idx": start_idx,
+                        "end_idx": end_idx,
+                    }
+                )
                 cumulative = end_dist
         else:
             laps_json_list = lap_rows
@@ -919,7 +934,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
             metrics: dict = {}
             vel = strms.get("velocity_smooth", [])
             hr = strms.get("heartrate", [])
-            watts = strms.get("watts", [])
 
             # Aerobic decoupling: compare HR:pace ratio in first vs second half
             if vel and hr and len(vel) > 20 and len(hr) > 20:
@@ -931,7 +945,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 second_h = [h for h in hr[mid:n] if h and h > 0]
                 if first_v and first_h and second_v and second_h:
                     ef1 = (sum(first_v) / len(first_v)) / (sum(first_h) / len(first_h))
-                    ef2 = (sum(second_v) / len(second_v)) / (sum(second_h) / len(second_h))
+                    ef2 = (sum(second_v) / len(second_v)) / (
+                        sum(second_h) / len(second_h)
+                    )
                     if ef1 > 0:
                         metrics["decoupling_pct"] = round((ef2 / ef1 - 1) * 100, 1)
 
@@ -964,7 +980,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             return metrics
 
-        perf_metrics = _compute_perf_metrics(activity, streams, is_run) if streams else {}
+        perf_metrics = (
+            _compute_perf_metrics(activity, streams, is_run) if streams else {}
+        )
 
         # Power-duration curve (cycling only)
         power_curve_json = None
@@ -972,16 +990,33 @@ def register(templates: Jinja2Templates) -> APIRouter:
             watts_stream = streams.get("watts", [])
             if watts_stream and len(watts_stream) > 10:
                 durations = [5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600]
-                dur_labels = ["5s", "10s", "30s", "1m", "2m", "5m", "10m", "20m", "30m", "60m"]
+                dur_labels = [
+                    "5s",
+                    "10s",
+                    "30s",
+                    "1m",
+                    "2m",
+                    "5m",
+                    "10m",
+                    "20m",
+                    "30m",
+                    "60m",
+                ]
                 curve = []
-                for dur, label in zip(durations, dur_labels):
+                for dur, label in zip(durations, dur_labels, strict=False):
                     if dur > len(watts_stream):
                         break
                     best = max(
                         sum(watts_stream[i : i + dur]) / dur
                         for i in range(len(watts_stream) - dur + 1)
                     )
-                    curve.append({"duration_label": label, "duration_s": dur, "best_watts": round(best, 1)})
+                    curve.append(
+                        {
+                            "duration_label": label,
+                            "duration_s": dur,
+                            "best_watts": round(best, 1),
+                        }
+                    )
                 if curve:
                     power_curve_json = json.dumps(curve)
 
@@ -1016,7 +1051,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "power_curve_json": power_curve_json or "null",
                 "weather": weather_panel,
                 "lt2_hr": _ath_settings.lthr,
-                "lt1_hr": round(_ath_settings.lthr * 0.92) if _ath_settings.lthr else None,
+                "lt1_hr": round(_ath_settings.lthr * 0.92)
+                if _ath_settings.lthr
+                else None,
                 "active_page": "activities",
             },
         )
