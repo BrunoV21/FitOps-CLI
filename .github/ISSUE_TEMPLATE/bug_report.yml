@@ -1,0 +1,92 @@
+name: Bug Report
+description: Something is broken or behaving unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a bug, run `fitops auth status` and `fitops sync status` to rule out auth/sync issues.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug. Include the exact command you ran.
+      placeholder: |
+        Running `fitops analytics training-load --today` returns an empty result even after syncing.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: I expected to see my current CTL/ATL/TSB values.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. fitops sync run
+        2. fitops analytics training-load --today
+        3. Output is empty / error shown
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Full command output
+      description: Paste the complete terminal output including any error messages.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: fitops-version
+    attributes:
+      label: FitOps version
+      description: Run `fitops --version` and paste the result.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Run `python --version` and paste the result.
+      placeholder: "3.12.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      options:
+        - uvx (recommended)
+        - pip install fitops-cli
+        - pip install -e . (from source)
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant — e.g. if you are running in a Docker container, using a custom FITOPS_DIR, or hit this after a specific sync.

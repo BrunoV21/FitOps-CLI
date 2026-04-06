@@ -1,0 +1,88 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        FitOps follows the **Duality Rule**: every feature must work in both the CLI (for agents) and the dashboard (for humans). Please keep this in mind when describing what you want.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      options:
+        - Activities
+        - Analytics (training load, VO2max, zones, trends)
+        - Workouts & compliance
+        - Race simulation & courses
+        - Weather & adjusted pace
+        - Notes & agent memory
+        - Dashboard
+        - Data sources & sync (new providers)
+        - Cloud backup
+        - CLI / output format
+        - Agent / LLM integration
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation where you needed this. Real use cases make the best feature requests.
+      placeholder: |
+        When I race in hot weather, I can't tell whether my slower pace was due to fitness decline or the conditions. I want a single metric that strips out weather noise so I can compare efforts across seasons.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like FitOps to do? Include what the CLI command might look like and/or what the dashboard page would show.
+      placeholder: |
+        CLI: `fitops analytics true-pace --sport Run --limit 20`
+        Dashboard: a True Pace trend line on the performance page
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Other tools or workarounds you tried before requesting this.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Which interface does this touch?
+      description: Per the Duality Rule, ideally both.
+      multiple: true
+      options:
+        - CLI
+        - Dashboard
+        - Both
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent-use
+    attributes:
+      label: Is this primarily useful for AI agents?
+      description: Helps us prioritise agent-facing CLI work.
+      options:
+        - "Yes — an agent would use this"
+        - "No — this is for human exploration"
+        - "Both"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links to research, papers, or other tools that implement something similar.
