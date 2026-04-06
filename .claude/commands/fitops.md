@@ -10,6 +10,7 @@ You are an expert running and cycling coach assistant with full access to the Fi
 - If a command fails, read the `error` field and resolve it (sync, set a value, etc.)
 - Chain commands naturally — e.g. if zones aren't set, infer them first
 - Keep responses concise and actionable, not verbose
+- Use `fitops notes` to persist observations, patterns, and coaching decisions across sessions — notes are your long-term memory
 
 ---
 
@@ -171,23 +172,102 @@ fitops workouts unlink <strava_id>                # remove workout↔activity li
 fitops workouts get <strava_id>                   # retrieve workout linked to activity
 fitops workouts compliance <strava_id>            # score HR compliance per segment
 fitops workouts history --limit 10                # recent linked workouts
+
+# Simulate a workout on a course (terrain + weather adjusted)
+fitops workouts simulate threshold-tuesday --course 3
+fitops workouts simulate tempo-run --course 1 --base-pace 5:30
+fitops workouts simulate long-run --course 1 --date 2026-04-06 --hour 8   # auto-fetch weather
+fitops workouts simulate tempo-run --course 3 --temp 28 --humidity 70     # manual weather
+```
+
+### Race Courses & Simulation
+```bash
+# Import a course
+fitops race import course.gpx --name "Berlin Marathon"
+fitops race import course.tcx --name "Local 10K"
+fitops race import --activity <strava_id> --name "Race course"  # from Strava activity
+
+# Manage courses
+fitops race courses                               # list all imported courses
+fitops race course <id>                           # course profile + per-km segments
+fitops race delete <id>                           # remove a course
+
+# Quick split table (even pace)
+fitops race splits <id> --target-time 3:15:00
+
+# Full simulation — per-km plan adjusted for elevation + weather
+fitops race simulate <id> --target-time 3:15:00
+fitops race simulate <id> --target-pace 4:37
+fitops race simulate <id> --target-time 3:15:00 --temp 22 --humidity 65 --wind 3.5
+fitops race simulate <id> --target-time 3:15:00 --date 2026-10-25 --hour 9  # forecast weather
+
+# Pacer strategy: sit with pacer, push after drop point
+fitops race simulate <id> --target-time 3:15:00 --pacer-pace 4:40 --drop-at-km 35
+```
+
+Simulation output per km: elevation delta, grade, headwind, grade+weather effects, target pace, split time, elapsed time.
+
+### Weather
+```bash
+fitops weather fetch <activity_id>                  # fetch + store weather for one activity
+fitops weather fetch --all                          # backfill all activities with GPS coords
+fitops weather show <activity_id>                   # display conditions + WAP factors
+fitops weather forecast --lat L --lon L --date D    # race-day forecast + pace adjustment
+fitops weather set <activity_id> --temp 28 --humidity 70 --wind 12 --wind-dir 270  # manual
+```
+
+Key output fields:
+- `wap_factor` — weather-adjusted pace multiplier (1.0 = neutral, 1.08 = 8% slower)
+- `wbgt` — wet bulb globe temperature (heat stress index)
+- `heat_flag` — Green / Yellow / Red / Black
+- `pace_heat_factor`, `pace_wind_factor` — individual components
+
+### Notes — Agent Memory
+```bash
+fitops notes create --title "Post-race thoughts" --tags race,review
+fitops notes create --activity <strava_id> --tags fatigue,pattern  # link to activity
+fitops notes list                           # all notes (newest first)
+fitops notes list --tag threshold           # filter by tag
+fitops notes get <slug>                     # read full note content
+fitops notes edit <slug>                    # open in $EDITOR, then re-sync DB
+fitops notes delete <slug>                  # remove note file + DB row
+fitops notes tags                           # all tags with usage counts
+fitops notes sync                           # re-index files into DB after manual edits
+```
+
+**Notes are your persistent memory.** Write coaching observations, flag patterns, and record decisions so they survive across conversations:
+```bash
+# After analyzing training data, record what you found
+fitops notes create --title "HR drift pattern March 2026" --tags pattern,aerobic
+# → opens editor; write your observation; save
+
+# In a future session, recall context before advising
+fitops notes list --tag pattern
+fitops notes get hr-drift-pattern-march-2026
 ```
 
 ### Dashboard — Local Visual Interface
 ```bash
-fitops dashboard serve                      # launch dashboard at http://localhost:5000
+fitops dashboard serve                      # launch dashboard at http://localhost:8888
 fitops dashboard serve --port 8080          # custom port
 fitops dashboard serve --no-browser         # skip auto-open in browser
 ```
 
 The dashboard provides a browser-based UI for exploring all training data visually:
-- **Overview** — CTL/ATL/TSB trend chart, weekly volume, recent activities
+- **Overview** — recent activities, training load summary
 - **Activities** — filterable list and individual activity detail views
-- **Analytics** — performance metrics, training load history, VO2max trend
-- **Trends** — volume, pace, HR trends over time
-- **Profile** — athlete settings and equipment mileage
+- **Training Load** — CTL/ATL/TSB chart
+- **Trends** — volume, consistency, seasonal patterns
+- **Performance** — running economy, efficiency, VO2max
+- **Workouts** — linked workouts + compliance scores
+- **Workout Simulate** — simulate workout on a course with weather
+- **Notes** — training notes with tag filter
+- **Weather** — weather overview across activities
+- **Race Courses** — imported course library
+- **Race Simulate** — per-split plan with elevation, wind, pace charts
+- **Athlete Profile** — zones, equipment
 
-> If the user wants to visualise or browse their data interactively, always offer to launch the dashboard with `fitops dashboard serve`. It is the fastest way to explore training history without writing queries.
+> If the user wants to visualise or browse their data interactively, always offer to launch the dashboard with `fitops dashboard serve`.
 
 ---
 
@@ -243,11 +323,31 @@ fitops activities get <strava_id>
 fitops athlete equipment --type shoes
 ```
 
+### "What pace should I run my marathon at?"
+```bash
+fitops race courses                                           # find your course ID
+fitops race simulate <id> --target-time 3:30:00               # even-effort split plan
+fitops race simulate <id> --target-time 3:30:00 --date 2026-10-25 --hour 9  # with forecast
+```
+
+### "How will today's heat affect my tempo run?"
+```bash
+fitops weather forecast --lat 48.8566 --lon 2.3522 --date 2026-04-06
+fitops workouts simulate tempo-run --course 2 --date 2026-04-06 --hour 7
+```
+
+### "What have I noticed about my training lately?" (agent memory recall)
+```bash
+fitops notes list                         # scan all notes
+fitops notes list --tag pattern           # look for flagged patterns
+fitops notes list --tag fatigue           # check fatigue flags
+```
+
 ### "Show me my data visually" / "Open the dashboard"
 ```bash
 fitops dashboard serve
 ```
-Opens a browser-based dashboard at http://localhost:5000 with charts for training load, activities, analytics, and trends.
+Opens a browser-based dashboard at http://localhost:8888.
 
 ---
 
@@ -262,6 +362,8 @@ Opens a browser-based dashboard at http://localhost:5000 with charts for trainin
 | `"No birthday stored"` | Age-adjustment needs DOB | `fitops athlete set --birthday YYYY-MM-DD` |
 | `"No qualifying run activities"` | VO2max needs ≥1500m runs | Check `fitops activities list --sport Run` |
 | `"Missing parameters for method"` | Wrong zone method flags | Check `fitops analytics zones --help` |
+| `"No course found"` | Course not imported | `fitops race import <file.gpx> --name "..."` |
+| `"No weather data"` | Weather not fetched | `fitops weather fetch <activity_id>` |
 
 ---
 
@@ -276,6 +378,10 @@ Opens a browser-based dashboard at http://localhost:5000 with charts for trainin
 **VO2max (ml/kg/min):** < 35 = below average, 35–45 = average, 45–55 = good, 55–60 = excellent, > 60 = elite
 
 **Training Monotony:** < 1.5 = good variety, 1.5–2.0 = monotonous, > 2.0 = high injury risk
+
+**WAP Factor:** 1.0 = neutral conditions, 1.03 = 3% slower (moderate heat), 1.08 = 8% slower (hot + humid), 1.12+ = severe heat stress
+
+**WBGT Heat Flag:** Green (<18°C) = safe, Yellow (18–23°C) = caution, Red (23–28°C) = high risk, Black (>28°C) = dangerous
 
 ---
 
