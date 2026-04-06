@@ -44,6 +44,7 @@ export default defineConfig({
           { text: 'workouts', link: '/commands/workouts' },
           { text: 'race', link: '/commands/race' },
           { text: 'notes', link: '/commands/notes' },
+          { text: 'backup', link: '/commands/backup' },
         ]
       },
       {

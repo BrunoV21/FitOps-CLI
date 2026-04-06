@@ -17,6 +17,7 @@ FitOps commands are grouped by function. Each group covers a distinct part of yo
 | [`workouts`](./workouts.md) | Define structured workouts in Markdown, link them to activities, score HR compliance per segment, simulate on a course |
 | [`race`](./race.md) | Import GPX/TCX courses, generate per-km pacing plans with elevation and weather, simulate pacer strategy |
 | [`notes`](./notes.md) | Markdown training journal — create, tag, link to activities, and query across sessions |
+| [`backup`](./backup.md) | Back up your entire FitOps data directory to GitHub and restore it on any machine |
 
 ## Getting Around
 
