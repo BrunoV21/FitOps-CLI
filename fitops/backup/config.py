@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Helpers for reading and writing backup provider config inside config.json."""
+
+from __future__ import annotations
 
 import json
 from pathlib import Path

@@ -48,10 +48,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
         token = (payload.get("token") or "").strip()
         repo = (payload.get("repo") or "").strip()
         if not token or not repo:
-            return JSONResponse({"error": "token and repo are required"}, status_code=400)
+            return JSONResponse(
+                {"error": "token and repo are required"}, status_code=400
+            )
 
         try:
             from fitops.backup.providers.github import validate_config
+
             full_name = validate_config(token, repo)
         except (ValueError, RuntimeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
@@ -90,7 +93,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 ),
             )
         except Exception as exc:
-            return JSONResponse({"error": f"Archive creation failed: {exc}"}, status_code=500)
+            return JSONResponse(
+                {"error": f"Archive creation failed: {exc}"}, status_code=500
+            )
 
         size_mb = arc.archive_size_mb(archive_path)
         result: dict = {
@@ -134,19 +139,21 @@ def register(templates: Jinja2Templates) -> APIRouter:
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
-        return JSONResponse({
-            "provider": provider,
-            "backups": [
-                {
-                    "id": b.id,
-                    "name": b.name,
-                    "created_at": b.created_at,
-                    "size_mb": round(b.size_bytes / (1024 * 1024), 1),
-                    "download_url": b.download_url,
-                }
-                for b in backups
-            ],
-        })
+        return JSONResponse(
+            {
+                "provider": provider,
+                "backups": [
+                    {
+                        "id": b.id,
+                        "name": b.name,
+                        "created_at": b.created_at,
+                        "size_mb": round(b.size_bytes / (1024 * 1024), 1),
+                        "download_url": b.download_url,
+                    }
+                    for b in backups
+                ],
+            }
+        )
 
     # ------------------------------------------------------------------
     # Restore
@@ -161,10 +168,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         provider_name = (payload.get("provider") or "").strip()
         backup_id = (payload.get("backup_id") or "").strip()
-        backup_name = (payload.get("backup_name") or "").strip()
 
         if not provider_name or not backup_id:
-            return JSONResponse({"error": "provider and backup_id are required"}, status_code=400)
+            return JSONResponse(
+                {"error": "provider and backup_id are required"}, status_code=400
+            )
 
         try:
             prov = _get_provider(provider_name)
@@ -177,11 +185,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 None, prov.list_backups
             )
         except Exception as exc:
-            return JSONResponse({"error": f"Could not list backups: {exc}"}, status_code=500)
+            return JSONResponse(
+                {"error": f"Could not list backups: {exc}"}, status_code=500
+            )
 
         chosen = next((b for b in backups if b.id == backup_id), None)
         if chosen is None:
-            return JSONResponse({"error": f"Backup '{backup_id}' not found."}, status_code=404)
+            return JSONResponse(
+                {"error": f"Backup '{backup_id}' not found."}, status_code=404
+            )
 
         settings = get_settings()
 
@@ -205,11 +217,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
         # Reload settings so the in-process singleton picks up any config changes
         settings.reload()
 
-        return JSONResponse({
-            "ok": True,
-            "restored_items": restored,
-            "backup_created_at": manifest.get("created_at", "unknown"),
-        })
+        return JSONResponse(
+            {
+                "ok": True,
+                "restored_items": restored,
+                "backup_created_at": manifest.get("created_at", "unknown"),
+            }
+        )
 
     # ------------------------------------------------------------------
     # Schedule
@@ -231,10 +245,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
         try:
             interval_hours = int(payload.get("interval_hours", 24))
         except (TypeError, ValueError):
-            return JSONResponse({"error": "interval_hours must be an integer"}, status_code=400)
+            return JSONResponse(
+                {"error": "interval_hours must be an integer"}, status_code=400
+            )
 
         if interval_hours < 1:
-            return JSONResponse({"error": "interval_hours must be >= 1"}, status_code=400)
+            return JSONResponse(
+                {"error": "interval_hours must be >= 1"}, status_code=400
+            )
 
         provider = (payload.get("provider") or "github").strip()
 
@@ -243,12 +261,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
             interval_hours=interval_hours,
             provider=provider,
         )
-        return JSONResponse({
-            "ok": True,
-            "enabled": enabled,
-            "interval_hours": interval_hours,
-            "provider": provider,
-        })
+        return JSONResponse(
+            {
+                "ok": True,
+                "enabled": enabled,
+                "interval_hours": interval_hours,
+                "provider": provider,
+            }
+        )
 
     return router
 
@@ -264,6 +284,7 @@ def _get_provider(name: str):
         if not cfg:
             raise ValueError("GitHub backup is not configured.")
         from fitops.backup.providers.github import GitHubProvider
+
         return GitHubProvider(token=cfg["token"], repo=cfg["repo"])
     raise ValueError(f"Unknown provider '{name}'.")
 

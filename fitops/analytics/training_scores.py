@@ -59,7 +59,7 @@ def compute_aerobic_score(activity: Activity, settings: AthleteSettings) -> floa
     if intensity <= 0:
         return 0.0
 
-    return round(4.0 * (intensity ** 0.58) * (duration_h ** 0.24), 1)
+    return round(4.0 * (intensity**0.58) * (duration_h**0.24), 1)
 
 
 def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> float:
@@ -83,4 +83,4 @@ def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> fl
     if intensity <= 0:
         return 0.0
 
-    return round(4.7 * (intensity ** 5.8) * (duration_h ** 0.24), 1)
+    return round(4.7 * (intensity**5.8) * (duration_h**0.24), 1)

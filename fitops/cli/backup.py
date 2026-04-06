@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """fitops backup — create, restore and manage cloud backups."""
+
+from __future__ import annotations
 
 import tempfile
 from pathlib import Path
@@ -146,7 +146,10 @@ def create(
 @app.command("list")
 def list_backups(
     provider: str | None = typer.Option(
-        None, "--provider", "-p", help="List backups from a cloud provider (e.g. github)."
+        None,
+        "--provider",
+        "-p",
+        help="List backups from a cloud provider (e.g. github).",
     ),
     local: bool = typer.Option(
         False, "--local", "-l", help="List locally stored archives."
@@ -198,7 +201,7 @@ def restore(
         "--backup",
         "-b",
         help="Specific backup name to restore (from cloud list). "
-             "If omitted, the most recent one is used.",
+        "If omitted, the most recent one is used.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
 ) -> None:
@@ -236,9 +239,7 @@ def restore(
             raise typer.Exit(1)
 
         if backup_name:
-            match = next(
-                (b for b in backups if backup_name in b.name), None
-            )
+            match = next((b for b in backups if backup_name in b.name), None)
             if match is None:
                 typer.echo(
                     f"Backup '{backup_name}' not found. "
@@ -308,10 +309,21 @@ def restore(
 
 @app.command("schedule")
 def schedule(
-    enable: bool | None = typer.Option(None, "--enable/--disable", help="Turn scheduled backups on or off."),
-    interval: int | None = typer.Option(None, "--interval", "-i", help="Interval in hours between backups (e.g. 6, 12, 24)."),
-    provider: str = typer.Option("github", "--provider", "-p", help="Cloud provider to push to."),
-    status: bool = typer.Option(False, "--status", "-s", help="Print current schedule and exit."),
+    enable: bool | None = typer.Option(
+        None, "--enable/--disable", help="Turn scheduled backups on or off."
+    ),
+    interval: int | None = typer.Option(
+        None,
+        "--interval",
+        "-i",
+        help="Interval in hours between backups (e.g. 6, 12, 24).",
+    ),
+    provider: str = typer.Option(
+        "github", "--provider", "-p", help="Cloud provider to push to."
+    ),
+    status: bool = typer.Option(
+        False, "--status", "-s", help="Print current schedule and exit."
+    ),
 ) -> None:
     """Configure or view the automatic backup schedule.
 
@@ -325,7 +337,9 @@ def schedule(
 
     if status or (enable is None and interval is None):
         if not current:
-            typer.echo("No schedule configured. Use --enable --interval <hours> to set one up.")
+            typer.echo(
+                "No schedule configured. Use --enable --interval <hours> to set one up."
+            )
         else:
             state = "ENABLED" if current["enabled"] else "DISABLED"
             typer.echo(f"Schedule: {state}")
@@ -337,7 +351,9 @@ def schedule(
     # Merge with existing config
     if current:
         resolved_enabled = enable if enable is not None else current["enabled"]
-        resolved_interval = interval if interval is not None else current["interval_hours"]
+        resolved_interval = (
+            interval if interval is not None else current["interval_hours"]
+        )
         resolved_provider = provider or current["provider"]
     else:
         resolved_enabled = enable if enable is not None else True

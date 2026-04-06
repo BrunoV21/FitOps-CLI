@@ -124,7 +124,9 @@ def import_course(
     else:
         dist_m = result.get("total_distance_m") or 0
         elev = result.get("total_elevation_gain_m") or 0
-        typer.echo(f"Imported: {result.get('name')}  ({dist_m / 1000:.2f} km  +{elev:.0f} m)  ID {result.get('id')}")
+        typer.echo(
+            f"Imported: {result.get('name')}  ({dist_m / 1000:.2f} km  +{elev:.0f} m)  ID {result.get('id')}"
+        )
 
 
 # ---------------------------------------------------------------------------

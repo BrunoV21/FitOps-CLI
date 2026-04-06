@@ -9,9 +9,9 @@ from pathlib import Path
 class RemoteBackup:
     """Metadata for a single backup stored on a remote provider."""
 
-    id: str           # Provider-specific identifier (release id, file id, …)
-    name: str         # Human-readable filename
-    created_at: str   # ISO-8601 string
+    id: str  # Provider-specific identifier (release id, file id, …)
+    name: str  # Human-readable filename
+    created_at: str  # ISO-8601 string
     size_bytes: int
     download_url: str
 
