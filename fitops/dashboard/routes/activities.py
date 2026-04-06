@@ -736,4 +736,289 @@ def register(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
+    @router.get("/activities/{strava_id}/analysis", response_class=HTMLResponse)
+    async def activity_analysis(request: Request, strava_id: int):
+        import bisect
+
+        settings = get_settings()
+        athlete_id = settings.athlete_id
+
+        streams = {}
+        activity = None
+        laps = []
+        analytics = None
+        if athlete_id:
+            activity = await get_activity_detail(athlete_id, strava_id)
+            if activity and activity.laps_fetched:
+                laps = await get_activity_laps(activity.id)
+            if activity and activity.streams_fetched:
+                streams = await get_activity_streams(activity.id)
+
+        run_sports = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
+        is_run = activity.sport_type in run_sports if activity else False
+
+        _weather_map = await get_weather_for_activities([strava_id])
+        _weather_obj = _weather_map.get(strava_id)
+
+        if streams and _weather_obj:
+            wap_s = _compute_wap_stream(streams, _weather_obj)
+            if wap_s:
+                streams["wap_pace"] = wap_s
+            tp_s = _compute_true_pace_stream(streams, _weather_obj)
+            if tp_s:
+                streams["true_pace"] = tp_s
+                streams["true_velocity"] = [
+                    1000.0 / p if p and p > 0 else 0.0 for p in tp_s
+                ]
+
+        if streams and "true_pace" not in streams:
+            vel_raw = streams.get("velocity_smooth", [])
+            if vel_raw:
+                streams["true_pace"] = [
+                    round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
+                ]
+
+        if activity and streams:
+            analytics = compute_activity_analytics(activity, streams)
+
+        if activity is None:
+            return templates.TemplateResponse(
+                request,
+                "activities/detail.html",
+                {"request": request, "activity": None, "active_page": "activities"},
+                status_code=404,
+            )
+
+        # Downsample to 1000 points for better resolution
+        raw_n = max((len(v) for v in streams.values()), default=0)
+        ds_target = 1000
+        ds_step = max(1, raw_n // ds_target) if raw_n > ds_target else 1
+
+        def _downsample_analysis(s: dict, step: int) -> dict:
+            return {k: v[::step] for k, v in s.items()}
+
+        streams_ds = _downsample_analysis(streams, ds_step) if streams else {}
+
+        # Gear name
+        gear_name = None
+        if activity.gear_id:
+            athlete = await get_athlete(athlete_id)
+            if athlete:
+                gear_name = athlete.get_gear_name(activity.gear_id)
+
+        # Lap rows
+        lap_rows = []
+        for lap in laps:
+            spd = lap.average_speed_ms
+            pace_s = round(1000.0 / spd, 1) if spd and spd > 0 and is_run else None
+            lap_rows.append(
+                {
+                    "index": (lap.lap_index or 0) + 1,
+                    "name": lap.name or f"Lap {(lap.lap_index or 0) + 1}",
+                    "duration": _fmt_seconds(lap.moving_time_s),
+                    "distance_km": round(lap.distance_m / 1000, 2) if lap.distance_m else None,
+                    "pace": _pace_str(spd, activity.sport_type),
+                    "pace_s": pace_s,
+                    "avg_hr": round(lap.average_heartrate) if lap.average_heartrate else None,
+                    "max_hr": lap.max_heartrate,
+                    "avg_watts": round(lap.average_watts) if lap.average_watts else None,
+                }
+            )
+
+        avg_gap = _compute_avg_gap(streams, activity.sport_type)
+
+        # Linked workout + segments
+        workout_data = None
+        segments_for_map: list[dict] = []
+        if activity.id:
+            linked = await get_workout_for_activity(activity.id)
+            if linked:
+                w, segs = linked
+
+                def _fmt_pace_local(pace_s_val):
+                    if pace_s_val is None:
+                        return None
+                    m, s = divmod(int(pace_s_val), 60)
+                    return f"{m}:{s:02d}"
+
+                def _derive_zone(avg_hr_val, lthr_val):
+                    if not avg_hr_val or not lthr_val:
+                        return None
+                    ratio = avg_hr_val / lthr_val
+                    if ratio < 0.81:
+                        return 1
+                    if ratio < 0.90:
+                        return 2
+                    if ratio < 0.95:
+                        return 3
+                    if ratio < 1.00:
+                        return 4
+                    return 5
+
+                _lthr = get_athlete_settings().lthr
+                workout_data = {
+                    "id": w.id,
+                    "name": w.name,
+                    "compliance_score": w.compliance_score,
+                    "compliance_pct": round(w.compliance_score * 100) if w.compliance_score is not None else None,
+                    "segments": [
+                        {
+                            **s.to_dict(),
+                            "target_label": (
+                                f"HR {int(s.target_hr_min_bpm)}–{int(s.target_hr_max_bpm)} bpm"
+                                if s.target_focus_type == "hr_range" and s.target_hr_min_bpm and s.target_hr_max_bpm
+                                else f"{_fmt_pace_local(s.target_pace_min_s_per_km)}–{_fmt_pace_local(s.target_pace_max_s_per_km)}/km"
+                                if s.target_focus_type == "pace_range"
+                                else f"Zone {s.target_zone}"
+                                if s.target_focus_type == "hr_zone" and s.target_zone
+                                else "—"
+                            ),
+                            "actual_zone": _derive_zone(s.avg_heartrate, _lthr),
+                            "compliance_pct": round(s.compliance_score * 100) if s.compliance_score is not None else None,
+                        }
+                        for s in segs
+                    ],
+                }
+                segments_for_map = [
+                    {
+                        "name": s.segment_name,
+                        "step_type": s.step_type,
+                        "start_index": s.start_index,
+                        "end_index": s.end_index,
+                        "actual_zone": _derive_zone(s.avg_heartrate, _lthr),
+                        "avg_heartrate": s.avg_heartrate,
+                        "compliance_score": s.compliance_score,
+                    }
+                    for s in segs
+                ]
+
+        # Compute lap stream indices from downsampled distance stream
+        dist_ds = streams_ds.get("distance", [])
+        laps_json_list = []
+        if lap_rows and dist_ds:
+            cumulative = 0.0
+            for i, lap in enumerate(laps):
+                start_dist = cumulative
+                end_dist = cumulative + (lap.distance_m or 0)
+                start_idx = bisect.bisect_left(dist_ds, start_dist)
+                end_idx = min(
+                    bisect.bisect_left(dist_ds, end_dist),
+                    len(dist_ds) - 1,
+                )
+                laps_json_list.append({
+                    **lap_rows[i],
+                    "start_idx": start_idx,
+                    "end_idx": end_idx,
+                })
+                cumulative = end_dist
+        else:
+            laps_json_list = lap_rows
+
+        # Performance metrics
+        def _compute_perf_metrics(act, strms, is_run_flag):
+            metrics: dict = {}
+            vel = strms.get("velocity_smooth", [])
+            hr = strms.get("heartrate", [])
+            watts = strms.get("watts", [])
+
+            # Aerobic decoupling: compare HR:pace ratio in first vs second half
+            if vel and hr and len(vel) > 20 and len(hr) > 20:
+                n = min(len(vel), len(hr))
+                mid = n // 2
+                first_v = [v for v in vel[:mid] if v and v > 0.1]
+                first_h = [h for h in hr[:mid] if h and h > 0]
+                second_v = [v for v in vel[mid:n] if v and v > 0.1]
+                second_h = [h for h in hr[mid:n] if h and h > 0]
+                if first_v and first_h and second_v and second_h:
+                    ef1 = (sum(first_v) / len(first_v)) / (sum(first_h) / len(first_h))
+                    ef2 = (sum(second_v) / len(second_v)) / (sum(second_h) / len(second_h))
+                    if ef1 > 0:
+                        metrics["decoupling_pct"] = round((ef2 / ef1 - 1) * 100, 1)
+
+            # Efficiency factor
+            avg_hr_act = act.average_heartrate
+            if avg_hr_act and avg_hr_act > 0:
+                if is_run_flag and act.average_speed_ms:
+                    gap_stream = strms.get("grade_adjusted_speed", vel)
+                    valid_gap = [v for v in gap_stream if v and v > 0.1]
+                    if valid_gap:
+                        avg_gap_ms = sum(valid_gap) / len(valid_gap)
+                        metrics["ef"] = round(avg_gap_ms / avg_hr_act, 4)
+                elif not is_run_flag:
+                    np_val = act.weighted_average_watts
+                    if np_val and np_val > 0:
+                        metrics["ef"] = round(np_val / avg_hr_act, 2)
+
+            # Cycling: NP, IF, VI
+            if not is_run_flag:
+                np_val = act.weighted_average_watts
+                avg_w = act.average_watts
+                _settings = get_athlete_settings()
+                ftp = _settings.ftp
+                if np_val:
+                    metrics["np"] = round(np_val)
+                if np_val and ftp and ftp > 0:
+                    metrics["if_pct"] = round(np_val / ftp * 100, 1)
+                if np_val and avg_w and avg_w > 0:
+                    metrics["vi"] = round(np_val / avg_w, 3)
+
+            return metrics
+
+        perf_metrics = _compute_perf_metrics(activity, streams, is_run) if streams else {}
+
+        # Power-duration curve (cycling only)
+        power_curve_json = None
+        if not is_run and streams:
+            watts_stream = streams.get("watts", [])
+            if watts_stream and len(watts_stream) > 10:
+                durations = [5, 10, 30, 60, 120, 300, 600, 1200, 1800, 3600]
+                dur_labels = ["5s", "10s", "30s", "1m", "2m", "5m", "10m", "20m", "30m", "60m"]
+                curve = []
+                for dur, label in zip(durations, dur_labels):
+                    if dur > len(watts_stream):
+                        break
+                    best = max(
+                        sum(watts_stream[i : i + dur]) / dur
+                        for i in range(len(watts_stream) - dur + 1)
+                    )
+                    curve.append({"duration_label": label, "duration_s": dur, "best_watts": round(best, 1)})
+                if curve:
+                    power_curve_json = json.dumps(curve)
+
+        # Weather panel
+        weather_panel = None
+        _ath_settings = get_athlete_settings()
+        w = _weather_obj
+        if w:
+            weather_panel = _weather_summary(w)
+
+        return templates.TemplateResponse(
+            request,
+            "activities/analysis.html",
+            {
+                "request": request,
+                "activity": _activity_row(activity),
+                "activity_raw": activity,
+                "laps": laps_json_list,
+                "analytics": analytics,
+                "avg_gap": avg_gap,
+                "has_polyline": bool(activity.map_summary_polyline),
+                "streams_json": json.dumps(streams_ds),
+                "has_streams": bool(streams),
+                "sport_type": activity.sport_type,
+                "is_run": is_run,
+                "gear_name": gear_name,
+                "workout": workout_data,
+                "segments_json": json.dumps(segments_for_map),
+                "laps_json": json.dumps(laps_json_list),
+                "ds_step": ds_step,
+                "performance_metrics": perf_metrics,
+                "power_curve_json": power_curve_json or "null",
+                "weather": weather_panel,
+                "lt2_hr": _ath_settings.lthr,
+                "lt1_hr": round(_ath_settings.lthr * 0.92) if _ath_settings.lthr else None,
+                "active_page": "activities",
+            },
+        )
+
     return router
