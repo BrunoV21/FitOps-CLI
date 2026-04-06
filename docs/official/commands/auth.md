@@ -88,4 +88,4 @@ Tokens are stored in `~/.fitops/config.json`. They are never sent to any third p
 - [Authentication Guide](../getting-started/authentication.md) — step-by-step setup
 - [First Sync](../getting-started/first-sync.md) — after login
 
-← [Commands Reference](./README.md)
+← [Commands Reference](./index.md)

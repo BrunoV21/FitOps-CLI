@@ -67,4 +67,4 @@ fitops analytics training-load --days 42 --sport Run
 
 See [Output Examples → Analytics](../output-examples/analytics.md) for the full JSON response.
 
-← [Concepts](./README.md)
+← [Concepts](./index.md)

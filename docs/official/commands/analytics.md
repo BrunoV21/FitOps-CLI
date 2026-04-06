@@ -4,6 +4,8 @@ Training analytics computed from your local activity database.
 
 All analytics commands require synced activities. Run `fitops sync run` first.
 
+Output is human-readable by default. Add `--json` to any command for raw JSON output.
+
 ## Commands
 
 ### `fitops analytics training-load`
@@ -21,6 +23,7 @@ fitops analytics training-load [OPTIONS]
 | `--days N` | 90 | Days of history to return |
 | `--sport TYPE` | all | Filter by sport type (e.g. `Run`, `Ride`) |
 | `--today` | false | Return only today's current values (no history array) |
+| `--json` | false | Output raw JSON instead of the formatted summary |
 
 **Examples:**
 
@@ -46,15 +49,29 @@ fitops analytics vo2max [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--activities N` | 10 | Number of recent qualifying activities to consider |
+| `--activities N` | 50 | Number of recent qualifying activities to consider |
 | `--age-adjusted` | false | Apply an age-based decline factor to the estimate |
+| `--method METHOD` | composite | Method to display: `daniels`, `cooper`, or `composite` |
+| `--save` | false | Save the selected method's result as a manual override |
+| `--set-override VALUE` | — | Directly set a VO2max override value (ml/kg/min) |
+| `--clear-override` | false | Clear any previously saved manual override |
+| `--json` | false | Output raw JSON instead of the formatted summary |
 
-Requires at least one run of 1500m or more. Uses a weighted composite of three formulas (VDOT 50%, McArdle 30%, Costill 20–40%).
+Requires at least one run of 1500m or more. LTHR or max HR must be configured first (used to identify qualifying hard efforts). Uses a weighted composite of three formulas (VDOT 50%, McArdle 30%, Costill 20–40%).
 
 ```bash
 fitops analytics vo2max
 fitops analytics vo2max --activities 20
 fitops analytics vo2max --age-adjusted
+
+# Pin the VDOT estimate as your override
+fitops analytics vo2max --method daniels --save
+
+# Set override manually
+fitops analytics vo2max --set-override 54.2
+
+# Clear override and return to computed estimate
+fitops analytics vo2max --clear-override
 ```
 
 The `--age-adjusted` flag reads the athlete's birthday from the local database (synced from Strava) and applies a decline factor of 0.8% per year above age 25. The factor is floored at 0.5. See [Concepts → VO2max](../concepts/vo2max.md) for full methodology.
@@ -77,7 +94,11 @@ fitops analytics zones [OPTIONS]
 | `--set-lthr BPM` | Save your lactate threshold HR |
 | `--set-max-hr BPM` | Save your maximum HR |
 | `--set-resting-hr BPM` | Save your resting HR |
-| `--infer` | Infer zones automatically from cached activity HR streams |
+| `--set-lt1 BPM` | Manually override the LT1 (aerobic threshold) display value |
+| `--set-lt2 BPM` | Manually override the LT2 (lactate threshold) display value |
+| `--clear-lt1` | Clear LT1 override and return to computed value |
+| `--clear-lt2` | Clear LT2 override and return to computed value |
+| `--infer` | Infer LTHR, max HR, and pace thresholds from cached activity streams |
 
 **First-time setup — set your values manually:**
 
@@ -271,21 +292,14 @@ Compute and save today's analytics snapshot (CTL, ATL, TSB, VO2max) to the datab
 fitops analytics snapshot
 ```
 
-This command is useful for automation — run it daily via cron to build a historical record of your fitness metrics.
+This command is useful for automation — run it daily via cron to build a historical record of your fitness metrics. It is idempotent per day, safe to run multiple times.
 
-```json
-{
-  "_meta": { "generated_at": "2026-03-11T09:15:00+00:00" },
-  "snapshot": {
-    "date": "2026-03-11",
-    "ctl": 72.4,
-    "atl": 68.1,
-    "tsb": 4.3,
-    "vo2max_estimate": 52.8,
-    "lt1_hr": 151,
-    "lt2_hr": 165
-  }
-}
+```
+Snapshot saved  2026-04-06
+  CTL     41.7
+  ATL     54.0
+  TSB     -12.3
+  VO2max  55.4 ml/kg/min
 ```
 
 ## Physiology Settings
@@ -306,4 +320,4 @@ Analytics that depend on HR-based calculations (`zones`, `snapshot`) read from `
 - [Concepts → Zones](../concepts/zones.md)
 - [Output Examples → Analytics](../output-examples/analytics.md)
 
-← [Commands Reference](./README.md)
+← [Commands Reference](./index.md)

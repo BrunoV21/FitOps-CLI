@@ -2,6 +2,8 @@
 
 Fetch, store, and inspect weather conditions for your activities. Compute pace and VO2max adjustment factors for heat, humidity, and wind.
 
+Output is human-readable by default. Add `--json` for raw JSON output.
+
 ## Commands
 
 ### `fitops weather fetch`
@@ -279,4 +281,4 @@ FitOps fetches historical and forecast data from [Open-Meteo](https://open-meteo
 - [Output Examples → Weather](../output-examples/weather.md) — full response examples
 - [`fitops sync run`](./sync.md) — weather is fetched automatically during sync
 
-← [Commands Reference](./README.md)
+← [Commands Reference](./index.md)

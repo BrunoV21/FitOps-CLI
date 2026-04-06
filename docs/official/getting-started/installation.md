@@ -24,7 +24,7 @@ fitops --help
 ```
  Usage: fitops [OPTIONS] COMMAND [ARGS]...
 
- FitOps-CLI — local Strava analytics with LLM-friendly output.
+ FitOps-CLI — local Strava analytics. Rich terminal output. Your data, your machine.
 
  Commands:
    auth         Manage Strava authentication.
@@ -49,4 +49,4 @@ FitOps creates `~/.fitops/` on first run:
 
 Override with `export FITOPS_DIR=/path/to/dir`.
 
-← [Getting Started](./README.md) | [Next: Authentication →](./authentication.md)
+← [Getting Started](./index.md) | [Next: Authentication →](./authentication.md)
