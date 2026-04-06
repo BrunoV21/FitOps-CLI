@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import markdown as md_lib
@@ -16,6 +18,7 @@ def create_app(port: int = 8888) -> FastAPI:
         activities,
         analytics,
         api,
+        backup,
         notes,
         overview,
         profile,
@@ -25,7 +28,21 @@ def create_app(port: int = 8888) -> FastAPI:
         workouts,
     )
 
-    app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None)
+    _scheduler_task: asyncio.Task | None = None
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        nonlocal _scheduler_task
+        _scheduler_task = asyncio.create_task(backup.run_scheduler())
+        yield
+        if _scheduler_task:
+            _scheduler_task.cancel()
+            try:
+                await _scheduler_task
+            except asyncio.CancelledError:
+                pass
+
+    app = FastAPI(title="FitOps Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.dashboard_port = port
 
     app.mount(
@@ -116,5 +133,6 @@ def create_app(port: int = 8888) -> FastAPI:
     app.include_router(notes.register(templates))
     app.include_router(weather.register(templates))
     app.include_router(race.register(templates))
+    app.include_router(backup.register(templates))
 
     return app
