@@ -10,14 +10,55 @@ AI Agent     →  CLI (Rich + JSON)    ─┘
 
 Sync your Strava activities once, then explore them however you like — visually in the browser or programmatically through an agent. No cloud, no subscriptions. Your data never leaves your machine.
 
+> **Current data source:** Strava (via OAuth sync). Direct file import (GPX / TCX / FIT) and native integrations with Garmin, Coros, Apple Health, and Huawei are planned — see the [Roadmap](#roadmap).
+
 ## Why FitOps?
 
 - **For humans:** A local dashboard with charts, period filters, and training analytics at `http://localhost:8888` — activities, analytics, workouts, notes, weather, and race simulation.
-- **For agents:** Every data view is also a CLI command. Commands output **Rich formatted tables** for quick human scanning, or structured JSON with `_meta` context blocks and `data_availability` hints so an LLM always knows what to fetch next.
+- **For agents:** Every data view is also a CLI command. Commands output **Rich formatted tables** for quick human scanning, or structured JSON with `_meta` context blocks and `data_availability` hints so an LLM always knows what to fetch next. Training notes are Markdown files an agent can read and write — persistent, tagged, activity-linked memory that survives across sessions.
 - **Same data, always.** The dashboard and the CLI are two views into the same truth. If you can see it in the browser, an agent can query it from the terminal.
 - **Everything is local.** Your data lives in `~/.fitops/fitops.db`. No cloud, no subscriptions.
-- **Incremental sync.** Authenticate once, then run `fitops sync run` whenever you want fresh data.
+- **Strava sync today, more providers coming.** Authenticate once with Strava and run `fitops sync run` for fresh data. Direct GPX / TCX / FIT file import and native Garmin, Coros, Apple Health, and Huawei sync are on the roadmap.
 - **Async-first.** Built on `httpx` and `aiosqlite` for non-blocking I/O throughout.
+
+## How FitOps Compares
+
+> ✅ Supported · ⚡ Partial / limited · ❌ Not available · 🔜 Planned
+>
+> Based on real user experiences from r/running, r/cycling, r/triathlon, the Intervals.icu forum, TrainerRoad, and Slowtwitch. See **[docs/comparison.md](docs/comparison.md)** for the full breakdown with sources.
+
+| | FitOps | TrainingPeaks | Intervals.icu | Strava | Garmin Connect |
+|---|---|---|---|---|---|
+| **Price** | Free | ~$135/yr | Free | ~$132/yr | Free (device req.) |
+| **Open source** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Local / offline** | ✅ | ❌ | ❌ | ❌ | ⚡ device only |
+| **Data ownership** | ✅ Your machine | ❌ | ❌ | ❌ Sold to 3rd parties | ⚡ |
+| **Open API / scripting** | ✅ Native CLI | ❌ | ✅ documented | ✅ rate-limited | ❌ $5K fee |
+| **LLM / AI agent native** | ✅ Designed for it | ❌ | ⚡ via API | ❌ | ❌ |
+| **Training load (CTL/ATL/TSB)** | ✅ | ✅ | ✅ | ⚡ premium | ⚡ own model |
+| **VO2max estimation** | ✅ 3-formula composite | ❌ | ✅ | ⚡ premium | ✅ on-device |
+| **HR + pace zones** | ✅ LTHR/MaxHR/HRR | ✅ | ✅ | ⚡ premium | ✅ |
+| **Workout compliance scoring** | ✅ per-segment | ✅ premium | ✅ | ❌ | ✅ on-device |
+| **Race simulation (per-km splits)** | ✅ full engine | ⚡ pace calc | ❌ | ❌ | ❌ |
+| **Weather-adjusted pace (WAP)** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Workout simulation on course** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Training calendar / planner** | ❌ | ✅ | ✅ | ❌ | ✅ |
+| **Coach–athlete platform** | ✅ AI / agent coach | ✅ human coach | ✅ human coach | ❌ | ❌ |
+| **Mobile app** | ❌ | ✅ | ❌ | ✅ | ✅ |
+| **Social / segments / community** | ❌ | ❌ | ❌ | ✅ core feature | ⚡ |
+| **Device integrations** | 1 (5+ 🔜) | 80+ | 15+ | 10+ | Garmin only |
+| **HRV / sleep / body battery** | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+**What the community says:** TrainingPeaks raised prices to ~$135/yr in April 2025 and is widely described as stagnating — the most common reason users cite for switching to Intervals.icu, which covers the same analytics for free. Strava has faced repeated privacy controversies including selling user location data to governments and a 2025 incident where it published private coaching notes without consent. Garmin Connect's API requires a $5,000 fee and is effectively closed to personal use.
+
+**FitOps unique capabilities** not found in any alternative:
+
+- **Weather-Adjusted Pace (WAP)** — per-activity historical weather from Open-Meteo (no API key), WBGT heat stress model, Pugh 1971 wind drag model. Makes a hot humid run directly comparable to a cool calm one.
+- **True Pace** — single effort-normalized metric combining grade (GAP) and weather (WAP) adjustments, enabling cross-season VO2max trending without weather noise.
+- **Race simulation engine** — per-km split plan adjusted for elevation, temperature, humidity, and wind per segment. Supports pacer strategy (sit-then-push) and forecast weather for race day.
+- **Workout simulation on course** — simulate how a structured workout plays out on a GPX course with terrain and weather adjustments per segment.
+- **LLM-native output** — every CLI command returns structured JSON with `_meta` blocks, explicit units in field names, and `data_availability` hints so any AI agent can chain commands without parsing hacks.
+- **Persistent agent memory** — training notes are Markdown files in `~/.fitops/notes/`, tagged and optionally linked to activities. An AI agent can write observations, flag patterns, and read them back in future sessions — durable memory that outlives any single conversation.
 
 ## Roadmap
 
@@ -26,11 +67,34 @@ Sync your Strava activities once, then explore them however you like — visuall
 | 1 — Foundation | ✅ Done | Auth, sync, activities, athlete profile |
 | 2 — Analytics | ✅ Done | CTL/ATL/TSB, VO2max, LT1/LT2 thresholds, dashboard |
 | 3 — Workouts | ✅ Done | Workout plans, compliance scoring, simulation |
-| 4 — Multi-Provider | 🔜 Planned | Garmin, Coros, Samsung Health, Apple Health, Huawei |
+| 4 — Multi-Provider | 🔜 Planned | GPX / TCX / FIT file import; Garmin, Coros, Apple Health, Huawei native sync |
 | 5 — Cloud Backup | 🔜 Planned | Google Drive, OneDrive, Dropbox, Mega |
 | 6 — Notes | ✅ Done | Markdown training notes with tags and activity linking |
 | 7 — Weather-Adjusted Pace | ✅ Done | WAP, True Pace, Open-Meteo historical/forecast weather |
 | 8 — Race Simulation | ✅ Done | Course import, per-split pacing, pacer strategy |
+
+## Quick Setup for AI Agents
+
+If you are an AI agent (or setting up FitOps for use with one), run these three commands:
+
+```bash
+# 1. Install FitOps
+uvx fitops --help
+
+# 2. Download the Claude Code skill into your project
+curl -fsSL https://raw.githubusercontent.com/yourname/FitOps-CLI/main/.claude/commands/fitops.md \
+  -o .claude/commands/fitops.md
+
+# 3. Authenticate and sync
+uvx fitops auth login
+uvx fitops sync run
+```
+
+Then invoke the skill from Claude Code with `/fitops <your question>` — it has the full command reference, error recovery table, and coaching workflows built in.
+
+The skill uses `fitops notes` as persistent memory: observations written in one session are readable in the next via `fitops notes list --tag <tag>`.
+
+---
 
 ## Installation
 
@@ -267,29 +331,33 @@ fitops notes sync                                   Re-index note files into DB
 
 ### `fitops dashboard` — Local Dashboard
 
+> **Dashboard = human interface. CLI = agent interface. Every feature is available on both — 1:1 parity.**
+>
+> If you can chart it in the browser, an agent can query it from the terminal. If an agent can query it, a human can see it visually. No analytics are CLI-only; no visualisations are dashboard-only.
+
 ```
 fitops dashboard serve                              Start dashboard at http://localhost:8888
 fitops dashboard serve --port 8080                  Custom port
 ```
 
-**Dashboard pages:**
+**Dashboard pages and their CLI equivalents:**
 
-| Page | URL | Description |
-|------|-----|-------------|
-| Overview | `/` | Recent activities, training load summary |
-| Activities | `/activities` | Searchable activity list with detail view |
-| Training Load | `/analytics/training-load` | CTL/ATL/TSB chart |
-| Trends | `/analytics/trends` | Volume, consistency, seasonal patterns |
-| Performance | `/analytics/performance` | Running economy, efficiency, VO2max |
-| Workouts | `/workouts` | Linked workouts + compliance scores |
-| Workout Simulate | `/workouts/simulate` | Simulate workout on a course with weather |
-| Notes | `/notes` | Training notes (create, view, tag filter) |
-| Weather | `/weather` | Weather overview across activities |
-| Race Courses | `/race` | Imported course library |
-| Course Detail | `/race/course/ID` | Elevation profile + per-km breakdown |
-| Race Simulate | `/race/simulate/ID` | Per-split plan with elevation, wind, pace charts |
-| Import Course | `/race/import` | Import GPX/TCX/Strava into course library |
-| Athlete Profile | `/profile` | Profile, zones, equipment |
+| Dashboard page | URL | Equivalent CLI command |
+|----------------|-----|------------------------|
+| Overview | `/` | `fitops analytics snapshot` |
+| Activities | `/activities` | `fitops activities list / get ID` |
+| Training Load | `/analytics/training-load` | `fitops analytics training-load` |
+| Trends | `/analytics/trends` | `fitops analytics trends` |
+| Performance | `/analytics/performance` | `fitops analytics performance` |
+| Workouts | `/workouts` | `fitops workouts list / compliance ID` |
+| Workout Simulate | `/workouts/simulate` | `fitops workouts simulate NAME --course ID` |
+| Notes | `/notes` | `fitops notes list / get SLUG` |
+| Weather | `/weather` | `fitops weather show ID / fetch --all` |
+| Race Courses | `/race` | `fitops race courses` |
+| Course Detail | `/race/course/ID` | `fitops race course ID` |
+| Race Simulate | `/race/simulate/ID` | `fitops race simulate ID --target-time H:MM:SS` |
+| Import Course | `/race/import` | `fitops race import FILE --name "..."` |
+| Athlete Profile | `/profile` | `fitops athlete profile / zones / equipment` |
 
 ## Storage Layout
 

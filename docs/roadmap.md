@@ -99,9 +99,24 @@ fitops equipment list                    # Equipment with cumulative mileage
 
 ## Phase 4 — Multi-Provider Data Ingestion 🔜
 
-**Goal:** Break the Strava dependency. Pull activity data directly from wearable platforms so athletes can use FitOps regardless of which ecosystem they live in.
+**Goal:** Break the Strava dependency. Pull activity data directly from wearable platforms so athletes can use FitOps regardless of which ecosystem they live in. Also support direct file imports so any athlete can load activities without any API integration.
 
-### Target providers
+### Direct file import
+
+| Format | Notes |
+|--------|-------|
+| **GPX** | Standard GPS exchange format — exported by Strava, Garmin, Coros, and most devices |
+| **TCX** | Garmin Training Center XML — includes HR, cadence, and power streams |
+| **FIT** | Flexible and Interoperable Data Transfer — native Garmin/Wahoo binary format; most data-rich |
+
+```bash
+fitops import <file.gpx>              # import a single activity from file
+fitops import <file.tcx>
+fitops import <file.fit>
+fitops import ~/exports/ --watch      # watch a folder and auto-import new files
+```
+
+### Target API providers
 
 | Provider | API / mechanism | Data available |
 |----------|----------------|----------------|
@@ -437,7 +452,7 @@ fitops analytics true-pace --list --sport Run --limit 10   # recent runs with Tr
 
 ---
 
-## Phase 8 — Race Simulation & Pacing 🔜
+## Phase 8 — Race Simulation & Pacing ✅
 
 **Goal:** Import a race course, simulate effort across the profile factoring in elevation and weather, and produce a per-split pacing plan. Supports both target-time and pacer-following strategies.
 
