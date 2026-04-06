@@ -15,6 +15,7 @@ def _register_subapps() -> None:
     from fitops.cli.analytics import app as analytics_app
     from fitops.cli.athlete import app as athlete_app
     from fitops.cli.auth import app as auth_app
+    from fitops.cli.backup import app as backup_app
     from fitops.cli.dashboard import app as dashboard_app
     from fitops.cli.notes import app as notes_app
     from fitops.cli.race import app as race_app
@@ -43,6 +44,9 @@ def _register_subapps() -> None:
     app.add_typer(race_app, name="race", help="Race course management and simulation.")
     app.add_typer(
         dashboard_app, name="dashboard", help="Launch local training dashboards."
+    )
+    app.add_typer(
+        backup_app, name="backup", help="Backup and restore FitOps data."
     )
 
 
