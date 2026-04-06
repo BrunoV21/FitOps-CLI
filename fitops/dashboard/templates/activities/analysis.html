@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}Deep Analysis — {{ activity.name if activity else "Not Found" }} — FitOps{% endblock %}
+{% block page_name %}Analysis{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if not activity %}
+<div class="empty-state">
+  Activity not found.
+  <a href="/activities" class="panel-link" style="display:block;margin-top:8px;">← Back to activities</a>
+</div>
+{% else %}
+
+<div class="da-layout">
+
+  {# ── Left Sidebar ─────────────────────────────────────── #}
+  <div class="da-sidebar">
+
+    <a href="/activities/{{ activity.strava_id }}" class="da-sidebar-back">← Back to activity</a>
+
+    <div class="da-sidebar-title">{{ activity.name }}</div>
+
+    {# Map #}
+    {% if has_polyline or has_streams %}
+    <div class="da-map" id="da-map"></div>
+    {% endif %}
+
+    {# Quick Metrics #}
+    <div class="da-quick-metrics">
+      {% if activity.distance_km %}
+      <div class="da-metric-cell">
+        <div class="da-metric-label">Distance</div>
+        <div class="da-metric-value">{{ activity.distance_km }}<span class="da-metric-unit">km</span></div>
+      </div>
+      {% endif %}
+      <div class="da-metric-cell">
+        <div class="da-metric-label">Duration</div>
+        <div class="da-metric-value" style="font-size:13px;">{{ activity.duration }}</div>
+      </div>
+      {% if activity.avg_hr %}
+      <div class="da-metric-cell">
+        <div class="da-metric-label">Avg HR</div>
+        <div class="da-metric-value">{{ activity.avg_hr }}<span class="da-metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      <div class="da-metric-cell">
+        <div class="da-metric-label">{{ "Pace" if is_run else "Speed" }}</div>
+        <div class="da-metric-value" style="font-size:13px;">{{ activity.pace }}</div>
+      </div>
+      {% if activity.elevation_m %}
+      <div class="da-metric-cell">
+        <div class="da-metric-label">Elevation</div>
+        <div class="da-metric-value">{{ activity.elevation_m }}<span class="da-metric-unit">m</span></div>
+      </div>
+      {% endif %}
+      {% if activity.avg_watts %}
+      <div class="da-metric-cell">
+        <div class="da-metric-label">Avg Power</div>
+        <div class="da-metric-value">{{ activity.avg_watts }}<span class="da-metric-unit">W</span></div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Range Selection Stats (hidden until selection) #}
+    <div class="da-range-stats" id="da-range-stats">
+      <div class="da-range-stats-title">Selected Range</div>
+      <div id="da-range-stats-body"></div>
+      <button onclick="daClearRange()" style="margin-top:8px;background:none;border:none;font-size:10px;color:var(--text-dim);cursor:pointer;letter-spacing:0.05em;text-transform:uppercase;">Clear selection ×</button>
+    </div>
+
+    {# Segment Legend #}
+    {% if workout and workout.segments %}
+    <div class="da-segment-legend">
+      <div class="da-legend-title">{{ workout.name }} — Segments</div>
+      {% for seg in workout.segments %}
+      {% set zone = seg.actual_zone %}
+      {% set color = "#00aaff" if zone == 1 else "#00ff87" if zone == 2 else "#ffcc00" if zone == 3 else "#ff8800" if zone == 4 else "#ff3355" if zone == 5 else "#555" %}
+      <div class="da-legend-item" id="da-legend-{{ loop.index0 }}"
+           onmouseover="daHighlightSegment({{ loop.index0 }}, true)"
+           onmouseout="daHighlightSegment({{ loop.index0 }}, false)">
+        <div class="da-legend-dot" style="background:{{ color }};"></div>
+        <span>{{ seg.segment_name or ("Seg " + loop.index|string) }}</span>
+        <span style="opacity:0.5;font-size:10px;">Z{{ zone or "?" }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>{# /da-sidebar #}
+
+  {# ── Right Main Area ───────────────────────────────────── #}
+  <div class="da-main">
+
+    {# Sticky Controls Bar #}
+    <div class="da-controls">
+      <span class="da-controls-title">Deep Analysis</span>
+
+      {# X-axis toggle #}
+      <div class="da-toggle-group">
+        <button class="da-toggle-btn active" id="da-xaxis-dist" onclick="daSetXAxis('distance')">Distance</button>
+        <button class="da-toggle-btn" id="da-xaxis-time" onclick="daSetXAxis('time')">Time</button>
+      </div>
+
+      {# Segments toggle (only if workout with segments) #}
+      {% if workout and workout.segments %}
+      <button class="da-seg-toggle" id="da-seg-toggle-btn" onclick="daToggleSegments()">Segments</button>
+      {% endif %}
+    </div>
+
+    <div class="da-sections">
+
+      {# Stacked Charts #}
+      {% if has_streams %}
+
+      <div class="da-chart-panel" id="da-panel-altitude" style="display:none;">
+        <div class="da-chart-label">Elevation (m)</div>
+        <canvas id="da-chart-altitude"></canvas>
+      </div>
+
+      <div class="da-chart-panel" id="da-panel-heartrate">
+        <div class="da-chart-label">Heart Rate (bpm)</div>
+        <canvas id="da-chart-heartrate"></canvas>
+      </div>
+
+      <div class="da-chart-panel" id="da-panel-pace">
+        <div class="da-chart-label">{{ "Pace (min/km)" if is_run else "Speed (km/h)" }}</div>
+        <canvas id="da-chart-pace"></canvas>
+      </div>
+
+      <div class="da-chart-panel" id="da-panel-watts" style="display:none;">
+        <div class="da-chart-label">Power (W)</div>
+        <canvas id="da-chart-watts"></canvas>
+      </div>
+
+      <div class="da-chart-panel" id="da-panel-cadence">
+        <div class="da-chart-label">Cadence ({{ "spm" if is_run else "rpm" }})</div>
+        <canvas id="da-chart-cadence"></canvas>
+      </div>
+
+      <div class="da-chart-panel" id="da-panel-grade" style="display:none;">
+        <div class="da-chart-label">Grade (%)</div>
+        <canvas id="da-chart-grade"></canvas>
+      </div>
+
+      {% endif %}{# /has_streams #}
+
+      {# Zone Distribution #}
+      {% if analytics %}
+      {% set zone_colors = ["var(--text-dim)","var(--accent-blue)","var(--accent-primary)","var(--accent-amber)","var(--accent-red)"] %}
+
+      {% if analytics.hr_zones or analytics.pace_zones %}
+      <div class="da-section-panel">
+        <div class="da-section-title">Zone Distribution</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+
+          {% if analytics.hr_zones %}
+          <div style="flex:1;min-width:200px;">
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;letter-spacing:0.05em;">HR Zones</div>
+            {% for z in analytics.hr_zones %}
+            <div style="margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                <span style="color:{{ zone_colors[loop.index0 % zone_colors|length] }};">Z{{ z.zone }}</span>
+                <span style="color:var(--text-muted);">{{ z.pct|round(1) }}%</span>
+              </div>
+              <div style="height:4px;background:var(--bg-card);border-radius:2px;">
+                <div style="height:100%;width:{{ z.pct }}%;background:{{ zone_colors[loop.index0 % zone_colors|length] }};border-radius:2px;"></div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if analytics.pace_zones %}
+          <div style="flex:1;min-width:200px;">
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;letter-spacing:0.05em;">Pace Zones</div>
+            {% for z in analytics.pace_zones %}
+            <div style="margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                <span style="color:{{ zone_colors[loop.index0 % zone_colors|length] }};">Z{{ z.zone }}</span>
+                <span style="color:var(--text-muted);">{{ z.pct|round(1) }}%</span>
+              </div>
+              <div style="height:4px;background:var(--bg-card);border-radius:2px;">
+                <div style="height:100%;width:{{ z.pct }}%;background:{{ zone_colors[loop.index0 % zone_colors|length] }};border-radius:2px;"></div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+      {% endif %}
+      {% endif %}
+
+      {# Performance Metrics #}
+      {% if performance_metrics %}
+      <div class="da-section-panel">
+        <div class="da-section-title">Performance Metrics</div>
+        <div class="da-perf-grid">
+          {% if 'decoupling_pct' in performance_metrics %}
+          {% set dc = performance_metrics.decoupling_pct %}
+          <div class="da-perf-cell">
+            <div class="da-perf-label">Aerobic Decoupling<i class="da-tip" data-tip="How much your heart rate drifts relative to your pace over the activity. Under 5% = good aerobic base; 5–8% = moderate; above 8% = high cardiac drift.">?</i></div>
+            <div class="da-perf-value {% if dc|abs < 5 %}good{% elif dc|abs < 8 %}warn{% else %}bad{% endif %}">
+              {{ dc }}%
+            </div>
+            <div style="font-size:9px;color:var(--text-dim);margin-top:2px;">
+              {% if dc|abs < 5 %}Good aerobic fitness{% elif dc|abs < 8 %}Moderate drift{% else %}High cardiac drift{% endif %}
+            </div>
+          </div>
+          {% endif %}
+          {% if 'ef' in performance_metrics %}
+          <div class="da-perf-cell">
+            <div class="da-perf-label">Efficiency Factor<i class="da-tip" data-tip="Aerobic efficiency: pace speed ÷ heart rate (runs) or Normalized Power ÷ heart rate (cycling). Higher = more output per heartbeat.">?</i></div>
+            <div class="da-perf-value">{{ performance_metrics.ef }}</div>
+            <div style="font-size:9px;color:var(--text-dim);margin-top:2px;">{{ "GAP speed / avg HR" if is_run else "NP / avg HR" }}</div>
+          </div>
+          {% endif %}
+          {% if 'np' in performance_metrics %}
+          <div class="da-perf-cell">
+            <div class="da-perf-label">Normalized Power<i class="da-tip" data-tip="The steady power that would have been equally as physiologically demanding as your variable effort. Accounts for the non-linear cost of power spikes.">?</i></div>
+            <div class="da-perf-value">{{ performance_metrics.np }}<span style="font-size:11px;font-weight:400;"> W</span></div>
+          </div>
+          {% endif %}
+          {% if 'if_pct' in performance_metrics %}
+          <div class="da-perf-cell">
+            <div class="da-perf-label">Intensity Factor<i class="da-tip" data-tip="Normalized Power as a percentage of your FTP. 75–85% = endurance; 85–95% = tempo; 95–105% = threshold; above 105% = very hard.">?</i></div>
+            <div class="da-perf-value">{{ performance_metrics.if_pct }}%</div>
+          </div>
+          {% endif %}
+          {% if 'vi' in performance_metrics %}
+          <div class="da-perf-cell">
+            <div class="da-perf-label">Variability Index<i class="da-tip" data-tip="Normalized Power ÷ average power. 1.00 = perfectly steady effort. Values above 1.05 indicate a variable or uneven pacing strategy.">?</i></div>
+            <div class="da-perf-value">{{ performance_metrics.vi }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Laps Table #}
+      {% if laps %}
+      <div class="da-section-panel">
+        <div class="da-section-title">Laps</div>
+        <div class="table-wrap" style="margin:0;">
+          <table class="data-table" style="font-size:11px;">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Time</th>
+                <th>Dist</th>
+                <th>{{ "Pace" if is_run else "Speed" }}</th>
+                <th>HR</th>
+                {% if laps[0].avg_watts %}<th>W</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for lap in laps %}
+              <tr class="da-lap-row" id="da-lap-{{ loop.index0 }}" onclick="daSelectLap({{ loop.index0 }})">
+                <td style="color:var(--text-dim);">{{ lap.index }}</td>
+                <td style="color:var(--text-primary);">{{ lap.name }}</td>
+                <td style="font-variant-numeric:tabular-nums;">{{ lap.duration }}</td>
+                <td>{{ lap.distance_km }}km</td>
+                <td>{{ lap.pace }}</td>
+                <td>{{ lap.avg_hr or "—" }}{% if lap.avg_hr %} <span style="color:var(--text-dim);">bpm</span>{% endif %}</td>
+                {% if laps[0].avg_watts %}<td>{{ lap.avg_watts or "—" }}</td>{% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {# Power Duration Curve (cycling only) #}
+      {% if has_streams and not is_run %}
+      <div class="da-section-panel" id="da-power-curve-panel" style="display:none;">
+        <div class="da-section-title">Power-Duration Curve</div>
+        <canvas id="da-power-curve" class="da-power-curve-canvas"></canvas>
+      </div>
+      {% endif %}
+
+    </div>{# /da-sections #}
+  </div>{# /da-main #}
+</div>{# /da-layout #}
+
+{% endif %}{# /activity #}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/deep-analysis.js"></script>
+<script>
+(function() {
+  const streams = {{ streams_json | safe }};
+  const DA_CONFIG = {
+    streams: streams,
+    sportType: {{ sport_type | tojson }},
+    isRun: {{ "true" if is_run else "false" }},
+    thresholds: {
+      lt1: {{ lt1_hr | tojson }},
+      lt2: {{ lt2_hr | tojson }}
+    },
+    dsStep: {{ ds_step }},
+    segments: {{ segments_json | safe }},
+    laps: {{ laps_json | safe }},
+    powerCurve: {{ power_curve_json | safe }},
+    hasPolyline: {{ "true" if has_polyline else "false" }},
+    hasStreams: {{ "true" if has_streams else "false" }},
+  };
+  document.addEventListener('DOMContentLoaded', function() {
+    initDeepAnalysis(DA_CONFIG);
+  });
+})();
+</script>
+{% endblock %}
