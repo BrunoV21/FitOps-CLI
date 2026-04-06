@@ -1,0 +1,29 @@
+# FitOps-CLI Documentation
+
+Welcome to FitOps-CLI — a local Strava analytics CLI designed for AI-assisted training analysis.
+
+## Sections
+
+| Section | Description |
+|---------|-------------|
+| [Getting Started](./getting-started/) | Install, authenticate, and run your first sync |
+| [Commands](./commands/) | Complete reference for all CLI commands |
+| [Concepts](./concepts/) | Training science behind the metrics |
+| [Output Examples](./output-examples/) | Sample JSON output for every command |
+| [Roadmap](./roadmap.md) | What's coming — more data sources and cloud backup |
+
+## Quick Navigation
+
+**New here?** → [Getting Started](./getting-started/)
+
+**Looking for a command?** → [Commands Reference](./commands/)
+
+**What is CTL/ATL/TSB?** → [Training Load](./concepts/training-load.md)
+
+**Using FitOps with an AI?** → [LLM Integration Guide](./concepts/llm-integration.md)
+
+**What's planned next?** → [Roadmap](./roadmap.md)
+
+---
+
+> FitOps-CLI is built for athletes who want AI agents to understand and analyze their training data. Every command outputs structured JSON with explicit units and human-readable labels.
