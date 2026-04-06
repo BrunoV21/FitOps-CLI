@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "FitOps CLI",
   description: "CLI training analytics for runners and cyclists. Rich terminal output by default. Your data, your machine.",
+  base: '/FitOps-CLI/',
   appearance: 'force-dark',
 
   head: [
