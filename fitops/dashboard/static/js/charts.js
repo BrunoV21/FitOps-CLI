@@ -95,59 +95,63 @@ function renderActivityMap(containerId, latlng, windData) {
 
   _activitySync.latlng = latlng;
 
-  const map = L.map(containerId, { scrollWheelZoom: false, zoomControl: true });
-  _activitySync.map = map;
+  try {
+    const map = L.map(containerId, { scrollWheelZoom: false, zoomControl: true });
+    _activitySync.map = map;
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap, © CARTO',
-    subdomains: 'abcd',
-    maxZoom: 19,
-  }).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(map);
 
-  const polyline = L.polyline(latlng, { color: '#00ff87', weight: 2, opacity: 0.9 }).addTo(map);
-  map.fitBounds(polyline.getBounds(), { padding: [16, 16] });
+    const polyline = L.polyline(latlng, { color: '#00ff87', weight: 2, opacity: 0.9 }).addTo(map);
+    map.fitBounds(polyline.getBounds(), { padding: [16, 16] });
 
-  L.circleMarker(latlng[0], {
-    radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2,
-  }).addTo(map).bindTooltip('Start');
+    L.circleMarker(latlng[0], {
+      radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2,
+    }).addTo(map).bindTooltip('Start');
 
-  L.circleMarker(latlng[latlng.length - 1], {
-    radius: 5, color: '#ff3355', fillColor: '#ff3355', fillOpacity: 1, weight: 2,
-  }).addTo(map).bindTooltip('End');
+    L.circleMarker(latlng[latlng.length - 1], {
+      radius: 5, color: '#ff3355', fillColor: '#ff3355', fillOpacity: 1, weight: 2,
+    }).addTo(map).bindTooltip('End');
 
-  // Hover marker (accent dot, hidden until mousemove)
-  _activitySync.hoverMarker = L.circleMarker([0, 0], {
-    radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2, opacity: 0,
-  }).addTo(map);
+    // Hover marker (accent dot, hidden until mousemove)
+    _activitySync.hoverMarker = L.circleMarker([0, 0], {
+      radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2, opacity: 0,
+    }).addTo(map);
 
-  // Invisible thick polyline for reliable mouse hit detection
-  const hitPoly = L.polyline(latlng, { color: 'transparent', weight: 20, opacity: 0.001 }).addTo(map);
-  hitPoly.on('mousemove', (e) => {
-    const idx = _nearestPointIndex(latlng, e.latlng.lat, e.latlng.lng);
-    _syncChartToIndex(idx);
-    // Move the orange dot to the hovered point
-    _activitySync.hoverMarker.setLatLng(latlng[idx]).setStyle({ opacity: 1, fillOpacity: 1 });
-  });
-  hitPoly.on('mouseout', () => {
-    const chart = _activitySync.chart;
-    if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
-    _activitySync.hoverMarker.setStyle({ opacity: 0, fillOpacity: 0 });
-  });
+    // Invisible thick polyline for reliable mouse hit detection
+    const hitPoly = L.polyline(latlng, { color: 'transparent', weight: 20, opacity: 0.001 }).addTo(map);
+    hitPoly.on('mousemove', (e) => {
+      const idx = _nearestPointIndex(latlng, e.latlng.lat, e.latlng.lng);
+      _syncChartToIndex(idx);
+      _activitySync.hoverMarker.setLatLng(latlng[idx]).setStyle({ opacity: 1, fillOpacity: 1 });
+    });
+    hitPoly.on('mouseout', () => {
+      const chart = _activitySync.chart;
+      if (chart) { chart.tooltip.setActiveElements([], { x: 0, y: 0 }); chart.update('none'); }
+      _activitySync.hoverMarker.setStyle({ opacity: 0, fillOpacity: 0 });
+    });
 
-  // Compass rose control (bottom-right)
-  const compassCtrl = L.control({ position: 'bottomright' });
-  compassCtrl.onAdd = function() {
-    const div = L.DomUtil.create('div');
-    div.style.cssText = 'line-height:0;cursor:default;border:1px solid #1a1a1a;';
-    div.innerHTML = _compassSVG(windData ? windData.dirDeg : null);
-    if (windData && windData.label) div.title = 'Wind from ' + windData.label;
-    L.DomEvent.disableClickPropagation(div);
-    return div;
-  };
-  compassCtrl.addTo(map);
+    // Compass rose control (bottom-right)
+    const compassCtrl = L.control({ position: 'bottomright' });
+    compassCtrl.onAdd = function() {
+      const div = L.DomUtil.create('div');
+      div.style.cssText = 'line-height:0;cursor:default;border:1px solid #1a1a1a;';
+      div.innerHTML = _compassSVG(windData ? windData.dirDeg : null);
+      if (windData && windData.label) div.title = 'Wind from ' + windData.label;
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+    compassCtrl.addTo(map);
 
-  map.on('click', () => map.scrollWheelZoom.enable());
-  map.on('blur',  () => map.scrollWheelZoom.disable());
+    map.on('click', () => map.scrollWheelZoom.enable());
+    map.on('blur',  () => map.scrollWheelZoom.disable());
+  } catch (e) {
+    console.warn('Activity map failed to render:', e);
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4b5563;font-size:0.875rem;">Map unavailable</div>';
+  }
 }
 
 
@@ -654,6 +658,14 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
   const startDate = new Date(today);
   startDate.setDate(startDate.getDate() - dayOfWeek - 52 * 7);
 
+  // Format a Date in local time as YYYY-MM-DD (avoids UTC shift from toISOString)
+  function localDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   const DAY_SIZE = 11;
   const DAY_GAP = 2;
   const CELL = DAY_SIZE + DAY_GAP;
@@ -689,7 +701,7 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
   for (let week = 0; week < WEEKS; week++) {
     const days = [];
     for (let dow = 0; dow < 7; dow++) {
-      days.push(buildCur.toISOString().slice(0, 10));
+      days.push(localDateStr(buildCur));
       buildCur.setDate(buildCur.getDate() + 1);
     }
     weekDates.push(days);
@@ -701,7 +713,7 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
   for (let week = 0; week < WEEKS; week++) {
     const dim = (week < focusStartWeek || week > focusEndWeek);
     for (let dow = 0; dow < 7; dow++) {
-      const dateStr = cur.toISOString().slice(0, 10);
+      const dateStr = localDateStr(cur);
       const info = lookup[dateStr] || { count: 0, duration_s: 0, distance_km: 0, activities: [] };
       const x = week * CELL;
       const y = LABEL_H + dow * CELL;
