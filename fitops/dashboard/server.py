@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
+from fitops.docs_urls import DASHBOARD_DOCS
+
 _HERE = Path(__file__).parent
 
 
@@ -122,6 +124,25 @@ def create_app(port: int = 8888) -> FastAPI:
     templates.env.filters["render_md"] = lambda text: Markup(
         md_lib.markdown(text or "", extensions=["nl2br", "fenced_code"])
     )
+
+    # Expose DASHBOARD_DOCS as a Jinja2 global function so base.html can
+    # resolve doc_url from the active_page context variable automatically.
+    templates.env.globals["dashboard_docs"] = DASHBOARD_DOCS
+    # Provide a helper to look up a doc URL by page key from a template:
+    # {{ dashboard_docs.get(active_page, '') }}
+    # base.html uses: {% if doc_url %} — so we also set doc_url via a
+    # Jinja2 context processor by overriding the default context.
+    _orig_TemplateResponse = templates.TemplateResponse
+
+    def _TemplateResponseWithDocUrl(request, name, context=None, **kwargs):
+        if context is None:
+            context = {}
+        if "doc_url" not in context:
+            page = context.get("active_page", "")
+            context["doc_url"] = DASHBOARD_DOCS.get(page, "")
+        return _orig_TemplateResponse(request, name, context, **kwargs)
+
+    templates.TemplateResponse = _TemplateResponseWithDocUrl  # type: ignore[method-assign]
 
     # Register all routers (each route module returns its router after
     # binding the shared templates instance)
