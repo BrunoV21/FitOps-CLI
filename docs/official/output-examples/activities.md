@@ -82,4 +82,66 @@ fitops activities streams 17972016511 --json
 
 *Data arrays contain one value per second.*
 
+---
+
+## `fitops activities chart <ID>` {#fitops-activities-chart}
+
+```bash
+fitops activities chart 17985851162 --stream heartrate
+```
+
+```
+Activity chart  |  Heart Rate (bpm)  over time (s)  [res: 71]
+min: 142 bpm  avg: 163 bpm  max: 190 bpm  samples: 3492
+
+    190|                                              ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        |                              ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        |                  ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+    166|       ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        | ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+    142|▪▪
+-------+-----------------------------------------------------------------------
+        0:00                             66:39                           133:17
+```
+
+Pace chart (Y-axis inverted — faster pace at top):
+
+```bash
+fitops activities chart 17985851162 --stream pace
+```
+
+```
+Activity chart  |  Pace (min/km)  over time (s)  [res: 71]
+fastest: 3:27/km  avg: 4:50/km  slowest: 9:05/km  samples: 3485
+
+   3:27|    ▪▪▪▪▪▪▪▪▪ ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        |  ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+    6:16| ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        |▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+    9:05|▪
+-------+-----------------------------------------------------------------------
+        0:00                             66:39                           133:17
+```
+
+Zoom into the first 10 minutes of heart rate, with tight resolution to show variance:
+
+```bash
+fitops activities chart 17985851162 --stream heartrate --from 0 --to 600 --resolution 60
+```
+
+```
+Activity chart  |  Heart Rate (bpm)  over time (s)  [res: 60]
+min: 142 bpm  avg: 154 bpm  max: 170 bpm  samples: 600
+
+    170|                                  ·▪·  ·▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        |                          ·▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+    156|              ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+        |    ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
+    142|▪▪▪▪
+-------+-----------------------------------------------------------------------
+        0:00                              5:00                            10:00
+```
+
+*`·` range dots appear when zoomed tightly (≤10 source samples per chart column), showing within-bucket variance.*
+
 ← [Output Examples](./index.md)
