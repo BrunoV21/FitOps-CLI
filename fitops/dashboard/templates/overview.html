@@ -57,8 +57,8 @@
   {% endif %}
 </div>
 
-<!-- Row 2: Today's Weather -->
-{% if today_weather %}
+<!-- Row 2: Weather (week only) -->
+{% if period == 'week' and today_weather %}
 <div class="grid-4 mb-6" style="margin-bottom:1px;">
 
   <!-- Temperature -->
@@ -126,11 +126,73 @@
 </div>
 {% endif %}
 
-<!-- Row 3: Recent activities + Training status -->
+<!-- Row 2b: Rolling stats (week — accumulated totals) -->
+{% if period == 'week' and rolling %}
+<div class="grid-3 mb-6" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:100ms">
+    <p class="panel-label">Total Time — This Week</p>
+    <p class="panel-metric">{{ rolling.total_time_h }}<span class="panel-unit">h</span></p>
+  </div>
+  <div class="panel panel--accent" style="--delay:130ms">
+    <p class="panel-label">Avg Distance / Activity</p>
+    <p class="panel-metric">{{ rolling.avg_distance_per_activity }}<span class="panel-unit">km</span></p>
+  </div>
+  <div class="panel panel--accent-amber" style="--delay:160ms">
+    <p class="panel-label">Avg Duration / Activity</p>
+    <p class="panel-metric">{{ rolling.avg_duration_per_activity_min }}<span class="panel-unit">min</span></p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Row 2c: Rolling stats (month — averages per week) -->
+{% if period == 'month' and rolling %}
+<div class="grid-4 mb-6" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:100ms">
+    <p class="panel-label">Total Time — This Month</p>
+    <p class="panel-metric">{{ rolling.total_time_h }}<span class="panel-unit">h</span></p>
+  </div>
+  <div class="panel panel--accent" style="--delay:120ms">
+    <p class="panel-label">Avg Distance / Week</p>
+    <p class="panel-metric">{{ rolling.avg_distance_per_week }}<span class="panel-unit">km</span></p>
+  </div>
+  <div class="panel panel--accent-amber" style="--delay:140ms">
+    <p class="panel-label">Avg Time / Week</p>
+    <p class="panel-metric">{{ rolling.avg_time_per_week_h }}<span class="panel-unit">h</span></p>
+  </div>
+  <div class="panel" style="--delay:160ms">
+    <p class="panel-label">Avg Activities / Week</p>
+    <p class="panel-metric">{{ rolling.avg_per_week }}</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Row 2d: Rolling stats (year — averages per week and month) -->
+{% if period == 'year' and rolling %}
+<div class="grid-4 mb-6" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:100ms">
+    <p class="panel-label">Total Time — This Year</p>
+    <p class="panel-metric">{{ rolling.total_time_h }}<span class="panel-unit">h</span></p>
+  </div>
+  <div class="panel panel--accent" style="--delay:120ms">
+    <p class="panel-label">Avg Distance / Week</p>
+    <p class="panel-metric">{{ rolling.avg_distance_per_week }}<span class="panel-unit">km</span></p>
+  </div>
+  <div class="panel panel--accent-amber" style="--delay:140ms">
+    <p class="panel-label">Avg Activities / Week</p>
+    <p class="panel-metric">{{ rolling.avg_per_week }}</p>
+  </div>
+  <div class="panel" style="--delay:160ms">
+    <p class="panel-label">Avg Activities / Month</p>
+    <p class="panel-metric">{{ rolling.avg_per_month }}</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Row 3: Recent activities + Training status (training status only on week view) -->
 <div class="grid-12" style="margin-bottom:1px;">
 
-  <!-- Recent Activities (col 1-8) -->
-  <div class="panel col-8" style="--delay:120ms">
+  <!-- Recent Activities -->
+  <div class="panel {% if period == 'week' %}col-8{% else %}col-12{% endif %}" style="--delay:120ms">
     <div class="panel-header">
       <span class="panel-label">Recent Activities — {{ period_label }}</span>
       <a href="/activities" class="panel-link">All activities →</a>
@@ -159,7 +221,8 @@
     {% endif %}
   </div>
 
-  <!-- Training Status (col 9-12) -->
+  <!-- Training Status (week only — CTL/ATL/TSB are period-independent) -->
+  {% if period == 'week' %}
   <div class="panel col-4 panel--accent-purple" style="--delay:160ms">
     <div class="panel-header">
       <span class="panel-label">Training Status</span>
@@ -196,6 +259,7 @@
     <p style="color:var(--text-dim);font-size:12px;">No training data.<br>Run <code>fitops sync run</code> first.</p>
     {% endif %}
   </div>
+  {% endif %}
 
 </div>
 
