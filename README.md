@@ -137,9 +137,18 @@ The dashboard covers: activity history, analytics (training load, VO2max, trends
 
 ### 1. Create a Strava API Application
 
-1. Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
-2. Create an application — set the **Authorization Callback Domain** to `localhost`
-3. Note your **Client ID** and **Client Secret**
+To ensure the best experience and bypass rate limits, beta users must use their own Strava API credentials. Follow the [Strava Getting Started Guide](https://developers.strava.com/docs/getting-started/) to create an app.
+
+Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api) and use **these exact settings**:
+
+| Field | Value |
+|-------|-------|
+| Application Name | `Surge` |
+| Category | `Performance Analysis` |
+| Website | `https://brunov21.github.io/Surge/` |
+| Authorization Callback Domain | `mclovinittt-kinetic-run-api.hf.space` |
+
+Copy your **Client ID** and **Client Secret** from the Strava API Settings page. See the [full authentication guide](https://brunov21.github.io/FitOps-CLI/getting-started/authentication) for details.
 
 ### 2. Authenticate
 
