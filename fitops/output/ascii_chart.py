@@ -6,20 +6,35 @@ Y_MARGIN = 8  # characters wide for y-axis labels + border
 
 # Stream display metadata
 _STREAM_META: dict[str, dict] = {
-    "heartrate":       {"label": "Heart Rate (bpm)",           "unit": "bpm",    "fmt": "int"},
-    "velocity_smooth": {"label": "Pace (min/km)",              "unit": "min/km", "fmt": "pace",    "invert_y": True},
-    "speed":           {"label": "Speed (km/h)",               "unit": "km/h",   "fmt": "one_dec"},
-    "gap":             {"label": "Grade Adj. Pace (min/km)",   "unit": "min/km", "fmt": "pace",    "invert_y": True},
-    "wap":             {"label": "Weighted Avg Pace (min/km)", "unit": "min/km", "fmt": "pace",    "invert_y": True},
-    "altitude":        {"label": "Altitude (m)",               "unit": "m",      "fmt": "one_dec"},
-    "cadence":         {"label": "Cadence (spm)",              "unit": "spm",    "fmt": "int"},
-    "watts":           {"label": "Power (W)",                  "unit": "W",      "fmt": "int"},
-    "distance":        {"label": "Distance (m)",               "unit": "m",      "fmt": "one_dec"},
-    "temp":            {"label": "Temperature (\u00b0C)",      "unit": "\u00b0C","fmt": "one_dec"},
+    "heartrate": {"label": "Heart Rate (bpm)", "unit": "bpm", "fmt": "int"},
+    "velocity_smooth": {
+        "label": "Pace (min/km)",
+        "unit": "min/km",
+        "fmt": "pace",
+        "invert_y": True,
+    },
+    "speed": {"label": "Speed (km/h)", "unit": "km/h", "fmt": "one_dec"},
+    "gap": {
+        "label": "Grade Adj. Pace (min/km)",
+        "unit": "min/km",
+        "fmt": "pace",
+        "invert_y": True,
+    },
+    "wap": {
+        "label": "Weighted Avg Pace (min/km)",
+        "unit": "min/km",
+        "fmt": "pace",
+        "invert_y": True,
+    },
+    "altitude": {"label": "Altitude (m)", "unit": "m", "fmt": "one_dec"},
+    "cadence": {"label": "Cadence (spm)", "unit": "spm", "fmt": "int"},
+    "watts": {"label": "Power (W)", "unit": "W", "fmt": "int"},
+    "distance": {"label": "Distance (m)", "unit": "m", "fmt": "one_dec"},
+    "temp": {"label": "Temperature (\u00b0C)", "unit": "\u00b0C", "fmt": "one_dec"},
 }
 
-_CHAR_MID = "\u25aa"   # ▪  midpoint of bucket — primary trace
-_CHAR_RANGE = "\u00b7" # ·  range fill — shows variance without dominating
+_CHAR_MID = "\u25aa"  # ▪  midpoint of bucket — primary trace
+_CHAR_RANGE = "\u00b7"  # ·  range fill — shows variance without dominating
 
 
 def _pace_str(min_per_km: float) -> str:
@@ -68,9 +83,9 @@ def _convert_data(data: list[float], stream_type: str) -> list[float | None]:
     return [None if v is None else float(v) for v in data]
 
 
-def _bucket(display_data: list[float | None], n_buckets: int) -> tuple[
-    list[float | None], list[float | None], list[float | None]
-]:
+def _bucket(
+    display_data: list[float | None], n_buckets: int
+) -> tuple[list[float | None], list[float | None], list[float | None]]:
     """
     Reduce data into n_buckets using min/max/mean per bucket.
     Returns (col_min, col_max, col_mid) each of length n_buckets.
@@ -154,7 +169,9 @@ def render_ascii_chart(
     if height < 3:
         return f"[chart] height must be >= 3 (got {height})"
 
-    meta = _STREAM_META.get(stream_type, {"label": stream_type, "unit": "", "fmt": "one_dec"})
+    meta = _STREAM_META.get(
+        stream_type, {"label": stream_type, "unit": "", "fmt": "one_dec"}
+    )
     fmt = meta["fmt"]
     invert_y: bool = meta.get("invert_y", False)
     stream_label: str = meta["label"]
@@ -190,7 +207,10 @@ def render_ascii_chart(
 
     # n_buckets: how many data segments we compute stats for.
     # Default = width (1 bucket per column, no interpolation needed).
-    n_buckets = max(1, min(resolution if resolution is not None else width, width, len(display_data)))
+    n_buckets = max(
+        1,
+        min(resolution if resolution is not None else width, width, len(display_data)),
+    )
 
     col_min, col_max, col_mid = _bucket(display_data, n_buckets)
 
@@ -294,6 +314,8 @@ def render_ascii_chart(
 
     tick_str = "".join(tick_line)
 
-    title_line = f"Activity chart  |  {stream_label}  over {x_label}  [res: {n_buckets}]"
+    title_line = (
+        f"Activity chart  |  {stream_label}  over {x_label}  [res: {n_buckets}]"
+    )
 
     return "\n".join([title_line, stats_line, "", *chart_rows, x_axis_row, tick_str])
