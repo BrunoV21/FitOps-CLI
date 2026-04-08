@@ -176,6 +176,32 @@ def print_streams_summary(streams: dict, activity_id: int) -> None:
     console.print()
 
 
+def print_stream_chart(
+    activity_id: int,
+    stream_type: str,
+    data: list[float],
+    x_values: list[float],
+    x_label: str,
+    width: int,
+    height: int,
+    resolution: int | None = None,
+) -> None:
+    from fitops.output.ascii_chart import render_ascii_chart
+
+    chart_str = render_ascii_chart(
+        data=data,
+        x_values=x_values,
+        stream_type=stream_type,
+        width=width,
+        height=height,
+        x_label=x_label,
+        resolution=resolution,
+    )
+    console.print()
+    console.print(chart_str, markup=False, highlight=False)
+    console.print()
+
+
 # ---------------------------------------------------------------------------
 # Athlete
 # ---------------------------------------------------------------------------

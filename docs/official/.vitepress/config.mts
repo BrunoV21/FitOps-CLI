@@ -18,6 +18,7 @@ export default defineConfig({
       { text: 'Get Started', link: '/getting-started/' },
       { text: 'Commands', link: '/commands/' },
       { text: 'Concepts', link: '/concepts/' },
+      { text: 'Dashboard', link: '/dashboard/' },
       { text: 'vs. Alternatives', link: '/comparison' },
       { text: 'Roadmap', link: '/roadmap' },
     ],
@@ -71,6 +72,23 @@ export default defineConfig({
           { text: 'Athlete', link: '/output-examples/athlete' },
           { text: 'Weather', link: '/output-examples/weather' },
           { text: 'Workouts', link: '/output-examples/workouts' },
+          { text: 'Race', link: '/output-examples/race' },
+          { text: 'Notes', link: '/output-examples/notes' },
+        ]
+      },
+      {
+        text: '// DASHBOARD',
+        items: [
+          { text: 'Overview', link: '/dashboard/' },
+          { text: 'Home (Overview page)', link: '/dashboard/overview' },
+          { text: 'Activities', link: '/dashboard/activities' },
+          { text: 'Analytics', link: '/dashboard/analytics' },
+          { text: 'Workouts', link: '/dashboard/workouts' },
+          { text: 'Race Planner', link: '/dashboard/race' },
+          { text: 'Notes', link: '/dashboard/notes' },
+          { text: 'Weather', link: '/dashboard/weather' },
+          { text: 'Profile', link: '/dashboard/profile' },
+          { text: 'Backup', link: '/dashboard/backup' },
         ]
       },
       {

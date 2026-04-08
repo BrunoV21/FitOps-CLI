@@ -687,6 +687,22 @@ async function applyInsight(settingKey, value, btn) {
     cad:  (STREAMS.cadence || []).length > 0,
     pwr:  (STREAMS.watts || []).length > 0,
   }, SPORT_TYPE);
+
+  // Sync x-axis toggle buttons to the chart's actual initial state.
+  // The HTML defaults "Distance" to active, but the chart uses time labels
+  // when no distance stream is available.
+  if (chart) {
+    const btnDist = document.getElementById('xaxis-distance');
+    const btnTime = document.getElementById('xaxis-time');
+    if (btnDist && btnTime) {
+      const hasDistLabels = !!chart._distLabels;
+      const hasTimeLabels = !!chart._timeLabels;
+      btnDist.classList.toggle('active', hasDistLabels);
+      btnTime.classList.toggle('active', !hasDistLabels && hasTimeLabels);
+      if (!hasDistLabels) btnDist.style.opacity = '0.35';
+      if (!hasTimeLabels) btnTime.style.opacity = '0.35';
+    }
+  }
 })();
 </script>
 {% endif %}
