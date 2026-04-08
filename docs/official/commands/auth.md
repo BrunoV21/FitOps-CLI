@@ -12,7 +12,7 @@ Authenticate with Strava via OAuth.
 fitops auth login
 ```
 
-On **first run**, you'll be prompted for your Strava Client ID and Client Secret (saved to `~/.fitops/config.json`). A browser window then opens for Strava authorization. After you click **Authorize**, FitOps captures the callback on `localhost:8080`, shows a confirmation page in the browser, and saves tokens locally.
+On **first run**, you'll be prompted for your Strava Client ID and Client Secret. Beta users must create their own Strava app — see the [Authentication Guide](../getting-started/authentication.md) for the required app settings (name, callback domain, etc.). Credentials are saved to `~/.fitops/config.json` and never asked again. A browser window then opens for Strava authorization. After you click **Authorize**, FitOps captures the callback on `localhost:8080`, shows a confirmation page in the browser, and saves tokens locally.
 
 On **subsequent runs** (e.g. after a logout), credentials are already saved — the browser opens immediately with no prompts.
 

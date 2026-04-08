@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import typer
 
+from fitops.docs_urls import CLI_DOCS
+
 app = typer.Typer(
     name="fitops",
-    help="FitOps-CLI — local Strava analytics with LLM-friendly output.",
+    help=(
+        "FitOps-CLI — local Strava analytics with LLM-friendly output.\n\n"
+        f"Docs: {CLI_DOCS['main']}"
+    ),
     no_args_is_help=True,
     add_completion=False,
 )
@@ -23,29 +28,61 @@ def _register_subapps() -> None:
     from fitops.cli.weather import app as weather_app
     from fitops.cli.workouts import app as workouts_app
 
-    app.add_typer(auth_app, name="auth", help="Manage Strava authentication.")
-    app.add_typer(sync_app, name="sync", help="Sync activities from Strava.")
-    app.add_typer(activities_app, name="activities", help="View synced activities.")
-    app.add_typer(athlete_app, name="athlete", help="View athlete profile and stats.")
+    app.add_typer(
+        auth_app,
+        name="auth",
+        help=f"Manage Strava authentication.\n\nDocs: {CLI_DOCS['auth']}",
+    )
+    app.add_typer(
+        sync_app,
+        name="sync",
+        help=f"Sync activities from Strava.\n\nDocs: {CLI_DOCS['sync']}",
+    )
+    app.add_typer(
+        activities_app,
+        name="activities",
+        help=f"View synced activities.\n\nDocs: {CLI_DOCS['activities']}",
+    )
+    app.add_typer(
+        athlete_app,
+        name="athlete",
+        help=f"View athlete profile and stats.\n\nDocs: {CLI_DOCS['athlete']}",
+    )
     app.add_typer(
         analytics_app,
         name="analytics",
-        help="Training analytics (CTL, ATL, VO2max, zones).",
+        help=f"Training analytics (CTL, ATL, VO2max, zones).\n\nDocs: {CLI_DOCS['analytics']}",
     )
     app.add_typer(
         workouts_app,
         name="workouts",
-        help="Markdown workout definitions and activity linking.",
+        help=f"Markdown workout definitions and activity linking.\n\nDocs: {CLI_DOCS['workouts']}",
     )
-    app.add_typer(notes_app, name="notes", help="Create and manage training notes.")
     app.add_typer(
-        weather_app, name="weather", help="Fetch and manage activity weather data."
+        notes_app,
+        name="notes",
+        help=f"Create and manage training notes.\n\nDocs: {CLI_DOCS['notes']}",
     )
-    app.add_typer(race_app, name="race", help="Race course management and simulation.")
     app.add_typer(
-        dashboard_app, name="dashboard", help="Launch local training dashboards."
+        weather_app,
+        name="weather",
+        help=f"Fetch and manage activity weather data.\n\nDocs: {CLI_DOCS['weather']}",
     )
-    app.add_typer(backup_app, name="backup", help="Backup and restore FitOps data.")
+    app.add_typer(
+        race_app,
+        name="race",
+        help=f"Race course management and simulation.\n\nDocs: {CLI_DOCS['race']}",
+    )
+    app.add_typer(
+        dashboard_app,
+        name="dashboard",
+        help=f"Launch local training dashboards.\n\nDocs: {CLI_DOCS['dashboard']}",
+    )
+    app.add_typer(
+        backup_app,
+        name="backup",
+        help=f"Backup and restore FitOps data.\n\nDocs: {CLI_DOCS['backup']}",
+    )
 
 
 _register_subapps()

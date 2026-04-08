@@ -144,6 +144,44 @@ _VIEW_SPORT_TYPES = {
 }
 
 
+def _compute_rolling(period: str, since: datetime | None, stats: dict) -> dict | None:
+    """Compute rolling averages for the selected period."""
+    if not since or not stats:
+        return None
+    now = datetime.now(UTC)
+    days_elapsed = max(1, (now - since).days + 1)
+    weeks_elapsed = max(1.0, days_elapsed / 7.0)
+
+    count = stats.get("total_count") or 0
+    dist_km = float(stats.get("total_distance_km") or 0.0)
+    dur_h = float(stats.get("total_duration_h") or 0.0)
+
+    if period == "week":
+        avg_dist = round(dist_km / count, 1) if count else 0.0
+        avg_dur_min = round((dur_h / count) * 60) if count else 0
+        return {
+            "total_time_h": dur_h,
+            "avg_distance_per_activity": avg_dist,
+            "avg_duration_per_activity_min": avg_dur_min,
+        }
+    if period == "month":
+        return {
+            "total_time_h": dur_h,
+            "avg_per_week": round(count / weeks_elapsed, 1),
+            "avg_distance_per_week": round(dist_km / weeks_elapsed, 1),
+            "avg_time_per_week_h": round(dur_h / weeks_elapsed, 1),
+        }
+    if period == "year":
+        months_elapsed = max(1, now.month)
+        return {
+            "total_time_h": dur_h,
+            "avg_per_week": round(count / weeks_elapsed, 1),
+            "avg_per_month": round(count / months_elapsed, 1),
+            "avg_distance_per_week": round(dist_km / weeks_elapsed, 1),
+        }
+    return None
+
+
 def _period_since(period: str) -> datetime | None:
     now = datetime.now(UTC)
     if period == "week":
@@ -186,13 +224,20 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if athlete_id
             else {}
         )
-        tl = await get_training_load_data(athlete_id, days=1) if athlete_id else None
+        tl = (
+            await get_training_load_data(athlete_id, days=1)
+            if athlete_id and period == "week"
+            else None
+        )
         heatmap_data = (
             await get_activity_heatmap_data(athlete_id, since=None)
             if athlete_id
             else []
         )
-        today_weather = await _get_today_weather(athlete_id)
+        today_weather = (
+            await _get_today_weather(athlete_id) if period == "week" else None
+        )
+        rolling = _compute_rolling(period, since, stats)
 
         current_load = None
         if tl and tl.current:
@@ -217,6 +262,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "period": period,
                 "period_label": _PERIOD_LABELS[period],
                 "today_weather": today_weather,
+                "rolling": rolling,
                 "active_page": "overview",
                 "view": view,
             },

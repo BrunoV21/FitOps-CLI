@@ -212,3 +212,8 @@ fitops.db
 *.db
 
 docs/marketing/*
+
+.compass/*
+
+docs/official/node_modules/*
+docs/official/.vitepress/cache/*
