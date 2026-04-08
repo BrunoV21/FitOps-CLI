@@ -343,7 +343,7 @@ def _minetti_gap_factor(grade_pct: float) -> float:
 def _compute_gap(velocity: list[float], grade: list[float]) -> list[float]:
     """Grade-adjusted velocity (m/s) using Minetti formula."""
     result = []
-    for v, gr in zip(velocity, grade):
+    for v, gr in zip(velocity, grade, strict=False):
         if v is None or v <= 0:
             result.append(0.0)
         else:
