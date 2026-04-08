@@ -27,6 +27,29 @@ Use the filter bar to focus the list:
 
 Combine filters freely. The list updates as you change them.
 
+## Activity Detail
+
+Click any activity row to open its detail page (`/activities/{id}`). The detail view shows everything FitOps knows about a single session:
+
+**Summary panel:**
+- Sport type, date, name
+- Distance, duration, pace or speed
+- Elevation gain
+- Heart rate (average + max)
+- Calories and gear
+
+**Insights panel** (when streams are available):
+- **HR Drift** — cardiac decoupling percentage. < 5% means your aerobic system held steady; > 10% means you were pushing near your ceiling.
+- **Aerobic training score** — estimated aerobic stimulus for the session
+- **Anaerobic training score** — estimated anaerobic contribution
+
+**Charts** (when streams are available):
+- Heart rate over time
+- Pace over time (with grade-adjusted pace overlay if GPS data is present)
+- Elevation profile
+
+If streams are not yet cached for an activity, a **Fetch Streams** button appears. Click it to pull the full time-series data from Strava — this enables the charts, HR drift analysis, and zone-time breakdowns.
+
 ## See Also
 
 - [Overview](./overview.md) — the 10 most recent activities also appear on the dashboard home

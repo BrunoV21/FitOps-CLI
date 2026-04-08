@@ -72,6 +72,8 @@ export default defineConfig({
           { text: 'Athlete', link: '/output-examples/athlete' },
           { text: 'Weather', link: '/output-examples/weather' },
           { text: 'Workouts', link: '/output-examples/workouts' },
+          { text: 'Race', link: '/output-examples/race' },
+          { text: 'Notes', link: '/output-examples/notes' },
         ]
       },
       {

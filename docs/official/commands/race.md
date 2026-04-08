@@ -35,8 +35,11 @@ fitops race import berlin-marathon.gpx --name "Berlin Marathon 2026"
 # Import from a TCX file
 fitops race import course.tcx --name "Local 10K"
 
-# Build course from a Strava activity you've already done
-fitops race import --activity 12345678901 --name "My Race Course"
+# Build course from a Strava activity you've already done (pass the activity ID as the source)
+fitops race import 12345678901 --name "My Race Course"
+
+# Import from a MapMyRun URL
+fitops race import "https://www.mapmyrun.com/routes/view/..." --name "Local 10K"
 ```
 
 **Output:**

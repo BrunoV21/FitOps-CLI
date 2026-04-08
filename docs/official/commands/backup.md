@@ -35,32 +35,29 @@ Future providers planned: Dropbox, Google Drive.
 ### GitHub
 
 ```bash
-fitops backup setup github --token ghp_xxxx --repo owner/repo-name
+fitops backup setup github
 ```
 
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--token` | Yes | GitHub Personal Access Token with `repo` scope |
-| `--repo` | Yes | Target repository in `owner/repo-name` format (can be private) |
+The setup command is interactive — it will prompt you for:
+1. Your GitHub Personal Access Token (input is hidden)
+2. The target repository in `owner/name` format
 
-The token and repo are saved to `~/.fitops/config.json` under the `backup.github` key.
+Values are saved to `~/.fitops/config.json` under the `backup.github` key.
+
+If a configuration already exists, you'll be asked to confirm before overwriting.
 
 **Creating a PAT:**
 1. Go to GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
 2. Generate a new token with `repo` scope
-3. Copy and use immediately — it won't be shown again
+3. Copy it immediately — it won't be shown again
 
 **Creating the backup repo:**
 ```bash
-# Create a private repo first if it doesn't exist
-# github.com/new → name it e.g. "fitops-backups", set to Private
-fitops backup setup github --token ghp_xxxx --repo yourusername/fitops-backups
-```
-
-To clear the GitHub backup configuration:
-
-```bash
-fitops backup setup github --clear
+# Create a private repo first (github.com/new → name it e.g. "fitops-backups", set to Private)
+# Then run the interactive setup:
+fitops backup setup github
+# → Enter token: ghp_xxxx
+# → Enter repo:  yourusername/fitops-backups
 ```
 
 ---
@@ -69,20 +66,30 @@ fitops backup setup github --clear
 
 ```bash
 fitops backup create
-fitops backup create --provider github
+fitops backup create --to github
+fitops backup create --to github --output-dir /tmp/my-backups
+fitops backup create --to github --no-keep-local
 ```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--to PROVIDER` | — | Push archive to a cloud provider after creating (e.g. `github`) |
+| `--output-dir PATH` / `-o` | `~/.fitops/backups/` | Local directory for the archive |
+| `--keep-local / --no-keep-local` | keep | Whether to keep the local archive after uploading to the cloud |
+
+Without `--to`, the archive is saved locally only. With `--to github`, it's also pushed to the configured GitHub repo as a Release.
 
 Output:
 
 ```
-Backup complete
-  Provider   github
-  Archive    fitops-backup-2026-04-06-091500.tar.gz
-  Size       4.2 MB
-  Release    https://github.com/owner/fitops-backups/releases/tag/fitops-backup-2026-04-06-091500
+Creating backup archive…
+  Archive: ~/.fitops/backups/fitops-backup-2026-04-06-091500.tar.gz  (4.2 MB)
+  Uploading to github…
+  Uploaded: fitops-backup-2026-04-06-091500.tar.gz
+Done.
 ```
-
-If no `--provider` is specified, FitOps uses whichever provider is configured. If multiple providers are configured in the future, `--provider` selects which one.
 
 ---
 
@@ -90,19 +97,34 @@ If no `--provider` is specified, FitOps uses whichever provider is configured. I
 
 ```bash
 fitops backup list
+fitops backup list --local
 fitops backup list --provider github
 ```
 
-Output:
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--local` / `-l` | List locally stored archives in `~/.fitops/backups/` |
+| `--provider PROVIDER` / `-p` | List backups from a cloud provider (e.g. `github`) |
+
+With no flags, local archives are shown by default.
+
+Output (local):
 
 ```
-Backups  (github → owner/fitops-backups)
+Local backups (~/.fitops/backups/):
+  fitops-backup-2026-04-06-091500.tar.gz  (4.2 MB)
+  fitops-backup-2026-04-05-081200.tar.gz  (4.1 MB)
+  fitops-backup-2026-04-04-073000.tar.gz  (4.1 MB)
+```
 
-  #   Tag                                    Created               Size
- ────────────────────────────────────────────────────────────────────────
-  1   fitops-backup-2026-04-06-091500        2026-04-06 09:15:00   4.2 MB
-  2   fitops-backup-2026-04-05-081200        2026-04-05 08:12:00   4.1 MB
-  3   fitops-backup-2026-04-04-073000        2026-04-04 07:30:00   4.1 MB
+Output (cloud):
+
+```
+Cloud backups (github):
+  fitops-backup-2026-04-06-091500.tar.gz  (4.2 MB)  2026-04-06 09:15:00
+  fitops-backup-2026-04-05-081200.tar.gz  (4.1 MB)  2026-04-05 08:12:00
 ```
 
 ---
@@ -110,29 +132,54 @@ Backups  (github → owner/fitops-backups)
 ## Restoring a Backup
 
 ```bash
-fitops backup restore
-fitops backup restore --tag fitops-backup-2026-04-06-091500
-fitops backup restore --provider github --tag fitops-backup-2026-04-06-091500
+# Restore the most recent backup from GitHub
+fitops backup restore --from github
+
+# Restore a specific backup from GitHub
+fitops backup restore --from github --backup fitops-backup-2026-04-06-091500
+
+# Restore from a local archive file
+fitops backup restore ./fitops-backup-2026-04-06-091500.tar.gz
+
+# Skip the confirmation prompt
+fitops backup restore --from github --yes
 ```
 
-With no `--tag`, FitOps restores the most recent backup.
+**Options / Arguments:**
+
+| Option | Description |
+|--------|-------------|
+| `ARCHIVE` (positional) | Path to a local `.tar.gz` archive to restore from |
+| `--from PROVIDER` | Cloud provider to restore from (e.g. `github`) |
+| `--backup NAME` / `-b` | Specific backup name from the cloud list. If omitted, the most recent is used. |
+| `--yes` / `-y` | Skip the confirmation prompt |
+
+Either a local archive path or `--from` is required.
 
 The restore process:
-1. Downloads the `.tar.gz` archive from the provider
-2. Extracts it to a temp directory
-3. Stops any running dashboard server
-4. Replaces `~/.fitops/` contents with the archive contents
-5. Prints a confirmation with counts of restored files
+1. Downloads or reads the `.tar.gz` archive
+2. Shows the manifest (backup date, contents count) and asks for confirmation
+3. Overwrites `~/.fitops/` contents with the archive contents
+4. Prints a summary of restored files
 
 ```
-Restore complete
-  Source     fitops-backup-2026-04-06-091500 (github)
-  DB         fitops.db  ✓
-  Notes      12 files restored
-  Workouts   5 files restored
+Restoring from: fitops-backup-2026-04-06-091500.tar.gz
+  Backup created: 2026-04-06T09:15:00
+  Items: 18
+
+  WARNING: This will overwrite your current FitOps data, including fitops.db, config.json, notes and workouts.
+
+Proceed with restore? [y/N]: y
+
+Restoring…
+  Restored: fitops.db
+  Restored: notes/hr-drift-march.md
+  ...
+
+Done. Restart fitops to use the restored data.
 ```
 
-**Note:** Restore overwrites your current `~/.fitops/` data. Make a manual backup first if you want to preserve current state.
+**Note:** Restore overwrites your current `~/.fitops/` data. Create a fresh backup first if you want to preserve current state.
 
 ---
 
@@ -189,14 +236,21 @@ The backup UI is available at **Settings → Backup** in the dashboard (`fitops 
 ## Commands Reference
 
 ```bash
-fitops backup setup github --token TOKEN --repo OWNER/REPO
-fitops backup setup github --clear
+# Setup (interactive — prompts for token and repo)
+fitops backup setup github
 
-fitops backup create [--provider github]
-fitops backup list [--provider github]
-fitops backup restore [--tag TAG] [--provider github]
+# Create
+fitops backup create [--to github] [--output-dir PATH] [--no-keep-local]
 
-fitops backup schedule --enable --interval HOURS
+# List
+fitops backup list [--local] [--provider github]
+
+# Restore
+fitops backup restore [ARCHIVE_PATH]
+fitops backup restore --from github [--backup NAME] [--yes]
+
+# Schedule
+fitops backup schedule --enable --interval HOURS [--provider github]
 fitops backup schedule --disable
 fitops backup schedule --interval HOURS
 fitops backup schedule --status
