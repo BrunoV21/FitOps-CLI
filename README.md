@@ -1,5 +1,14 @@
 # FitOps-CLI
 
+[![PyPI version](https://img.shields.io/pypi/v/fitops-cli?color=blue)](https://pypi.org/project/fitops-cli/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/fitops-cli?label=PyPI%20downloads)](https://pypi.org/project/fitops-cli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/fitops-cli)](https://pypi.org/project/fitops-cli/)
+[![License: MIT](https://img.shields.io/github/license/brunov21/fitops-cli)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/brunov21/fitops-cli?style=social)](https://github.com/brunov21/fitops-cli/stargazers)
+[![CI](https://img.shields.io/github/actions/workflow/status/brunov21/fitops-cli/python-package.yml?label=CI)](https://github.com/brunov21/fitops-cli/actions/workflows/python-package.yml)
+[![uv compatible](https://img.shields.io/badge/uv-compatible-5C4EE5?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 Your fitness data is yours. FitOps gives you **two first-class ways to work with it**: a local dashboard for human exploration and a structured CLI for AI agents — both reading from the same SQLite database on your machine.
 
 ```
