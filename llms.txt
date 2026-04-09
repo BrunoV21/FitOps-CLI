@@ -1,46 +1,73 @@
 # FitOps-CLI
 
-> FitOps is a local-first fitness analytics platform for Python 3.11+. It syncs activities to a personal SQLite database (`~/.fitops/fitops.db`) and exposes the data through two first-class interfaces: a browser dashboard at `localhost:8888` and a structured CLI designed for AI agent consumption. Every CLI command outputs either Rich-formatted tables for humans or JSON with `_meta` context blocks and `data_availability` hints for agents. No cloud, no subscriptions — your data never leaves your machine.
+> FitOps is a local-first fitness analytics platform for Python 3.11+. It syncs Strava activities to a personal SQLite database (`~/.fitops/fitops.db`) and exposes data through two first-class interfaces: a browser dashboard at `localhost:8888` and a structured CLI built for AI agent consumption. Every CLI command outputs Rich-formatted tables for humans or JSON with `_meta` context blocks and `data_availability` hints for agents. No cloud, no subscriptions — your data never leaves your machine.
 
-Install with `pip install fitops-cli` or run without installing via `uvx fitops`. Requires a Strava API application (Client ID + Secret) for authentication. A Claude Code skill is available for AI agent use: download `.claude/commands/fitops.md` from the repository and place it in your project's `.claude/commands/` directory.
+## Install FitOps (one command)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh | bash
+```
+
+The script:
+- Checks for `uvx` → uses it (isolated, no global install)
+- Falls back to `pip install fitops-cli` if Python 3.11+ is present
+- Errors with instructions if neither is found
+- Downloads the agent skill from the repo into every detected agent directory (Claude Code, Cursor, Codex, Windsurf, Cline, OpenCode, GitHub Copilot)
+
+To target a specific agent: `AGENT=cursor bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)`
+
+## Authenticate
+
+After installation, connect your Strava account:
+
+1. Create a free Strava API app at https://www.strava.com/settings/api
+   - Application Name: `Surge`
+   - Category: `Performance Analysis`
+   - Website: `https://brunov21.github.io/Surge/`
+   - Callback Domain: `mclovinittt-kinetic-run-api.hf.space`
+2. Run `fitops auth login` — enter your Client ID + Secret when prompted
+3. Run `fitops sync run` — pulls your full activity history
+
+Full guide: https://brunov21.github.io/fitops-cli/getting-started/authentication
 
 ## Getting Started
 
-- [README](https://github.com/yourname/FitOps-CLI/blob/main/README.md): Full project overview, installation options (uvx / pip / source), quick start, and command reference.
-- [Getting Started Guide](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/getting-started/README.md): Step-by-step walkthrough from Strava app creation through first sync.
-- [Comparison with TrainingPeaks, Intervals.icu, Strava, Garmin Connect](https://github.com/yourname/FitOps-CLI/blob/main/docs/comparison.md): Feature-by-feature breakdown with sources from community forums.
+- [README](https://github.com/brunov21/fitops-cli/blob/main/README.md): Full project overview, installation options, quick start, and command reference.
+- [Installation guide](https://brunov21.github.io/fitops-cli/getting-started/installation): install.sh walkthrough, uvx, pip, and source methods.
+- [Authentication guide](https://brunov21.github.io/fitops-cli/getting-started/authentication): Strava API app setup, OAuth flow, token management.
+- [First sync](https://brunov21.github.io/fitops-cli/getting-started/first-sync): Incremental and full sync, streams backfill.
+- [Comparison with TrainingPeaks, Intervals.icu, Strava, Garmin Connect](https://github.com/brunov21/fitops-cli/blob/main/docs/comparison.md): Feature-by-feature breakdown with community sources.
 
 ## CLI Command Reference
 
-- [Auth commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/auth.md): `fitops auth login/logout/status/refresh` — Strava OAuth with local callback server on port 8080.
-- [Sync commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/sync.md): `fitops sync run [--full] [--after DATE]` / `fitops sync streams` / `fitops sync status` — incremental and full historical sync with 3-day overlap.
-- [Activities commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/activities.md): `fitops activities list/get/streams/laps` — list, filter, and retrieve time-series GPS/HR/power streams.
-- [Athlete commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/athlete.md): `fitops athlete profile/stats/zones/set/equipment` — profile, cumulative stats, HR/power zones, physiology settings (max HR, FTP, LTHR).
-- [Analytics commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/analytics.md): `fitops analytics training-load/vo2max/zones/trends/performance/power-curve/pace-zones/snapshot` — CTL/ATL/TSB, VO2max estimates, LT1/LT2 thresholds, running economy.
-- [Workouts commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/workouts.md): `fitops workouts list/show/create/link/compliance/simulate` — Markdown workout files with YAML frontmatter, per-segment HR/pace compliance scoring, terrain+weather simulation on imported courses.
-- [Race commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops race import/courses/course/simulate/splits` — import GPX/TCX/Strava courses, per-km split planning adjusted for grade, temperature, humidity, and wind. Supports pacer strategy (sit-then-push) and race-day forecast weather.
-- [Weather commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/weather.md): `fitops weather fetch/show/forecast/set` — historical and forecast weather via Open-Meteo (no API key), WBGT heat stress index, weather-adjusted pace (WAP), wind modeling via Pugh 1971.
-- [Notes commands](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops notes create/list/get/edit/delete/tags/sync` — Markdown training notes stored in `~/.fitops/notes/`, tagged and optionally linked to activities. Serves as persistent memory for AI agents across sessions.
-- [Dashboard command](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/commands/README.md): `fitops dashboard serve [--port N]` — starts the local FastAPI dashboard at `http://localhost:8888`.
+- [Auth commands](https://brunov21.github.io/fitops-cli/commands/auth): `fitops auth login/logout/status/refresh` — Strava OAuth with local callback server on port 8080.
+- [Sync commands](https://brunov21.github.io/fitops-cli/commands/sync): `fitops sync run [--full] [--after DATE]` / `fitops sync streams` / `fitops sync status` — incremental and full historical sync with 3-day overlap.
+- [Activities commands](https://brunov21.github.io/fitops-cli/commands/activities): `fitops activities list/get/streams/laps` — list, filter, and retrieve time-series GPS/HR/power streams.
+- [Athlete commands](https://brunov21.github.io/fitops-cli/commands/athlete): `fitops athlete profile/stats/zones/set/equipment` — profile, cumulative stats, HR/power zones, physiology settings (max HR, FTP, LTHR).
+- [Analytics commands](https://brunov21.github.io/fitops-cli/commands/analytics): `fitops analytics training-load/vo2max/zones/trends/performance/power-curve/pace-zones/snapshot` — CTL/ATL/TSB, VO2max estimates, LT1/LT2 thresholds, running economy.
+- [Workouts commands](https://brunov21.github.io/fitops-cli/commands/workouts): `fitops workouts list/show/create/link/compliance/simulate` — Markdown workout files, per-segment HR/pace compliance scoring, terrain+weather simulation.
+- [Race commands](https://brunov21.github.io/fitops-cli/commands/race): `fitops race import/courses/course/simulate/splits` — import GPX/TCX/Strava courses, per-km split planning adjusted for grade, temperature, humidity, and wind. Supports pacer strategy and race-day forecast weather.
+- [Weather commands](https://brunov21.github.io/fitops-cli/commands/weather): `fitops weather fetch/show/forecast/set` — historical and forecast weather via Open-Meteo (no API key), WBGT heat stress index, weather-adjusted pace (WAP), wind modeling.
+- [Notes commands](https://brunov21.github.io/fitops-cli/commands/notes): `fitops notes create/list/get/edit/delete/tags/sync` — Markdown training notes in `~/.fitops/notes/`, tagged and optionally linked to activities. Persistent agent memory across sessions.
+- [Dashboard command](https://brunov21.github.io/fitops-cli/commands/dashboard): `fitops dashboard serve [--port N]` — starts the local FastAPI dashboard at `http://localhost:8888`.
 
 ## Key Concepts
 
-- [Output format and JSON schema](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/llm-integration.md): Every JSON response has a `_meta` block (tool, version, timestamp, filters) and `data_availability` per activity so an agent knows what to fetch next. Units are explicit in field names (`_m`, `_km`, `_s`, `_bpm`). Paces are formatted as `"6:03"` strings alongside raw m/s.
-- [Storage layout](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/README.md): `~/.fitops/config.json` (credentials + physiology), `~/.fitops/sync_state.json`, `~/.fitops/fitops.db` (SQLite), `~/.fitops/workouts/` (Markdown), `~/.fitops/notes/` (Markdown). Override base dir with `FITOPS_DIR` env var.
-- [Training load methodology](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/training-load.md): CTL = 42-day EWMA (α≈0.0465), ATL = 7-day EWMA (α≈0.25), TSB = CTL − ATL. TSS per activity from pace (running), power (cycling), or HR zone multipliers (fallback).
-- [VO2max methodology](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/vo2max.md): Weighted composite of VDOT/Daniels (50%), McArdle (30%), and Costill (20–40%). Age-adjusted with 0.8%/yr decline factor above age 25. Heat-corrected using Nybo/González-Alonso model.
-- [Weather-adjusted pace](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/weather-pace.md): WBGT-based temperature/humidity model (Ely et al. 2007) + wind drag model (Pugh 1971). True Pace = actual pace normalized for both elevation (GAP) and weather (WAP).
-- [Zone methodology](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/zones.md): Three methods — LTHR (5-zone, best accuracy), Max HR percentage, HRR/Karvonen. Auto-selection based on available physiology data. LT1/LT2 explicitly calculated.
-- [Workout file format](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/README.md): Markdown files in `~/.fitops/workouts/` with YAML frontmatter. Segments defined as time-in-zone, pace-range, or HR-range steps. Compliance score 0.0–1.0 against actual HR stream; ≥0.8 = successful.
-- [Notes as agent memory](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/concepts/llm-integration.md): Notes in `~/.fitops/notes/` are plain Markdown with YAML frontmatter (title, tags, activity_id). An AI agent can write observations after analysis and read them back in future sessions. Tags enable structured recall (e.g. `fitops notes list --tag pattern`).
+- [Output format and JSON schema](https://brunov21.github.io/fitops-cli/concepts/llm-integration): Every JSON response has a `_meta` block (tool, version, timestamp, filters) and `data_availability` per activity. Units are explicit in field names (`_m`, `_km`, `_s`, `_bpm`).
+- [Storage layout](https://brunov21.github.io/fitops-cli/concepts/storage): `~/.fitops/config.json`, `~/.fitops/fitops.db` (SQLite), `~/.fitops/workouts/`, `~/.fitops/notes/`. Override base dir with `FITOPS_DIR`.
+- [Training load methodology](https://brunov21.github.io/fitops-cli/concepts/training-load): CTL = 42-day EWMA, ATL = 7-day EWMA, TSB = CTL − ATL. TSS from pace (running), power (cycling), or HR zone multipliers.
+- [VO2max methodology](https://brunov21.github.io/fitops-cli/concepts/vo2max): Weighted composite of VDOT/Daniels (50%), McArdle (30%), and Costill (20–40%). Age-adjusted, heat-corrected.
+- [Weather-adjusted pace](https://brunov21.github.io/fitops-cli/concepts/weather-pace): WBGT temperature/humidity model (Ely et al. 2007) + wind drag model (Pugh 1971). True Pace normalizes for both elevation (GAP) and weather (WAP).
+- [Zone methodology](https://brunov21.github.io/fitops-cli/concepts/zones): LTHR (5-zone), Max HR percentage, HRR/Karvonen. Auto-selected based on available physiology data.
+- [Notes as agent memory](https://brunov21.github.io/fitops-cli/concepts/notes): Notes in `~/.fitops/notes/` are plain Markdown with YAML frontmatter. An AI agent can write and recall observations across sessions via `fitops notes list --tag <tag>`.
 
 ## Output Examples
 
-- [JSON output examples](https://github.com/yourname/FitOps-CLI/blob/main/docs/customerfacing/output-examples/README.md): Sample responses for activities list, activity detail, training load snapshot, race simulation splits, weather-adjusted pace, and streams data.
+- [JSON output examples](https://brunov21.github.io/fitops-cli/output-examples/): Sample responses for activities list, activity detail, training load snapshot, race simulation splits, weather-adjusted pace, and streams data.
 
 ## Optional
 
-- [Changelog](https://github.com/yourname/FitOps-CLI/blob/main/CHANGELOG.md): Version history and release notes.
-- [Development setup](https://github.com/yourname/FitOps-CLI/blob/main/README.md): `pip install -e ".[dev]"` and `pytest tests/ -v`.
-- [Roadmap](https://github.com/yourname/FitOps-CLI/blob/main/docs/roadmap.md): Planned phases — multi-provider sync (Garmin, Apple Health, Coros), cloud backup (Drive, OneDrive, Dropbox).
-- [Architecture](https://github.com/yourname/FitOps-CLI/blob/main/docs/architecture.md): Module layout, async design, database schema, and the Duality Rule (every feature must be accessible in both CLI and dashboard).
+- [Changelog](https://github.com/brunov21/fitops-cli/blob/main/CHANGELOG.md): Version history and release notes.
+- [Development setup](https://github.com/brunov21/fitops-cli/blob/main/README.md): `pip install -e ".[dev]"` and `pytest tests/ -v`.
+- [Roadmap](https://brunov21.github.io/fitops-cli/roadmap): Planned phases — multi-provider sync (Garmin, Apple Health, Coros), cloud backup (Drive, OneDrive, Dropbox).
+- [Architecture](https://github.com/brunov21/fitops-cli/blob/main/AGENTS.md): Module layout, async design, database schema, and the Parity Rule (every feature must be accessible in both CLI and dashboard).

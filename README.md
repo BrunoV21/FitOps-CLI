@@ -84,20 +84,36 @@ Sync your Strava activities once, then explore them however you like — visuall
 
 ## Quick Setup for AI Agents
 
-If you are an AI agent (or setting up FitOps for use with one), run these three commands:
+> **One command installs FitOps _and_ places the skill in the right directory for your agent.**
 
 ```bash
-# 1. Install FitOps
-uvx fitops --help
-
-# 2. Download the Claude Code skill into your project
-curl -fsSL https://raw.githubusercontent.com/yourname/FitOps-CLI/main/.claude/commands/fitops.md \
-  -o .claude/commands/fitops.md
-
-# 3. Authenticate and sync
-uvx fitops auth login
-uvx fitops sync run
+curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh | bash
 ```
+
+The script auto-detects Claude Code, Cursor, Codex, Windsurf, Cline, OpenCode, and GitHub Copilot. To target a specific agent:
+
+```bash
+AGENT=cursor  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)
+AGENT=codex   bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)
+AGENT=claude  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)
+```
+
+**What the script does:**
+1. Checks for `uvx` → installs via `uvx fitops` (isolated, no global install)
+2. Falls back to `pip install fitops-cli` if Python 3.11+ is available
+3. Errors with instructions if neither is found
+4. Downloads `.claude/commands/fitops.md` from this repo into every detected agent directory
+5. Prints the Strava auth steps so you're never left guessing
+
+**After installation:**
+
+```bash
+fitops auth login    # Enter your Strava Client ID + Secret when prompted
+fitops sync run      # Pull your activity history
+```
+
+> Need a Strava API key? Go to [strava.com/settings/api](https://www.strava.com/settings/api)
+> and follow the [full authentication guide](https://brunov21.github.io/FitOps-CLI/getting-started/authentication).
 
 Then invoke the skill from Claude Code with `/fitops <your question>` — it has the full command reference, error recovery table, and coaching workflows built in.
 
@@ -107,9 +123,17 @@ The skill uses `fitops notes` as persistent memory: observations written in one 
 
 ## Installation
 
-**Requirements:** Python 3.11+
+**Requirements:** Python 3.11+ (or [uv](https://docs.astral.sh/uv/) — manages Python for you)
 
-### Recommended — run with uvx (no install needed)
+### Recommended — one-line installer (CLI + skill)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh | bash
+```
+
+Installs FitOps and places the agent skill file for every detected coding assistant. See [Quick Setup for AI Agents](#quick-setup-for-ai-agents) above.
+
+### Run without installing — uvx
 
 ```bash
 uvx fitops auth login
@@ -117,7 +141,7 @@ uvx fitops sync run
 uvx fitops dashboard serve
 ```
 
-[`uvx`](https://docs.astral.sh/uv/guides/tools/) runs FitOps in an isolated environment without a global install. Install `uv` once with `pip install uv` or via the [uv installer](https://docs.astral.sh/uv/getting-started/installation/).
+[`uvx`](https://docs.astral.sh/uv/guides/tools/) runs FitOps in an isolated environment. Install `uv` once with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
 ### Install from PyPI
 
@@ -128,8 +152,8 @@ pip install fitops-cli
 ### Install from source
 
 ```bash
-git clone https://github.com/yourname/FitOps-CLI.git
-cd FitOps-CLI
+git clone https://github.com/brunov21/fitops-cli.git
+cd fitops-cli
 pip install -e .
 ```
 
