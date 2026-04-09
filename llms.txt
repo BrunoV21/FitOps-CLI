@@ -10,7 +10,7 @@ curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh
 
 The script:
 - Checks for `uvx` → uses it (isolated, no global install)
-- Falls back to `pip install fitops-cli` if Python 3.11+ is present
+- Falls back to `pip install fitops` if Python 3.11+ is present
 - Errors with instructions if neither is found
 - Downloads the agent skill from the repo into every detected agent directory (Claude Code, Cursor, Codex, Windsurf, Cline, OpenCode, GitHub Copilot)
 

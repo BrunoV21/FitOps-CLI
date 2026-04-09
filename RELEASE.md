@@ -63,10 +63,10 @@ Welcome to the first release of **FitOps CLI** — a local-first Strava analytic
 
 ```bash
 # Using uvx (recommended)
-uvx fitops-cli
+uvx fitops
 
 # Using pip
-pip install fitops-cli
+pip install fitops
 ```
 
 See the [Getting Started guide](docs/customerfacing/getting-started/README.md) for authentication and first sync instructions.

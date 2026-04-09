@@ -80,7 +80,7 @@ body:
       label: Installation method
       options:
         - uvx (recommended)
-        - pip install fitops-cli
+        - pip install fitops
         - pip install -e . (from source)
     validations:
       required: true

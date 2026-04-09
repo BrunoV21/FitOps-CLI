@@ -9,7 +9,7 @@ Every response contains a `_meta` block at the top level:
 ```json
 {
   "_meta": {
-    "tool": "fitops-cli",
+    "tool": "fitops",
     "version": "0.1.0",
     "generated_at": "2026-03-10T22:05:00+00:00",
     "total_count": 20,
