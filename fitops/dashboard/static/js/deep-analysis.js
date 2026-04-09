@@ -83,10 +83,16 @@ function initDeepAnalysis(config) {
   _da.distLabels = dist.map(d => d != null ? +(d / 1000).toFixed(3) : null);
   _da.timeLabels = time.map(t => t != null ? Math.round(t) : null);
 
-  // Render map
+  // Render map (guarded — a Leaflet load failure must not abort chart init)
   const latlng = streams.latlng || [];
   if (latlng.length > 1) {
-    _daRenderMap(latlng, segments, dsStep);
+    try {
+      _daRenderMap(latlng, segments, dsStep);
+    } catch (e) {
+      console.warn('[FitOps] map render failed:', e);
+      const mapEl = document.getElementById('da-map');
+      if (mapEl) mapEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#4b5563;font-size:0.875rem;">Map unavailable</div>';
+    }
   }
 
   // Create stacked charts (pace handled separately as a multi-dataset chart)
@@ -110,13 +116,21 @@ function initDeepAnalysis(config) {
       data = rawData.map(v => v != null ? v * 2 : null);
     }
 
-    const chart = _daCreateChart(cfg.canvasId, data, cfg, thresholds, segments, dsStep);
-    if (chart) _da.charts.push(chart);
+    try {
+      const chart = _daCreateChart(cfg.canvasId, data, cfg, thresholds, segments, dsStep);
+      if (chart) _da.charts.push(chart);
+    } catch (e) {
+      console.warn('[FitOps] chart init failed for', cfg.key, e);
+    }
   }
 
   // Pace/Speed chart — multi-dataset with toggles
-  const paceChart = _daCreatePaceChart(streams, isRun, thresholds, segments, dsStep);
-  if (paceChart) _da.charts.push(paceChart);
+  try {
+    const paceChart = _daCreatePaceChart(streams, isRun, thresholds, segments, dsStep);
+    if (paceChart) _da.charts.push(paceChart);
+  } catch (e) {
+    console.warn('[FitOps] pace chart init failed:', e);
+  }
 
   // Scatter plot
   _daRenderScatter(streams, isRun);
@@ -820,8 +834,10 @@ function daSetXAxis(mode) {
   document.getElementById('da-xaxis-time').classList.toggle('active', mode === 'time');
 
   const labels = mode === 'distance' ? _da.distLabels : _da.timeLabels;
+  if (!labels || !labels.length) return;
 
   for (const chart of _da.charts) {
+    if (!chart.data.datasets.length) continue;
     chart.data.labels = labels.slice(0, chart.data.datasets[0].data.length);
     chart.options.scales.x.ticks = mode === 'time'
       ? { callback: v => _fmtDuration(v), maxTicksLimit: 6, color: '#4a4a4a', font: { size: 9 } }

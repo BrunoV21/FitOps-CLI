@@ -209,18 +209,17 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       fill: 'origin',
       _metricKey: 'alt',
     });
-    const altVals = streams.altitude.filter(Boolean);
-    scales.yAlt = {
-      display: false,
-      position: 'right',
-      min: Math.min(...altVals) * 0.9,
-      suggestedMax: Math.max(...altVals) * 1.05,
-    };
+    const altVals = streams.altitude.filter(v => v != null && v > -9999);
+    scales.yAlt = { display: false, position: 'right' };
+    if (altVals.length) {
+      scales.yAlt.min = Math.min(...altVals) * 0.9;
+      scales.yAlt.suggestedMax = Math.max(...altVals) * 1.05;
+    }
   }
 
   // Heart Rate
   if ((streams.heartrate || []).length > 0) {
-    const hrVals = streams.heartrate.filter(Boolean);
+    const hrVals = streams.heartrate.filter(v => v && v > 0);
     datasets.push({
       label: 'Heart Rate',
       data: streams.heartrate,
@@ -237,10 +236,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       position: 'left',
       title: { display: true, text: 'bpm', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
       grid: { color: 'rgba(255,255,255,0.04)' },
-      min: Math.floor(Math.min(...hrVals) * 0.88),
-      suggestedMax: Math.max(...hrVals) * 1.02,
       ticks: { color: '#ff3355', font: { size: 10, family: 'ui-monospace, monospace' } },
     };
+    if (hrVals.length) {
+      scales.yHR.min = Math.floor(Math.min(...hrVals) * 0.88);
+      scales.yHR.suggestedMax = Math.max(...hrVals) * 1.02;
+    }
 
     // LT2 threshold line (dashed red)
     if (thresholds.lt2) {
@@ -410,13 +411,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       hidden: true,
       _metricKey: 'cad',
     });
-    const cadVals = cadData.filter(Boolean);
-    scales.yCad = {
-      display: false,
-      position: 'right',
-      min: Math.min(...cadVals) * 0.85,
-      suggestedMax: Math.max(...cadVals) * 1.05,
-    };
+    const cadVals = cadData.filter(v => v && v > 0);
+    scales.yCad = { display: false, position: 'right' };
+    if (cadVals.length) {
+      scales.yCad.min = Math.min(...cadVals) * 0.85;
+      scales.yCad.suggestedMax = Math.max(...cadVals) * 1.05;
+    }
   }
 
   // Power (hidden by default)
@@ -433,13 +433,11 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       hidden: true,
       _metricKey: 'pwr',
     });
-    const pwrVals = streams.watts.filter(Boolean);
-    scales.yPwr = {
-      display: false,
-      position: 'right',
-      min: 0,
-      suggestedMax: Math.max(...pwrVals) * 1.05,
-    };
+    const pwrVals = streams.watts.filter(v => v && v > 0);
+    scales.yPwr = { display: false, position: 'right', min: 0 };
+    if (pwrVals.length) {
+      scales.yPwr.suggestedMax = Math.max(...pwrVals) * 1.05;
+    }
   }
 
   const crosshairPlugin = {
@@ -529,18 +527,18 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
  */
 function initMetricToggles(chart, containerId, available, sportType) {
   const container = document.getElementById(containerId);
-  if (!container || !chart) return;
+  if (!container) return;
 
   const _isRun = new Set(['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike']).has(sportType);
   const METRICS = [
     { key: 'hr',   label: 'HR',                      color: '#ff3355', defaultOn: true  },
     { key: 'pace', label: _isRun ? 'Pace' : 'Speed', color: '#00aaff', defaultOn: true  },
-    { key: 'gap',  label: 'GAP',      color: '#00ccff', defaultOn: true  },
+    { key: 'gap',  label: 'GAP',                      color: '#00ccff', defaultOn: true  },
     { key: 'wap',  label: _isRun ? 'WAP' : 'WAP Speed',        color: '#ff8800', defaultOn: true  },
     { key: 'tp',   label: _isRun ? 'True Pace' : 'True Speed', color: '#00ff87', defaultOn: true  },
-    { key: 'alt',  label: 'Altitude', color: '#00ff87', defaultOn: true  },
-    { key: 'cad',  label: 'Cadence',  color: '#ffaa00', defaultOn: false },
-    { key: 'pwr',  label: 'Power',    color: '#aa55ff', defaultOn: false },
+    { key: 'alt',  label: 'Altitude',                color: '#4488cc', defaultOn: true  },
+    { key: 'cad',  label: 'Cadence',                 color: '#ffaa00', defaultOn: false },
+    { key: 'pwr',  label: 'Power',                   color: '#aa55ff', defaultOn: false },
   ];
 
   METRICS.forEach(({ key, label, color, defaultOn }) => {
@@ -549,9 +547,10 @@ function initMetricToggles(chart, containerId, available, sportType) {
     const btn = document.createElement('button');
     btn.textContent = label;
     btn.dataset.metricKey = key;
+    btn.dataset.active = defaultOn ? '1' : '0';
     btn.style.cssText = `
       padding: 3px 10px;
-      border: 1px solid ${color};
+      border-radius: 3px;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.08em;
@@ -559,23 +558,26 @@ function initMetricToggles(chart, containerId, available, sportType) {
       cursor: pointer;
       transition: all 0.1s;
       font-family: ui-monospace, monospace;
+      border: 1px solid ${defaultOn ? color : '#444'};
+      background: ${defaultOn ? color + '18' : 'transparent'};
+      color: ${defaultOn ? color : '#888'};
     `;
 
     const setActive = (active) => {
       btn.style.background = active ? color + '18' : 'transparent';
-      btn.style.color = active ? color : '#3a3a3a';
-      btn.style.borderColor = active ? color : '#2e2e2e';
+      btn.style.color = active ? color : '#888';
+      btn.style.borderColor = active ? color : '#444';
       btn.dataset.active = active ? '1' : '0';
     };
 
-    setActive(defaultOn);
-
     btn.addEventListener('click', () => {
-      const dsIndex = chart.data.datasets.findIndex(ds => ds._metricKey === key);
+      const c = chart || window._activeStreamChart;
+      if (!c) return;
+      const dsIndex = c.data.datasets.findIndex(ds => ds._metricKey === key);
       if (dsIndex === -1) return;
-      const nowVisible = !chart.isDatasetVisible(dsIndex);
-      chart.setDatasetVisibility(dsIndex, nowVisible);
-      chart.update('none');
+      const nowVisible = !c.isDatasetVisible(dsIndex);
+      c.setDatasetVisibility(dsIndex, nowVisible);
+      c.update('none');
       setActive(nowVisible);
     });
 

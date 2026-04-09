@@ -674,7 +674,13 @@ async function applyInsight(settingKey, value, btn) {
     label: '{{ weather.wind_dir_compass or "" }} · {{ weather.wind_speed_kmh if weather.wind_speed_kmh is not none else "?" }} km/h'
   }{% else %}null{% endif %};
   renderActivityMap('activity-map', latlng, _windData);
-  const chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE, THRESHOLDS);
+  let chart = null;
+  try {
+    chart = renderStreamChart('stream-chart', STREAMS, SPORT_TYPE, THRESHOLDS);
+    if (!chart) console.error('[FitOps] renderStreamChart returned null. ctx:', document.getElementById('stream-chart'), 'streams keys:', Object.keys(STREAMS));
+  } catch(e) {
+    console.error('[FitOps] renderStreamChart threw:', e);
+  }
   const hasGap = (STREAMS.grade_adjusted_speed || []).length > 0
     || ((STREAMS.grade_smooth || []).length > 0 && (STREAMS.velocity_smooth || []).length > 0);
   initMetricToggles(chart, 'metric-toggles', {
