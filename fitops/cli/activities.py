@@ -176,7 +176,9 @@ def list_activities(
         typer.echo(json.dumps(output, indent=2, default=str))
     else:
         print_activities_table(output["activities"])
-        typer.echo("\nTip: run `fitops activities list --help` to see all available filters.")
+        typer.echo(
+            "\nTip: run `fitops activities list --help` to see all available filters."
+        )
 
 
 @app.command("get")
