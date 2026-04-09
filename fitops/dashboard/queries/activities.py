@@ -10,6 +10,15 @@ from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.session import get_async_session
 
 
+_TAG_FILTERS: dict[str, tuple] = {
+    "race": ("workout_type", 1),
+    "trainer": ("trainer", True),
+    "commute": ("commute", True),
+    "manual": ("manual", True),
+    "private": ("private", True),
+}
+
+
 async def get_recent_activities(
     athlete_id: int,
     limit: int = 50,
@@ -18,6 +27,9 @@ async def get_recent_activities(
     sport_types: frozenset | None = None,
     days: int | None = None,
     since: datetime | None = None,
+    before: datetime | None = None,
+    search: str | None = None,
+    tag: str | None = None,
 ) -> list[Activity]:
     async with get_async_session() as session:
         q = select(Activity).where(Activity.athlete_id == athlete_id)
@@ -30,6 +42,13 @@ async def get_recent_activities(
         elif days:
             cutoff = datetime.now(UTC) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
+        if before:
+            q = q.where(Activity.start_date <= before)
+        if search:
+            q = q.where(Activity.name.ilike(f"%{search}%"))
+        if tag and tag in _TAG_FILTERS:
+            col_name, val = _TAG_FILTERS[tag]
+            q = q.where(getattr(Activity, col_name) == val)
         q = q.order_by(Activity.start_date.desc()).offset(offset).limit(limit)
         result = await session.execute(q)
         return list(result.scalars().all())
