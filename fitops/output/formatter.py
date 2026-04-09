@@ -11,7 +11,7 @@ RIDE_SPORT_TYPES = {
     "GravelRide",
 }
 
-METERS_PER_MILE = 1609.344
+METERS_PER_MILE = 1609.344  # used by _fmt_pace_per_mile
 
 
 def _fmt_seconds(seconds: int | None) -> str | None:
@@ -47,6 +47,45 @@ def _round2(val: float | None) -> float | None:
     return round(val, 2) if val is not None else None
 
 
+def _flags_block(row: dict) -> dict:
+    flags = {
+        k: True
+        for k, v in {
+            "trainer": row.get("trainer", False),
+            "commute": row.get("commute", False),
+            "manual": row.get("manual", False),
+            "private": row.get("private", False),
+            "is_race": row.get("workout_type") == 1,
+        }.items()
+        if v
+    }
+    return {"flags": flags} if flags else {}
+
+
+def _social_block(row: dict) -> dict:
+    kudos = row.get("kudos_count", 0) or 0
+    comments = row.get("comment_count", 0) or 0
+    if kudos == 0 and comments == 0:
+        return {}
+    return {"social": {"kudos": kudos, "comments": comments}}
+
+
+def _data_availability_block(row: dict, avg_hr, avg_w) -> dict:
+    available = {
+        k: True
+        for k, v in {
+            "has_gps": bool(row.get("start_latlng")),
+            "has_heart_rate": bool(avg_hr),
+            "has_power": bool(avg_w),
+            "streams_fetched": bool(row.get("streams_fetched", False)),
+            "laps_fetched": bool(row.get("laps_fetched", False)),
+            "detail_fetched": bool(row.get("detail_fetched", False)),
+        }.items()
+        if v
+    }
+    return {"data_availability": available} if available else {}
+
+
 def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
     """Convert a raw DB activity row dict to LLM-friendly output dict."""
     sport_type = row.get("sport_type", "")
@@ -63,7 +102,6 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
 
     dist_m = row.get("distance_m")
     dist_km = _round2(dist_m / 1000) if dist_m else None
-    dist_mi = _round2(dist_m / METERS_PER_MILE) if dist_m else None
 
     pace = None
     if sport_type in RUN_SPORT_TYPES and speed_ms:
@@ -104,18 +142,14 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
         "duration": {
             "moving_time_seconds": row.get("moving_time_s"),
             "moving_time_formatted": _fmt_seconds(row.get("moving_time_s")),
-            "elapsed_time_seconds": row.get("elapsed_time_s"),
         },
         "distance": {
-            "meters": _round2(dist_m),
             "km": dist_km,
-            "miles": dist_mi,
         },
         "pace": pace,
         "speed": {
-            "average_ms": _round2(speed_ms),
             "average_kmh": _round2(speed_ms * 3.6) if speed_ms else None,
-            "max_ms": _round2(max_speed_ms),
+            "max_kmh": _round2(max_speed_ms * 3.6) if max_speed_ms else None,
         },
         "elevation": {
             "total_gain_m": _round2(row.get("total_elevation_gain_m")),
@@ -133,36 +167,30 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
             "gear_name": gear_name,
             "gear_type": gear_type,
         },
-        "flags": {
-            "trainer": bool(row.get("trainer", False)),
-            "commute": bool(row.get("commute", False)),
-            "manual": bool(row.get("manual", False)),
-            "private": bool(row.get("private", False)),
-            "is_race": bool(row.get("workout_type") == 1),
-        },
-        "social": {
-            "kudos": row.get("kudos_count", 0) or 0,
-            "comments": row.get("comment_count", 0) or 0,
-        },
-        "data_availability": {
-            "has_gps": bool(row.get("start_latlng")),
-            "has_heart_rate": bool(avg_hr),
-            "has_power": bool(avg_w),
-            "streams_fetched": bool(row.get("streams_fetched", False)),
-            "laps_fetched": bool(row.get("laps_fetched", False)),
-            "detail_fetched": bool(row.get("detail_fetched", False)),
-        },
+        **_flags_block(row),
+        **_social_block(row),
+        **_data_availability_block(row, avg_hr, avg_w),
     }
 
 
 def make_meta(
     total_count: int | None = None,
     filters_applied: dict | None = None,
+    returned_count: int | None = None,
+    offset: int | None = None,
+    has_more: bool | None = None,
 ) -> dict:
-    return {
+    meta: dict = {
         "tool": "fitops-cli",
         "version": "0.1.0",
         "generated_at": datetime.now(UTC).isoformat(),
         "total_count": total_count,
         "filters_applied": filters_applied or {},
     }
+    if returned_count is not None:
+        meta["returned_count"] = returned_count
+    if offset is not None:
+        meta["offset"] = offset
+    if has_more is not None:
+        meta["has_more"] = has_more
+    return meta
