@@ -23,7 +23,7 @@ Your browser opens automatically at `http://localhost:8888`. The dashboard is re
 The dashboard needs one extra install step:
 
 ```bash
-pip install 'fitops-cli[dashboard]'
+pip install 'fitops[dashboard]'
 ```
 
 After that, `fitops dashboard serve` will work.

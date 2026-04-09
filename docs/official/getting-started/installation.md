@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh
 **What happens:**
 
 1. The script checks for `uvx` (part of [uv](https://docs.astral.sh/uv/)) and uses it if available — no global Python install needed, each run is isolated.
-2. If `uvx` isn't found but Python 3.11+ is, it runs `pip install fitops-cli`.
+2. If `uvx` isn't found but Python 3.11+ is, it runs `pip install fitops`.
 3. If neither is available, it exits with clear instructions to install one.
 4. It then downloads `.claude/commands/fitops.md` from the GitHub repository and places it into every agent directory it can detect (Claude Code, Cursor, Codex, Windsurf, Cline, OpenCode, GitHub Copilot).
 5. It prints the exact Strava auth steps so you can start immediately.
@@ -51,7 +51,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### Install from PyPI
 
 ```bash
-pip install fitops-cli
+pip install fitops
 fitops --help
 ```
 

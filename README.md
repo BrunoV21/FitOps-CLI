@@ -1,11 +1,11 @@
-# FitOps-CLI
+# FitOps
 
-[![PyPI version](https://img.shields.io/pypi/v/fitops-cli?color=blue)](https://pypi.org/project/fitops-cli/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/fitops-cli?label=PyPI%20downloads)](https://pypi.org/project/fitops-cli/)
-[![Python versions](https://img.shields.io/pypi/pyversions/fitops-cli)](https://pypi.org/project/fitops-cli/)
-[![License: MIT](https://img.shields.io/github/license/brunov21/fitops-cli)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/brunov21/fitops-cli?style=social)](https://github.com/brunov21/fitops-cli/stargazers)
-[![CI](https://img.shields.io/github/actions/workflow/status/brunov21/fitops-cli/python-package.yml?label=CI)](https://github.com/brunov21/fitops-cli/actions/workflows/python-package.yml)
+[![PyPI version](https://img.shields.io/pypi/v/fitops?color=blue)](https://pypi.org/project/fitops/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/fitops?label=PyPI%20downloads)](https://pypi.org/project/fitops/)
+[![Python versions](https://img.shields.io/pypi/pyversions/fitops)](https://pypi.org/project/fitops/)
+[![License: MIT](https://img.shields.io/github/license/brunov21/fitops)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/brunov21/fitops?style=social)](https://github.com/brunov21/fitops/stargazers)
+[![CI](https://img.shields.io/github/actions/workflow/status/brunov21/fitops/python-package.yml?label=CI)](https://github.com/brunov21/fitops/actions/workflows/python-package.yml)
 [![uv compatible](https://img.shields.io/badge/uv-compatible-5C4EE5?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
@@ -87,20 +87,20 @@ Sync your Strava activities once, then explore them however you like — visuall
 > **One command installs FitOps _and_ places the skill in the right directory for your agent.**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh | bash
 ```
 
 The script auto-detects Claude Code, Cursor, Codex, Windsurf, Cline, OpenCode, and GitHub Copilot. To target a specific agent:
 
 ```bash
-AGENT=cursor  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)
-AGENT=codex   bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)
-AGENT=claude  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh)
+AGENT=cursor  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh)
+AGENT=codex   bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh)
+AGENT=claude  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh)
 ```
 
 **What the script does:**
 1. Checks for `uvx` → installs via `uvx fitops` (isolated, no global install)
-2. Falls back to `pip install fitops-cli` if Python 3.11+ is available
+2. Falls back to `pip install fitops` if Python 3.11+ is available
 3. Errors with instructions if neither is found
 4. Downloads `.claude/commands/fitops.md` from this repo into every detected agent directory
 5. Prints the Strava auth steps so you're never left guessing
@@ -113,7 +113,7 @@ fitops sync run      # Pull your activity history
 ```
 
 > Need a Strava API key? Go to [strava.com/settings/api](https://www.strava.com/settings/api)
-> and follow the [full authentication guide](https://brunov21.github.io/FitOps-CLI/getting-started/authentication).
+> and follow the [full authentication guide](https://brunov21.github.io/fitops/getting-started/authentication).
 
 Then invoke the skill from Claude Code with `/fitops <your question>` — it has the full command reference, error recovery table, and coaching workflows built in.
 
@@ -128,7 +128,7 @@ The skill uses `fitops notes` as persistent memory: observations written in one 
 ### Recommended — one-line installer (CLI + skill)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh | bash
 ```
 
 Installs FitOps and places the agent skill file for every detected coding assistant. See [Quick Setup for AI Agents](#quick-setup-for-ai-agents) above.
@@ -146,14 +146,14 @@ uvx fitops dashboard serve
 ### Install from PyPI
 
 ```bash
-pip install fitops-cli
+pip install fitops
 ```
 
 ### Install from source
 
 ```bash
-git clone https://github.com/brunov21/fitops-cli.git
-cd fitops-cli
+git clone https://github.com/brunov21/fitops.git
+cd fitops
 pip install -e .
 ```
 
@@ -181,7 +181,7 @@ Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
 | Website | `https://brunov21.github.io/Surge/` |
 | Authorization Callback Domain | `mclovinittt-kinetic-run-api.hf.space` |
 
-Copy your **Client ID** and **Client Secret** from the Strava API Settings page. See the [full authentication guide](https://brunov21.github.io/FitOps-CLI/getting-started/authentication) for details.
+Copy your **Client ID** and **Client Secret** from the Strava API Settings page. See the [full authentication guide](https://brunov21.github.io/fitops/getting-started/authentication) for details.
 
 ### 2. Authenticate
 
@@ -421,7 +421,7 @@ FitOps uses **Rich** for human-facing output (formatted tables, colour-coded met
 ```json
 {
   "_meta": {
-    "tool": "fitops-cli",
+    "tool": "fitops",
     "version": "0.1.0",
     "generated_at": "2026-03-19T22:00:00+00:00",
     "total_count": 3,

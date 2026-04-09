@@ -106,7 +106,7 @@ All commands support `--json`. JSON output must include a `_meta` block:
 ```json
 {
   "_meta": {
-    "tool": "fitops-cli",
+    "tool": "fitops",
     "version": "...",
     "generated_at": "ISO-8601 timestamp",
     "total_count": N,

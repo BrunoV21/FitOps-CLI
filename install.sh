@@ -18,7 +18,7 @@ REPO_OWNER="brunov21"
 REPO_NAME="fitops-cli"
 BRANCH="main"
 RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}"
-SKILL_URL="${RAW_BASE}/.claude/commands/fitops.md"
+SKILL_URL="${RAW_BASE}/.claude/skills/fitops/SKILL.md"
 DOCS_AUTH="https://${REPO_OWNER}.github.io/${REPO_NAME}/getting-started/authentication"
 STRAVA_API="https://www.strava.com/settings/api"
 
@@ -55,8 +55,8 @@ FITOPS_CMD="fitops"
 # Helper: try pip install then verify the command exists
 _pip_install() {
   local python="$1"
-  if "$python" -m pip install --quiet fitops-cli 2>/dev/null; then
-    ok "fitops-cli installed via pip"
+  if "$python" -m pip install --quiet fitops 2>/dev/null; then
+    ok "fitops installed via pip"
     return 0
   else
     return 1
@@ -82,17 +82,17 @@ if command -v fitops &>/dev/null; then
   FITOPS_CMD="fitops"
 
 # 2. Try uvx (isolated, no global install)
-# Package is 'fitops-cli' on PyPI; the installed command is 'fitops'.
+# Package is 'fitops' on PyPI; the installed command is 'fitops'.
 elif command -v uvx &>/dev/null; then
-  ok "uv detected — trying uvx fitops-cli"
-  if uvx --from fitops-cli fitops --help &>/dev/null 2>&1; then
-    FITOPS_CMD="uvx --from fitops-cli fitops"
-    ok "fitops CLI ready  (uvx --from fitops-cli fitops)"
+  ok "uv detected — trying uvx fitops"
+  if uvx --from fitops fitops --help &>/dev/null 2>&1; then
+    FITOPS_CMD="uvx --from fitops fitops"
+    ok "fitops CLI ready  (uvx --from fitops fitops)"
   else
     # Fall through to pip (e.g. pre-release or network issue)
-    warn "uvx could not resolve fitops-cli — falling back to pip"
+    warn "uvx could not resolve fitops — falling back to pip"
     if PYTHON=$(_find_python 2>/dev/null); then
-      _pip_install "$PYTHON" || die "pip install fitops-cli failed.\n  Try manually: pip install fitops-cli"
+      _pip_install "$PYTHON" || die "pip install fitops failed.\n  Try manually: pip install fitops"
     else
       die "No Python 3.11+ found for pip fallback.\n  Clone the repo and run: pip install -e ."
     fi
@@ -102,7 +102,7 @@ elif command -v uvx &>/dev/null; then
 elif PYTHON=$(_find_python 2>/dev/null); then
   PY_VER=$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
   ok "Python ${PY_VER} detected (${PYTHON})"
-  _pip_install "$PYTHON" || die "pip install fitops-cli failed.\n  Try manually: pip install fitops-cli"
+  _pip_install "$PYTHON" || die "pip install fitops failed.\n  Try manually: pip install fitops"
 
 # 4. Nothing available
 else
