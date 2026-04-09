@@ -47,6 +47,15 @@ async def _get_gear_lookup() -> dict:
         return lookup
 
 
+_TAG_FILTERS: dict[str, object] = {
+    "race": (Activity.workout_type, 1),
+    "trainer": (Activity.trainer, True),
+    "commute": (Activity.commute, True),
+    "manual": (Activity.manual, True),
+    "private": (Activity.private, True),
+}
+
+
 @app.command("list")
 def list_activities(
     sport: str | None = typer.Option(
@@ -55,8 +64,22 @@ def list_activities(
     limit: int = typer.Option(
         20, "--limit", help="Max number of activities to return."
     ),
+    offset: int = typer.Option(
+        0, "--offset", help="Number of activities to skip (for pagination)."
+    ),
     after: str | None = typer.Option(
         None, "--after", help="Filter activities after date (YYYY-MM-DD)."
+    ),
+    before: str | None = typer.Option(
+        None, "--before", help="Filter activities before date (YYYY-MM-DD)."
+    ),
+    search: str | None = typer.Option(
+        None, "--search", help="Case-insensitive substring search on activity name."
+    ),
+    tag: str | None = typer.Option(
+        None,
+        "--tag",
+        help="Filter by tag: race, trainer, commute, manual, private.",
     ),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
@@ -70,21 +93,49 @@ def list_activities(
         typer.echo(str(e), err=True)
         raise typer.Exit(1)
 
+    if tag and tag not in _TAG_FILTERS:
+        typer.echo(
+            f"Unknown tag '{tag}'. Valid tags: {', '.join(_TAG_FILTERS)}.", err=True
+        )
+        raise typer.Exit(1)
+
     init_db()
 
     async def _fetch():
+        from sqlalchemy import func as sqla_func
+
         gear_lookup = await _get_gear_lookup()
         async with get_async_session() as session:
-            stmt = select(Activity).order_by(desc(Activity.start_date))
+            base_stmt = select(Activity)
             if sport:
-                stmt = stmt.where(Activity.sport_type == sport)
+                base_stmt = base_stmt.where(Activity.sport_type == sport)
             if after:
                 try:
                     after_dt = datetime.fromisoformat(after).replace(tzinfo=UTC)
-                    stmt = stmt.where(Activity.start_date >= after_dt)
+                    base_stmt = base_stmt.where(Activity.start_date >= after_dt)
                 except ValueError:
                     pass
-            stmt = stmt.limit(limit)
+            if before:
+                try:
+                    before_dt = datetime.fromisoformat(before).replace(tzinfo=UTC)
+                    base_stmt = base_stmt.where(Activity.start_date <= before_dt)
+                except ValueError:
+                    pass
+            if search:
+                base_stmt = base_stmt.where(Activity.name.ilike(f"%{search}%"))
+            if tag:
+                col, val = _TAG_FILTERS[tag]
+                base_stmt = base_stmt.where(col == val)
+
+            # Real total count (not just returned rows)
+            count_stmt = select(sqla_func.count()).select_from(base_stmt.subquery())
+            total_count = (await session.execute(count_stmt)).scalar_one()
+
+            stmt = (
+                base_stmt.order_by(desc(Activity.start_date))
+                .offset(offset)
+                .limit(limit)
+            )
             result = await session.execute(stmt)
             rows = result.scalars().all()
 
@@ -95,13 +146,28 @@ def list_activities(
             )
             for r in rows
         ]
-        filters: dict = {"limit": limit}
+        filters: dict = {"limit": limit, "offset": offset}
         if sport:
             filters["sport_type"] = sport
         if after:
             filters["after"] = after
+        if before:
+            filters["before"] = before
+        if search:
+            filters["search"] = search
+        if tag:
+            filters["tag"] = tag
+
+        returned = len(formatted)
+        has_more = (offset + returned) < total_count
         return {
-            "_meta": make_meta(total_count=len(formatted), filters_applied=filters),
+            "_meta": make_meta(
+                total_count=total_count,
+                filters_applied=filters,
+                returned_count=returned,
+                offset=offset,
+                has_more=has_more,
+            ),
             "activities": formatted,
         }
 
@@ -110,6 +176,7 @@ def list_activities(
         typer.echo(json.dumps(output, indent=2, default=str))
     else:
         print_activities_table(output["activities"])
+        typer.echo("\nTip: run `fitops activities list --help` to see all available filters.")
 
 
 @app.command("get")
