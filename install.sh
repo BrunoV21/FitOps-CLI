@@ -117,86 +117,141 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Install the FitOps agent skill
 #
-# The skill file (.claude/commands/fitops.md) teaches any Claude-compatible
-# agent the full FitOps command set, workflows, and error-recovery table.
-# We copy it from the canonical GitHub source into every agent directory
-# we can detect on this machine.
+# Follows the conventions from https://github.com/vercel-labs/skills :
+#
+#   Claude Code  →  .claude/commands/fitops.md   (slash command: /fitops)
+#                   .claude/skills/fitops/SKILL.md
+#   Windsurf     →  .windsurf/skills/fitops/SKILL.md
+#   Augment      →  .augment/skills/fitops/SKILL.md
+#   Goose        →  .goose/skills/fitops/SKILL.md
+#   All others   →  .agents/skills/fitops/SKILL.md
+#   (Cursor, Codex, Cline, OpenCode, Copilot, Gemini CLI, Warp, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
 step "Installing FitOps skill"
 
 SKILL_INSTALLED=false
+AGENTS_SKILL_INSTALLED=false  # guard: only write .agents/skills/ once
 
-install_skill() {
-  local dir="$1"
-  local label="${2:-$1}"
-  mkdir -p "$dir"
-  if curl -fsSL "$SKILL_URL" -o "${dir}/fitops.md" 2>/dev/null; then
-    ok "Skill → ${dir}/fitops.md  ${DIM}(${label})${RESET}"
+# Install as a Vercel-convention skill: <base>/fitops/SKILL.md
+_install_skill() {
+  local base="$1"
+  local label="$2"
+  local target="${base}/fitops/SKILL.md"
+  mkdir -p "${base}/fitops"
+  if curl -fsSL "$SKILL_URL" -o "$target" 2>/dev/null; then
+    ok "Skill → ${target}  ${DIM}(${label})${RESET}"
     SKILL_INSTALLED=true
+    return 0
   else
-    warn "Could not download skill to ${dir}/fitops.md"
+    warn "Could not download skill to ${target}"
+    return 1
   fi
 }
 
-# ── Explicit override ─────────────────────────────────────────────────────────
+# Install as a Claude Code slash command: <base>/fitops.md
+_install_cmd() {
+  local base="$1"
+  local label="$2"
+  local target="${base}/fitops.md"
+  mkdir -p "$base"
+  if curl -fsSL "$SKILL_URL" -o "$target" 2>/dev/null; then
+    ok "CMD  → ${target}  ${DIM}(${label})${RESET}"
+    SKILL_INSTALLED=true
+    return 0
+  else
+    warn "Could not download command to ${target}"
+    return 1
+  fi
+}
+
+# Install to .agents/skills/ once even if multiple compatible agents are present
+_install_agents_shared() {
+  if [[ "$AGENTS_SKILL_INSTALLED" == "false" ]]; then
+    _install_skill ".agents/skills" "$*"
+    AGENTS_SKILL_INSTALLED=true
+  else
+    ok "Already installed to .agents/skills/  ${DIM}(also covers $*)${RESET}"
+  fi
+}
+
+# ── Explicit override via AGENT= ──────────────────────────────────────────────
 if [[ "${AGENT:-}" != "" ]]; then
   case "${AGENT,,}" in
-    claude|claude-code)  install_skill ".claude/commands"    "Claude Code" ;;
-    cursor)              install_skill ".cursor/rules"       "Cursor" ;;
-    codex)               install_skill ".codex"              "Codex" ;;
-    windsurf)            install_skill ".windsurf/rules"     "Windsurf" ;;
-    cline)               install_skill ".cline/rules"        "Cline" ;;
-    opencode|open-code)  install_skill ".opencode"           "OpenCode" ;;
-    copilot)             install_skill ".github/copilot-instructions.d" "GitHub Copilot" ;;
-    *)                   install_skill ".agents"             "${AGENT}" ;;
+    claude|claude-code)
+      _install_cmd    ".claude/commands"       "Claude Code — /fitops command"
+      _install_skill  ".claude/skills"         "Claude Code — skill"
+      ;;
+    windsurf)   _install_skill ".windsurf/skills"  "Windsurf" ;;
+    augment)    _install_skill ".augment/skills"   "Augment" ;;
+    goose)      _install_skill ".goose/skills"     "Goose" ;;
+    cursor)     _install_agents_shared "Cursor" ;;
+    codex)      _install_agents_shared "Codex" ;;
+    cline)      _install_agents_shared "Cline" ;;
+    opencode|open-code) _install_agents_shared "OpenCode" ;;
+    copilot)    _install_agents_shared "GitHub Copilot" ;;
+    *)          _install_skill ".agents/skills"   "${AGENT}" ;;
   esac
 
 else
-  # ── Auto-detect agent environment ──────────────────────────────────────────
+  # ── Auto-detect installed agents ─────────────────────────────────────────────
 
-  # Claude Code (project-level)
+  # Claude Code (project-level): slash command + Vercel skill
   if [[ -d ".claude" ]]; then
-    install_skill ".claude/commands" "Claude Code — project"
+    _install_cmd   ".claude/commands" "Claude Code — /fitops command"
+    _install_skill ".claude/skills"   "Claude Code — skill"
   fi
 
   # Claude Code (global)
   if [[ -d "${HOME}/.claude" ]]; then
-    install_skill "${HOME}/.claude/commands" "Claude Code — global"
+    _install_cmd   "${HOME}/.claude/commands" "Claude Code global — /fitops command"
+    _install_skill "${HOME}/.claude/skills"   "Claude Code global — skill"
   fi
 
-  # Cursor
-  if [[ -d ".cursor" ]]; then
-    install_skill ".cursor/rules" "Cursor"
-  fi
-
-  # Codex (OpenAI)
-  if [[ -d ".codex" ]] || [[ -n "${CODEX_HOME:-}" ]]; then
-    install_skill "${CODEX_HOME:-.codex}" "Codex"
-  fi
-
-  # Windsurf / Codeium
+  # Windsurf (.windsurf/skills/ — its own namespace, not .agents/)
   if [[ -d ".windsurf" ]]; then
-    install_skill ".windsurf/rules" "Windsurf"
+    _install_skill ".windsurf/skills" "Windsurf"
   fi
 
-  # Cline (VS Code extension)
+  # Augment (.augment/skills/)
+  if [[ -d ".augment" ]]; then
+    _install_skill ".augment/skills" "Augment"
+  fi
+
+  # Goose (.goose/skills/)
+  if [[ -d ".goose" ]]; then
+    _install_skill ".goose/skills" "Goose"
+  fi
+
+  # ── .agents/skills/ group — one install serves all of these ──────────────────
+  # Cursor, Codex, Cline, OpenCode, GitHub Copilot, Warp, Gemini CLI, Replit…
+  # all share .agents/skills/ as their project-level skills directory.
+
+  if [[ -d ".cursor" ]]; then
+    _install_agents_shared "Cursor"
+  fi
+
   if [[ -d ".cline" ]]; then
-    install_skill ".cline/rules" "Cline"
+    _install_agents_shared "Cline"
   fi
 
-  # OpenCode
+  if [[ -d ".codex" ]] || [[ -n "${CODEX_HOME:-}" ]]; then
+    _install_agents_shared "Codex"
+  fi
+
   if [[ -d ".opencode" ]] || [[ -n "${OPENCODE_HOME:-}" ]]; then
-    install_skill "${OPENCODE_HOME:-.opencode}" "OpenCode"
+    _install_agents_shared "OpenCode"
   fi
 
-  # GitHub Copilot — NOT auto-detected (.github/ exists in every git repo).
-  # Use AGENT=copilot to install explicitly.
+  # GitHub Copilot — .github/ is too generic; only install if .github/copilot* exists
+  if [[ -f ".github/copilot-instructions.md" ]] || [[ -d ".github/copilot-instructions.d" ]]; then
+    _install_agents_shared "GitHub Copilot"
+  fi
 
-  # Generic .agents fallback
+  # No agent detected anywhere
   if [[ "$SKILL_INSTALLED" == "false" ]]; then
-    warn "No agent config directory detected — falling back to .agents/"
-    install_skill ".agents" "generic fallback"
-    printf "\n       %sTip:%s copy %s.agents/fitops.md%s to your agent's skill directory.\n" \
+    warn "No agent config directory detected — installing to .agents/skills/ (universal fallback)"
+    _install_skill ".agents/skills" "universal fallback"
+    printf "\n       %sTip:%s copy %s.agents/skills/fitops/SKILL.md%s to your agent's skills directory.\n" \
       "$YELLOW" "$RESET" "$CYAN" "$RESET"
   fi
 fi
