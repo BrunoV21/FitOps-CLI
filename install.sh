@@ -189,12 +189,10 @@ else
     install_skill "${OPENCODE_HOME:-.opencode}" "OpenCode"
   fi
 
-  # GitHub Copilot (custom instructions)
-  if [[ -d ".github" ]]; then
-    install_skill ".github/copilot-instructions.d" "GitHub Copilot"
-  fi
+  # GitHub Copilot — NOT auto-detected (.github/ exists in every git repo).
+  # Use AGENT=copilot to install explicitly.
 
-  # Antigravity / generic .agents fallback
+  # Generic .agents fallback
   if [[ "$SKILL_INSTALLED" == "false" ]]; then
     warn "No agent config directory detected — falling back to .agents/"
     install_skill ".agents" "generic fallback"
