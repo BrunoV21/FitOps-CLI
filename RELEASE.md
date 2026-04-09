@@ -1,5 +1,57 @@
 # Release Notes
 
+## v0.1.1 — Activity Filtering & Pagination
+
+> Date: 2026-04-09
+
+This release adds flexible filtering and pagination to `fitops activities list`, making it easier for both humans and AI agents to navigate large activity histories.
+
+---
+
+### What's New
+
+#### Activity List Filters
+Four new options on `fitops activities list`:
+
+- **`--offset N`** — skip the first N results; combine with `--limit` to page through all activities
+- **`--before DATE`** — filter activities before a given date (`YYYY-MM-DD`), enabling precise date ranges alongside the existing `--after`
+- **`--search TEXT`** — case-insensitive substring match on activity name/title
+- **`--tag TAG`** — filter by a named tag: `race`, `trainer`, `commute`, `manual`, `private`
+
+#### Pagination Envelope (JSON mode)
+When using `--json`, the `_meta` block now includes pagination fields so agents can detect when more results exist and iterate automatically:
+
+```json
+{
+  "_meta": {
+    "total_count": 150,
+    "returned_count": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+#### CLI Help Hint
+The non-JSON table output now includes a footer tip pointing users to `--help` for available filter options.
+
+#### Dashboard Parity
+All new filters are available on the Activities dashboard page with matching UI controls.
+
+---
+
+### Upgrade
+
+```bash
+# Using uvx
+uvx fitops@0.1.1
+
+# Using pip
+pip install --upgrade fitops
+```
+
+---
+
 ## v0.1.0 — Initial Release
 
 > Date: 2026-04-06
