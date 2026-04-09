@@ -176,7 +176,7 @@ _install_agents_shared() {
 
 # ── Explicit override via AGENT= ──────────────────────────────────────────────
 if [[ "${AGENT:-}" != "" ]]; then
-  case "${AGENT,,}" in
+  case "$(echo "$AGENT" | tr '[:upper:]' '[:lower:]')" in
     claude|claude-code)
       _install_cmd    ".claude/commands"       "Claude Code — /fitops command"
       _install_skill  ".claude/skills"         "Claude Code — skill"
