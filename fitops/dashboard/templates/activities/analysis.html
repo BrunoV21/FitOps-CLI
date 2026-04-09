@@ -314,6 +314,17 @@
   };
   document.addEventListener('DOMContentLoaded', function() {
     initDeepAnalysis(DA_CONFIG);
+    // Sync x-axis buttons to the chart's actual initial state
+    const hasDistLabels = (_da.distLabels || []).length > 0;
+    const hasTimeLabels = (_da.timeLabels || []).length > 0;
+    const btnDist = document.getElementById('da-xaxis-dist');
+    const btnTime = document.getElementById('da-xaxis-time');
+    if (btnDist && btnTime) {
+      btnDist.classList.toggle('active', hasDistLabels);
+      btnTime.classList.toggle('active', !hasDistLabels && hasTimeLabels);
+      if (!hasDistLabels) btnDist.style.opacity = '0.35';
+      if (!hasTimeLabels) btnTime.style.opacity = '0.35';
+    }
   });
 })();
 </script>

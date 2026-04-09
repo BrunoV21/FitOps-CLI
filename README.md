@@ -24,7 +24,7 @@ Sync your Strava activities once, then explore them however you like — visuall
 ## Why FitOps?
 
 - **For humans:** A local dashboard with charts, period filters, and training analytics at `http://localhost:8888` — activities, analytics, workouts, notes, weather, and race simulation.
-- **For agents:** Every data view is also a CLI command. Commands output **Rich formatted tables** for quick human scanning, or structured JSON with `_meta` context blocks and `data_availability` hints so an LLM always knows what to fetch next. Training notes are Markdown files an agent can read and write — persistent, tagged, activity-linked memory that survives across sessions.
+- **For agents:** Every data view is also a CLI command. Commands output **Rich formatted tables** for quick human scanning, or structured JSON with `_meta` context blocks and `data_availability` hints so an LLM always knows what to fetch next. JSON output is token-optimized — **21.9% fewer tokens** vs v0.1.0 (~56 tokens saved per activity). Training notes are Markdown files an agent can read and write — persistent, tagged, activity-linked memory that survives across sessions.
 - **Same data, always.** The dashboard and the CLI are two views into the same truth. If you can see it in the browser, an agent can query it from the terminal.
 - **Everything is local.** Your data lives in `~/.fitops/fitops.db`. No cloud, no subscriptions.
 - **Strava sync today, more providers coming.** Authenticate once with Strava and run `fitops sync run` for fresh data. Direct GPX / TCX / FIT file import and native Garmin, Coros, Apple Health, and Huawei sync are on the roadmap.

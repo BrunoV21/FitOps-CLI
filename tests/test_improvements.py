@@ -72,7 +72,8 @@ def test_format_activity_row_is_race_flag():
 
     row["workout_type"] = 0
     result2 = format_activity_row(row)
-    assert result2["flags"]["is_race"] is False
+    # flags block is omitted entirely when no flags are True
+    assert result2.get("flags", {}).get("is_race", False) is False
 
 
 # ---------------------------------------------------------------------------

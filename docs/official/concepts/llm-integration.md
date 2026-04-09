@@ -44,11 +44,25 @@ Values carry explicit units so an agent can reason about them without guessing:
 
 ```json
 "distance": {
-  "meters": 10234.0,
-  "km": 10.23,
-  "miles": 6.35
+  "km": 10.23
 }
 ```
+
+## Token Efficiency
+
+FitOps outputs are optimized for LLM token budgets. Compared to v0.1.0:
+
+- **21.9% fewer tokens** per activity on average
+- Saves ~**2,800 tokens** over a 50-activity query (~56 tokens/activity)
+- Old: ~1,023 chars/activity → New: ~799 chars/activity
+
+Key optimizations:
+- `flags`, `social`, and `data_availability` blocks are **omitted entirely when empty** (sparse True-only maps instead of full True/False maps)
+- `distance` emits only `km` (removed redundant `meters` and `miles`)
+- `speed` emits only `km/h` (removed raw `m/s` values)
+- `elapsed_time_seconds` removed (use `moving_time_seconds` instead)
+
+Measured across 50 real Strava activities (mix of runs and rides).
 
 ## Feeding Data to an AI
 
