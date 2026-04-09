@@ -78,9 +78,6 @@ def print_activity_detail(activity: dict) -> None:
     # Overview
     dist_km = dist.get("km")
     dist_str = f"{dist_km} km" if dist_km else "-"
-    dist_mi = dist.get("miles")
-    if dist_mi:
-        dist_str += f"  ({dist_mi} mi)"
     console.print(f"  Distance   {dist_str}")
     console.print(f"  Duration   {dur.get('moving_time_formatted') or '-'}")
     if pace.get("average_per_km"):
@@ -144,7 +141,7 @@ def print_laps_table(laps: list[dict], activity_id: int) -> None:
     table.add_column("HR", justify="right")
     table.add_column("Watts", justify="right")
 
-    for lap in laps:
+    for lap in laps[:50]:  # cap at 50 laps — typical activities have < 30
         lap_idx = str(lap.get("lap_index", ""))
         dist = lap.get("distance") or {}
         dist_km = dist.get("km")
