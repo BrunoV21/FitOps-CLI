@@ -119,8 +119,7 @@ fi
 #
 # Follows the conventions from https://github.com/vercel-labs/skills :
 #
-#   Claude Code  →  .claude/commands/fitops.md   (slash command: /fitops)
-#                   .claude/skills/fitops/SKILL.md
+#   Claude Code  →  .claude/skills/fitops/SKILL.md
 #   Windsurf     →  .windsurf/skills/fitops/SKILL.md
 #   Augment      →  .augment/skills/fitops/SKILL.md
 #   Goose        →  .goose/skills/fitops/SKILL.md
@@ -131,16 +130,20 @@ step "Installing FitOps skill"
 
 SKILL_INSTALLED=false
 AGENTS_SKILL_INSTALLED=false  # guard: only write .agents/skills/ once
+SKILL_AGENTS=()               # display names of agents the skill was installed for
 
 # Install as a Vercel-convention skill: <base>/fitops/SKILL.md
+# $1 = base dir, $2 = log label, $3 = agent display name (optional, falls back to $2)
 _install_skill() {
   local base="$1"
   local label="$2"
+  local agent_name="${3:-$2}"
   local target="${base}/fitops/SKILL.md"
   mkdir -p "${base}/fitops"
   if curl -fsSL "$SKILL_URL" -o "$target" 2>/dev/null; then
     ok "Skill → ${target}  ${DIM}(${label})${RESET}"
     SKILL_INSTALLED=true
+    SKILL_AGENTS+=("$agent_name")
     return 0
   else
     warn "Could not download skill to ${target}"
@@ -148,29 +151,15 @@ _install_skill() {
   fi
 }
 
-# Install as a Claude Code slash command: <base>/fitops.md
-_install_cmd() {
-  local base="$1"
-  local label="$2"
-  local target="${base}/fitops.md"
-  mkdir -p "$base"
-  if curl -fsSL "$SKILL_URL" -o "$target" 2>/dev/null; then
-    ok "CMD  → ${target}  ${DIM}(${label})${RESET}"
-    SKILL_INSTALLED=true
-    return 0
-  else
-    warn "Could not download command to ${target}"
-    return 1
-  fi
-}
-
 # Install to .agents/skills/ once even if multiple compatible agents are present
 _install_agents_shared() {
+  local agent_name="$*"
   if [[ "$AGENTS_SKILL_INSTALLED" == "false" ]]; then
-    _install_skill ".agents/skills" "$*"
+    _install_skill ".agents/skills" "$agent_name" "$agent_name"
     AGENTS_SKILL_INSTALLED=true
   else
-    ok "Already installed to .agents/skills/  ${DIM}(also covers $*)${RESET}"
+    ok "Already installed to .agents/skills/  ${DIM}(also covers ${agent_name})${RESET}"
+    SKILL_AGENTS+=("$agent_name")
   fi
 }
 
@@ -178,48 +167,45 @@ _install_agents_shared() {
 if [[ "${AGENT:-}" != "" ]]; then
   case "$(echo "$AGENT" | tr '[:upper:]' '[:lower:]')" in
     claude|claude-code)
-      _install_cmd    ".claude/commands"       "Claude Code — /fitops command"
-      _install_skill  ".claude/skills"         "Claude Code — skill"
+      _install_skill  ".claude/skills"         "Claude Code — skill"  "Claude Code"
       ;;
-    windsurf)   _install_skill ".windsurf/skills"  "Windsurf" ;;
-    augment)    _install_skill ".augment/skills"   "Augment" ;;
-    goose)      _install_skill ".goose/skills"     "Goose" ;;
+    windsurf)   _install_skill ".windsurf/skills"  "Windsurf"         "Windsurf" ;;
+    augment)    _install_skill ".augment/skills"   "Augment"          "Augment" ;;
+    goose)      _install_skill ".goose/skills"     "Goose"            "Goose" ;;
     cursor)     _install_agents_shared "Cursor" ;;
     codex)      _install_agents_shared "Codex" ;;
     cline)      _install_agents_shared "Cline" ;;
     opencode|open-code) _install_agents_shared "OpenCode" ;;
     copilot)    _install_agents_shared "GitHub Copilot" ;;
-    *)          _install_skill ".agents/skills"   "${AGENT}" ;;
+    *)          _install_skill ".agents/skills"   "${AGENT}"  "${AGENT}" ;;
   esac
 
 else
   # ── Auto-detect installed agents ─────────────────────────────────────────────
 
-  # Claude Code (project-level): slash command + Vercel skill
+  # Claude Code (project-level): Vercel skill only
   if [[ -d ".claude" ]]; then
-    _install_cmd   ".claude/commands" "Claude Code — /fitops command"
-    _install_skill ".claude/skills"   "Claude Code — skill"
+    _install_skill ".claude/skills"   "Claude Code — skill"           "Claude Code"
   fi
 
   # Claude Code (global)
   if [[ -d "${HOME}/.claude" ]]; then
-    _install_cmd   "${HOME}/.claude/commands" "Claude Code global — /fitops command"
-    _install_skill "${HOME}/.claude/skills"   "Claude Code global — skill"
+    _install_skill "${HOME}/.claude/skills"   "Claude Code global — skill"  "Claude Code (global)"
   fi
 
   # Windsurf (.windsurf/skills/ — its own namespace, not .agents/)
   if [[ -d ".windsurf" ]]; then
-    _install_skill ".windsurf/skills" "Windsurf"
+    _install_skill ".windsurf/skills" "Windsurf"  "Windsurf"
   fi
 
   # Augment (.augment/skills/)
   if [[ -d ".augment" ]]; then
-    _install_skill ".augment/skills" "Augment"
+    _install_skill ".augment/skills" "Augment"  "Augment"
   fi
 
   # Goose (.goose/skills/)
   if [[ -d ".goose" ]]; then
-    _install_skill ".goose/skills" "Goose"
+    _install_skill ".goose/skills" "Goose"  "Goose"
   fi
 
   # ── .agents/skills/ group — one install serves all of these ──────────────────
@@ -250,7 +236,7 @@ else
   # No agent detected anywhere
   if [[ "$SKILL_INSTALLED" == "false" ]]; then
     warn "No agent config directory detected — installing to .agents/skills/ (universal fallback)"
-    _install_skill ".agents/skills" "universal fallback"
+    _install_skill ".agents/skills" "universal fallback"  "your agent"
     printf "\n       %sTip:%s copy %s.agents/skills/fitops/SKILL.md%s to your agent's skills directory.\n" \
       "$YELLOW" "$RESET" "$CYAN" "$RESET"
   fi
@@ -288,8 +274,10 @@ printf "\n%s━━━━━━━━━━━━━━━━━━━━━━�
 printf "\n  %sFitOps is installed.%s\n\n" "$GREEN$BOLD" "$RESET"
 
 if [[ "$SKILL_INSTALLED" == "true" ]]; then
-  printf "  In Claude Code, invoke the skill with:\n"
-  printf "    %s/fitops <your training question>%s\n\n" "$CYAN" "$RESET"
+  for _agent in "${SKILL_AGENTS[@]}"; do
+    printf "  In %s, invoke the skill with:\n" "$_agent"
+    printf "    %s/fitops <your training question>%s\n\n" "$CYAN" "$RESET"
+  done
 fi
 
 printf "  Start the dashboard:\n"
