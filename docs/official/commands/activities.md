@@ -20,7 +20,11 @@ fitops activities list [OPTIONS]
 |------|---------|-------------|
 | `--sport TYPE` | all | Filter by sport type (e.g. `Run`, `Ride`, `Swim`) |
 | `--limit N` | 20 | Max number of activities to return |
+| `--offset N` | 0 | Skip the first N results (use with `--limit` to page through results) |
 | `--after DATE` | — | Filter activities after this date (YYYY-MM-DD) |
+| `--before DATE` | — | Filter activities before this date (YYYY-MM-DD) |
+| `--search TEXT` | — | Case-insensitive substring match on activity name/title |
+| `--tag TAG` | — | Filter by tag: `race`, `trainer`, `commute`, `manual`, `private` |
 | `--json` | false | Output raw JSON instead of the formatted table |
 
 **Examples:**
@@ -29,9 +33,41 @@ fitops activities list [OPTIONS]
 fitops activities list
 fitops activities list --sport Run --limit 10
 fitops activities list --after 2026-01-01
+fitops activities list --after 2025-12-01 --before 2026-01-01   # date range
 fitops activities list --sport Ride --limit 5 --after 2025-12-01
+fitops activities list --search "Morning Run"                   # title search
+fitops activities list --tag race                               # races only
+fitops activities list --tag trainer                            # indoor trainer rides
 fitops activities list --sport Run --json          # JSON for scripting or agents
+fitops activities list --sport Run --limit 20 --offset 20       # page 2
 ```
+
+**Pagination (JSON mode):**
+
+When using `--json`, the `_meta` envelope includes pagination fields so agents can detect when more results exist:
+
+```json
+{
+  "_meta": {
+    "total_count": 150,
+    "returned_count": 20,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+To page through all results, increment `--offset` by `--limit` until `has_more` is `false`.
+
+**Supported tag values:**
+
+| Tag | Matches |
+|-----|---------|
+| `race` | Activities with Strava workout_type = 1 (race) |
+| `trainer` | Indoor trainer sessions |
+| `commute` | Commute activities |
+| `manual` | Manually entered activities |
+| `private` | Private activities |
 
 See [Output Examples → Activities](../output-examples/activities.md) for sample output.
 
