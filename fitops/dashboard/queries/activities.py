@@ -9,7 +9,6 @@ from fitops.db.models.activity_laps import ActivityLap
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.session import get_async_session
 
-
 _TAG_FILTERS: dict[str, tuple] = {
     "race": ("workout_type", 1),
     "trainer": ("trainer", True),
