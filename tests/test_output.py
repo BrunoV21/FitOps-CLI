@@ -76,7 +76,7 @@ def test_format_activity_row_run():
 
 def test_make_meta():
     meta = make_meta(total_count=5, filters_applied={"sport": "Run"})
-    assert meta["tool"] == "fitops-cli"
+    assert meta["tool"] == "fitops"
     assert meta["total_count"] == 5
     assert meta["filters_applied"]["sport"] == "Run"
 

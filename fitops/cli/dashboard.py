@@ -22,7 +22,7 @@ def serve(
         import uvicorn
     except ImportError:
         typer.echo(
-            "uvicorn is required. Run: pip install 'fitops-cli[dashboard]'", err=True
+            "uvicorn is required. Run: pip install 'fitops[dashboard]'", err=True
         )
         raise typer.Exit(1)
 

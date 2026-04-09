@@ -93,7 +93,7 @@ def main(
     ctx: typer.Context, version: bool = typer.Option(False, "--version", "-v")
 ) -> None:
     if version:
-        typer.echo("fitops-cli 0.1.0")
+        typer.echo("fitops 0.1.0")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())

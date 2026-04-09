@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class MetaBlock(BaseModel):
-    tool: str = "fitops-cli"
+    tool: str = "fitops"
     version: str = "0.1.0"
     generated_at: str
     total_count: int | None = None
