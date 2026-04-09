@@ -181,7 +181,7 @@ def make_meta(
     has_more: bool | None = None,
 ) -> dict:
     meta: dict = {
-        "tool": "fitops-cli",
+        "tool": "fitops",
         "version": "0.1.0",
         "generated_at": datetime.now(UTC).isoformat(),
         "total_count": total_count,
