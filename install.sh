@@ -52,34 +52,61 @@ step "Installing FitOps CLI"
 
 FITOPS_CMD="fitops"
 
-if command -v uvx &>/dev/null; then
-  ok "uv detected — will run via uvx (no global install needed)"
-  FITOPS_CMD="uvx fitops"
-  # Warm up the uvx cache so the first real command is instant
-  if uvx fitops --help &>/dev/null 2>&1; then
-    ok "fitops CLI ready  (uvx fitops)"
+# Helper: try pip install then verify the command exists
+_pip_install() {
+  local python="$1"
+  if "$python" -m pip install --quiet fitops-cli 2>/dev/null; then
+    ok "fitops-cli installed via pip"
+    return 0
   else
-    die "uvx fitops failed. Try: uv cache clean && uvx fitops --help"
+    return 1
+  fi
+}
+
+# Helper: resolve python 3.11+ binary
+_find_python() {
+  local py
+  for py in python3 python python3.11 python3.12 python3.13; do
+    if command -v "$py" &>/dev/null; then
+      if "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
+        echo "$py"; return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+# 1. If fitops is already installed as a command, use it directly
+if command -v fitops &>/dev/null; then
+  ok "fitops already installed ($(command -v fitops))"
+  FITOPS_CMD="fitops"
+
+# 2. Try uvx (isolated, no global install)
+# Package is 'fitops-cli' on PyPI; the installed command is 'fitops'.
+elif command -v uvx &>/dev/null; then
+  ok "uv detected — trying uvx fitops-cli"
+  if uvx --from fitops-cli fitops --help &>/dev/null 2>&1; then
+    FITOPS_CMD="uvx --from fitops-cli fitops"
+    ok "fitops CLI ready  (uvx --from fitops-cli fitops)"
+  else
+    # Fall through to pip (e.g. pre-release or network issue)
+    warn "uvx could not resolve fitops-cli — falling back to pip"
+    if PYTHON=$(_find_python 2>/dev/null); then
+      _pip_install "$PYTHON" || die "pip install fitops-cli failed.\n  Try manually: pip install fitops-cli"
+    else
+      die "No Python 3.11+ found for pip fallback.\n  Clone the repo and run: pip install -e ."
+    fi
   fi
 
-elif command -v python3 &>/dev/null || command -v python &>/dev/null; then
-  PYTHON=$(command -v python3 2>/dev/null || command -v python)
+# 3. Fall back to pip
+elif PYTHON=$(_find_python 2>/dev/null); then
   PY_VER=$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
   ok "Python ${PY_VER} detected (${PYTHON})"
+  _pip_install "$PYTHON" || die "pip install fitops-cli failed.\n  Try manually: pip install fitops-cli"
 
-  # Check version is at least 3.11
-  if "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)'; then
-    if "$PYTHON" -m pip install --quiet fitops-cli 2>/dev/null; then
-      ok "fitops-cli installed via pip"
-    else
-      die "pip install fitops-cli failed.\n  Try manually: pip install fitops-cli"
-    fi
-  else
-    die "Python 3.11+ is required (found ${PY_VER}).\n  Install uv for easy version management: curl -LsSf https://astral.sh/uv/install.sh | sh"
-  fi
-
+# 4. Nothing available
 else
-  printf "\n%sNeither uv/uvx nor Python was found on PATH.%s\n\n" "$RED" "$RESET"
+  printf "\n%sNeither uv/uvx nor Python 3.11+ was found on PATH.%s\n\n" "$RED" "$RESET"
   printf "  Install uv (recommended — manages Python automatically):\n"
   printf "    %scurl -LsSf https://astral.sh/uv/install.sh | sh%s\n\n" "$CYAN" "$RESET"
   printf "  Or install Python 3.11+ from:\n"
