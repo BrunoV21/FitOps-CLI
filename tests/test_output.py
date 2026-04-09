@@ -79,3 +79,73 @@ def test_make_meta():
     assert meta["tool"] == "fitops-cli"
     assert meta["total_count"] == 5
     assert meta["filters_applied"]["sport"] == "Run"
+
+
+def test_make_meta_pagination_fields_present():
+    meta = make_meta(
+        total_count=100,
+        returned_count=20,
+        offset=40,
+        has_more=True,
+    )
+    assert meta["total_count"] == 100
+    assert meta["returned_count"] == 20
+    assert meta["offset"] == 40
+    assert meta["has_more"] is True
+
+
+def test_make_meta_pagination_fields_absent_when_none():
+    meta = make_meta(total_count=5)
+    assert "returned_count" not in meta
+    assert "offset" not in meta
+    assert "has_more" not in meta
+
+
+def test_make_meta_has_more_false():
+    meta = make_meta(total_count=10, returned_count=10, offset=0, has_more=False)
+    assert meta["has_more"] is False
+
+
+def test_make_meta_offset_zero_included():
+    # offset=0 is a valid value and must appear in output
+    meta = make_meta(total_count=5, offset=0)
+    assert meta["offset"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tag filter registry
+# ---------------------------------------------------------------------------
+
+
+def test_tag_filters_known_tags():
+    from fitops.dashboard.queries.activities import _TAG_FILTERS
+
+    assert "race" in _TAG_FILTERS
+    assert "trainer" in _TAG_FILTERS
+    assert "commute" in _TAG_FILTERS
+    assert "manual" in _TAG_FILTERS
+    assert "private" in _TAG_FILTERS
+
+
+def test_tag_filters_race_maps_to_workout_type():
+    from fitops.dashboard.queries.activities import _TAG_FILTERS
+
+    col_name, val = _TAG_FILTERS["race"]
+    assert col_name == "workout_type"
+    assert val == 1
+
+
+def test_tag_filters_boolean_tags():
+    from fitops.dashboard.queries.activities import _TAG_FILTERS
+
+    for tag in ("trainer", "commute", "manual", "private"):
+        col_name, val = _TAG_FILTERS[tag]
+        assert col_name == tag
+        assert val is True
+
+
+def test_tag_filters_unknown_tag_not_present():
+    from fitops.dashboard.queries.activities import _TAG_FILTERS
+
+    assert "unknown_tag" not in _TAG_FILTERS
+    assert "strava" not in _TAG_FILTERS
