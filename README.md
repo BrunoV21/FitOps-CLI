@@ -28,7 +28,9 @@ You (human)  →  Dashboard (browser)  ─┐
 AI Agent     →  CLi                  ─┘
 ```
 
-![FitOps Dashboard](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-overview-hero.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-overview-hero.png" alt="FitOps Dashboard" width="85%" />
+</p>
 
 Sync your Strava activities once, then explore them however you like — visually in the browser or programmatically through an agent. No cloud, no subscriptions. Your data never leaves your machine.
 
