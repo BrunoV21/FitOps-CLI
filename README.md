@@ -24,8 +24,8 @@ Your fitness data is yours. FitOps gives you **two first-class ways to work with
 
 ```
 You (human)  →  Dashboard (browser)  ─┐
-                                       ├─  ~/.fitops/fitops.db
-AI Agent     →  CLI (Rich + JSON)    ─┘
+                                      ├─  ~/.fitops/fitops.db
+AI Agent     →  CLi                  ─┘
 ```
 
 ![FitOps Dashboard](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-overview-hero.png)
