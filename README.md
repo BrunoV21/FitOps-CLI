@@ -1,5 +1,7 @@
 # FitOps
 
+![FitOps Banner](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/fitops_banner.png)
+
 [![PyPI version](https://img.shields.io/pypi/v/fitops?color=blue)](https://pypi.org/project/fitops/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/fitops?label=PyPI%20downloads)](https://pypi.org/project/fitops/)
 [![Python versions](https://img.shields.io/pypi/pyversions/fitops)](https://pypi.org/project/fitops/)
@@ -16,6 +18,8 @@ You (human)  →  Dashboard (browser)  ─┐
                                        ├─  ~/.fitops/fitops.db
 AI Agent     →  CLI (Rich + JSON)    ─┘
 ```
+
+![FitOps Dashboard](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-overview-hero.png)
 
 Sync your Strava activities once, then explore them however you like — visually in the browser or programmatically through an agent. No cloud, no subscriptions. Your data never leaves your machine.
 
@@ -68,6 +72,8 @@ Sync your Strava activities once, then explore them however you like — visuall
 - **Workout simulation on course** — simulate how a structured workout plays out on a GPX course with terrain and weather adjustments per segment.
 - **LLM-native output** — every CLI command returns structured JSON with `_meta` blocks, explicit units in field names, and `data_availability` hints so any AI agent can chain commands without parsing hacks.
 - **Persistent agent memory** — training notes are Markdown files in `~/.fitops/notes/`, tagged and optionally linked to activities. An AI agent can write observations, flag patterns, and read them back in future sessions — durable memory that outlives any single conversation.
+
+![FitOps vs Alternatives](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/comparison-animated-feature-tour.gif)
 
 ## Roadmap
 
@@ -222,6 +228,8 @@ fitops athlete zones
 fitops athlete set --ftp 280 --max-hr 185
 ```
 
+![fitops activities list — Rich terminal output](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/cli-output-activities-list.png)
+
 ## Commands Reference
 
 ### `fitops auth` — Authentication
@@ -288,6 +296,8 @@ Training Load  2026-03-19
   7d Ramp Rate    +12.88%
 ```
 
+![Training Load Dashboard](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-training-load-detailed.png)
+
 ### `fitops workouts` — Workout Plans & Compliance
 
 Workouts are Markdown files in `~/.fitops/workouts/` with optional YAML frontmatter. Segments can be defined as time-in-zone, pace-range, or HR-range steps.
@@ -316,6 +326,8 @@ fitops workouts simulate tempo-run --course 3 --temp 28 --humidity 70
 fitops workouts simulate long-run --course 1 --date 2026-04-06 --hour 8  # auto-fetch weather
 ```
 
+![Workout Compliance Scoring](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-workout-compliance.png)
+
 ### `fitops race` — Race Courses & Simulation
 
 Import courses from `.gpx`, `.tcx`, Strava activity URLs, or Strava activity IDs.
@@ -342,6 +354,8 @@ Output example (race simulate):
  2   | -6m   | -0.6%  | 1.1 m/s → |  —             | 4:51/km    | 4:51    | 0:09:55
  ...
 ```
+
+![Race Simulation Results](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-race-simulate-results.png)
 
 ### `fitops weather` — Activity Weather
 
