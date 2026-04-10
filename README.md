@@ -1,15 +1,24 @@
 # FitOps
 
-![FitOps Banner](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/fitops_banner.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/fitops_banner.png" alt="FitOps Banner" />
+</p>
 
-[![PyPI version](https://img.shields.io/pypi/v/fitops?color=blue)](https://pypi.org/project/fitops/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/fitops?label=PyPI%20downloads)](https://pypi.org/project/fitops/)
-[![Python versions](https://img.shields.io/pypi/pyversions/fitops)](https://pypi.org/project/fitops/)
-[![License: MIT](https://img.shields.io/github/license/brunov21/fitops)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/brunov21/fitops?style=social)](https://github.com/brunov21/fitops/stargazers)
-[![CI](https://img.shields.io/github/actions/workflow/status/brunov21/fitops/python-package.yml?label=CI)](https://github.com/brunov21/fitops/actions/workflows/python-package.yml)
-[![uv compatible](https://img.shields.io/badge/uv-compatible-5C4EE5?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+---
+
+<p align="center">
+  <a href="https://pypi.org/project/fitops/"><img src="https://img.shields.io/pypi/v/fitops?color=blue" alt="PyPI version" /></a>
+  <a href="https://pypi.org/project/fitops/"><img src="https://img.shields.io/pypi/dm/fitops?label=PyPI%20downloads" alt="PyPI downloads" /></a>
+  <a href="https://pypi.org/project/fitops/"><img src="https://img.shields.io/pypi/pyversions/fitops" alt="Python versions" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/BrunoV21/FitOps-CLI" alt="License: MIT" /></a>
+  <br/>
+  <a href="https://github.com/BrunoV21/FitOps-CLI/stargazers"><img src="https://img.shields.io/github/stars/BrunoV21/FitOps-CLI?style=social" alt="GitHub stars" /></a>
+  <a href="https://github.com/BrunoV21/FitOps-CLI/actions/workflows/python-package.yml"><img src="https://img.shields.io/github/actions/workflow/status/BrunoV21/FitOps-CLI/python-package.yml?label=CI" alt="CI" /></a>
+  <a href="https://docs.astral.sh/uv/"><img src="https://img.shields.io/badge/uv-compatible-5C4EE5?logo=uv&logoColor=white" alt="uv compatible" /></a>
+  <br/>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff" /></a>
+  <a href="https://brunov21.github.io/FitOps-CLI/"><img src="https://img.shields.io/badge/docs-online-646CFF?logo=vitepress&logoColor=white" alt="Docs" /></a>
+</p>
 
 Your fitness data is yours. FitOps gives you **two first-class ways to work with it**: a local dashboard for human exploration and a structured CLI for AI agents — both reading from the same SQLite database on your machine.
 
@@ -19,7 +28,7 @@ You (human)  →  Dashboard (browser)  ─┐
 AI Agent     →  CLI (Rich + JSON)    ─┘
 ```
 
-![FitOps Dashboard](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-overview-hero.png)
+![FitOps Dashboard](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-overview-hero.png)
 
 Sync your Strava activities once, then explore them however you like — visually in the browser or programmatically through an agent. No cloud, no subscriptions. Your data never leaves your machine.
 
@@ -73,7 +82,7 @@ Sync your Strava activities once, then explore them however you like — visuall
 - **LLM-native output** — every CLI command returns structured JSON with `_meta` blocks, explicit units in field names, and `data_availability` hints so any AI agent can chain commands without parsing hacks.
 - **Persistent agent memory** — training notes are Markdown files in `~/.fitops/notes/`, tagged and optionally linked to activities. An AI agent can write observations, flag patterns, and read them back in future sessions — durable memory that outlives any single conversation.
 
-![FitOps vs Alternatives](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/comparison-animated-feature-tour.gif)
+![FitOps vs Alternatives](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/comparison-animated-feature-tour.gif)
 
 ## Roadmap
 
@@ -93,15 +102,15 @@ Sync your Strava activities once, then explore them however you like — visuall
 > **One command installs FitOps _and_ places the skill in the right directory for your agent.**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/install.sh | bash
 ```
 
 The script auto-detects Claude Code, Cursor, Codex, Windsurf, Cline, OpenCode, and GitHub Copilot. To target a specific agent:
 
 ```bash
-AGENT=cursor  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh)
-AGENT=codex   bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh)
-AGENT=claude  bash <(curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh)
+AGENT=cursor  bash <(curl -fsSL https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/install.sh)
+AGENT=codex   bash <(curl -fsSL https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/install.sh)
+AGENT=claude  bash <(curl -fsSL https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/install.sh)
 ```
 
 **What the script does:**
@@ -134,7 +143,7 @@ The skill uses `fitops notes` as persistent memory: observations written in one 
 ### Recommended — one-line installer (CLI + skill)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brunov21/fitops/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/install.sh | bash
 ```
 
 Installs FitOps and places the agent skill file for every detected coding assistant. See [Quick Setup for AI Agents](#quick-setup-for-ai-agents) above.
@@ -158,7 +167,7 @@ pip install fitops
 ### Install from source
 
 ```bash
-git clone https://github.com/brunov21/fitops.git
+git clone https://github.com/BrunoV21/FitOps-CLI.git
 cd fitops
 pip install -e .
 ```
@@ -228,7 +237,7 @@ fitops athlete zones
 fitops athlete set --ftp 280 --max-hr 185
 ```
 
-![fitops activities list — Rich terminal output](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/cli-output-activities-list.png)
+![fitops activities list — Rich terminal output](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/cli-output-activities-list.png)
 
 ## Commands Reference
 
@@ -296,7 +305,7 @@ Training Load  2026-03-19
   7d Ramp Rate    +12.88%
 ```
 
-![Training Load Dashboard](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-training-load-detailed.png)
+![Training Load Dashboard](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-training-load-detailed.png)
 
 ### `fitops workouts` — Workout Plans & Compliance
 
@@ -326,7 +335,7 @@ fitops workouts simulate tempo-run --course 3 --temp 28 --humidity 70
 fitops workouts simulate long-run --course 1 --date 2026-04-06 --hour 8  # auto-fetch weather
 ```
 
-![Workout Compliance Scoring](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-workout-compliance.png)
+![Workout Compliance Scoring](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-workout-compliance.png)
 
 ### `fitops race` — Race Courses & Simulation
 
@@ -355,7 +364,7 @@ Output example (race simulate):
  ...
 ```
 
-![Race Simulation Results](https://raw.githubusercontent.com/brunov21/fitops/main/docs/official/assets/dashboard-race-simulate-results.png)
+![Race Simulation Results](https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/dashboard-race-simulate-results.png)
 
 ### `fitops weather` — Activity Weather
 
