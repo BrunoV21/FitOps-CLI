@@ -626,15 +626,19 @@ def pace_zones_cmd(
             )
             return
 
-    pz_out = {
-        "_meta": make_meta(),
-        "pace_zones": {
-            "threshold_pace": result.threshold_pace_fmt + "/km",
-            "threshold_pace_s": result.threshold_pace_s,
-            "source": result.source,
-            "zones": result.zones,
-        },
+    pz_block: dict = {
+        "threshold_pace": result.threshold_pace_fmt + "/km",
+        "threshold_pace_s": result.threshold_pace_s,
+        "source": result.source,
+        "zones": result.zones,
     }
+    if result.lt1_pace_fmt is not None:
+        pz_block["lt1_pace"] = result.lt1_pace_fmt + "/km"
+        pz_block["lt1_pace_s"] = result.lt1_pace_s
+    if result.vo2max_pace_fmt is not None:
+        pz_block["vo2max_pace"] = result.vo2max_pace_fmt + "/km"
+        pz_block["vo2max_pace_s"] = result.vo2max_pace_s
+    pz_out = {"_meta": make_meta(), "pace_zones": pz_block}
     if json_output:
         typer.echo(json.dumps(pz_out, indent=2, default=str))
     else:
