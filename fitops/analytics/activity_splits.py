@@ -3,11 +3,14 @@ from __future__ import annotations
 RUN_SPORT_TYPES = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
 
 
-def compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
+def compute_km_splits(
+    streams: dict, sport_type: str, true_pace: list[float] | None = None
+) -> list[dict] | None:
     """Compute per-km splits from distance/velocity/heartrate/cadence/altitude streams.
 
     Returns None for non-running sports or when there is insufficient data.
-    Each split dict: {km, label, partial, pace, pace_s, avg_hr, avg_cad, elev_gain}
+    Each split dict: {km, label, partial, pace, pace_s, avg_hr, avg_cad, elev_gain,
+                      elev_loss, avg_true_pace}
     """
     if sport_type not in RUN_SPORT_TYPES:
         return None
@@ -17,6 +20,7 @@ def compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
     hr = streams.get("heartrate", [])
     cad = streams.get("cadence", [])
     alt = streams.get("altitude", [])
+    tp = true_pace or []
 
     if len(dist) < 10 or len(vel) < 10 or (dist[-1] if dist else 0) < 1000:
         return None
@@ -46,13 +50,27 @@ def compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
                 avg_cad = round(raw * 2 if is_run else raw)
 
         elev_gain = None
+        elev_loss = None
         if alt and len(alt) > start:
             alt_slice = alt[start : end + 1]
-            gain = sum(
-                max(0.0, alt_slice[j] - alt_slice[j - 1])
-                for j in range(1, len(alt_slice))
-            )
+            gain = 0.0
+            loss = 0.0
+            for j in range(1, len(alt_slice)):
+                delta = alt_slice[j] - alt_slice[j - 1]
+                if delta > 0:
+                    gain += delta
+                else:
+                    loss += abs(delta)
             elev_gain = round(gain)
+            elev_loss = round(loss)
+
+        avg_true_pace = None
+        if tp and len(tp) > start:
+            tp_slice = [v for v in tp[start : end + 1] if v and v > 0]
+            if tp_slice:
+                avg_tp_s = sum(tp_slice) / len(tp_slice)
+                tp_m, tp_s = divmod(int(avg_tp_s), 60)
+                avg_true_pace = f"{tp_m}:{tp_s:02d}/km"
 
         return {
             "pace": f"{m}:{s_rem:02d}",
@@ -60,6 +78,8 @@ def compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
             "avg_hr": avg_hr_val,
             "avg_cad": avg_cad,
             "elev_gain": elev_gain,
+            "elev_loss": elev_loss,
+            "avg_true_pace": avg_true_pace,
         }
 
     splits = []
