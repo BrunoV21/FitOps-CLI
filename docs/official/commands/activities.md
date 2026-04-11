@@ -80,7 +80,7 @@ See [Output Examples → Activities](../output-examples/activities.md) for sampl
 Get detailed info for a single activity.
 
 ```bash
-fitops activities get 12345678901 [--fresh] [--json]
+fitops activities get 12345678901 [OPTIONS]
 ```
 
 **Arguments:**
@@ -91,10 +91,65 @@ fitops activities get 12345678901 [--fresh] [--json]
 
 **Options:**
 
-| Flag | Description |
-|------|-------------|
-| `--fresh` | Re-fetch detail from Strava API (bypasses local cache) |
-| `--json` | Output raw JSON instead of the formatted summary |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--fresh` | false | Re-fetch detail from Strava API (bypasses local cache) |
+| `--splits` | false | Print a per-km splits table (runs only, requires streams) |
+| `--workout` | false | Print focused workout plan + compliance view |
+| `--chart` | false | Render an ASCII time-series chart in the terminal |
+| `--stream STREAM` | `heartrate` | Stream to plot when `--chart` is set (see table below) |
+| `--x-axis VALUE` | `time` | Chart x-axis: `time` or `distance` |
+| `--from N` | — | Zoom window start (seconds or metres) |
+| `--to N` | — | Zoom window end (seconds or metres) |
+| `--width N` | auto | Chart width in characters |
+| `--height N` | `20` | Chart height in rows |
+| `--resolution N` | auto | Number of data buckets (lower = smoother) |
+| `--json` | false | Output raw JSON instead of formatted output |
+
+Flags can be combined: `--workout --splits` shows per-km splits segmented by workout intervals.
+
+**Chart streams:**
+
+| Stream | Display | Notes |
+|--------|---------|-------|
+| `heartrate` | Heart Rate (bpm) | |
+| `pace` / `velocity_smooth` | Pace (min/km) | Y-axis inverted: faster = higher |
+| `speed` | Speed (km/h) | Auto-selected for cycling when `velocity_smooth` is requested |
+| `gap` | Grade Adj. Pace (min/km) | Derived — requires `velocity_smooth` + `grade_smooth` |
+| `wap` | Weighted Avg Pace (min/km) | Derived — 30-sample rolling mean of pace |
+| `true_pace` | True Pace (min/km) | Derived — GAP + weather-adjusted pace (most accurate effort metric) |
+| `altitude` | Altitude (m) | |
+| `cadence` | Cadence (spm) | |
+| `watts` | Power (W) | |
+| `distance` | Distance (m) | |
+
+**Examples:**
+
+```bash
+# Full detail view
+fitops activities get 17985851162
+
+# Per-km splits table
+fitops activities get 17985851162 --splits
+
+# Workout plan compliance + segment detail
+fitops activities get 17985851162 --workout
+
+# Workout splits segmented by intervals
+fitops activities get 17985851162 --workout --splits
+
+# ASCII heart rate chart
+fitops activities get 17985851162 --chart
+
+# True pace chart over distance
+fitops activities get 17985851162 --chart --stream true_pace --x-axis distance
+
+# Zoom into km 5–10
+fitops activities get 17985851162 --chart --stream heartrate --x-axis distance --from 5000 --to 10000
+
+# JSON for scripting / agents
+fitops activities get 17985851162 --json
+```
 
 **JSON output shape (for agents and scripting):**
 
@@ -183,12 +238,12 @@ Per-km breakdown (runs only, requires streams):
 
 ```json
 "km_splits": [
-  { "km": 1, "label": "1", "partial": false, "pace": "4:52", "pace_s": 292.0, "avg_hr": 155, "avg_cad": 174, "elev_gain": 8 },
-  { "km": 5, "label": "5 (0.32km)", "partial": true, "pace": "4:45", "pace_s": 285.0, "avg_hr": 162, "avg_cad": 176, "elev_gain": 3 }
+  { "km": 1, "label": "1", "partial": false, "pace": "4:52", "pace_s": 292.0, "avg_true_pace": "4:58/km", "avg_hr": 155, "avg_cad": 174, "elev_gain": 8, "elev_loss": 2 },
+  { "km": 5, "label": "5 (0.32km)", "partial": true, "pace": "4:45", "pace_s": 285.0, "avg_true_pace": null, "avg_hr": 162, "avg_cad": 176, "elev_gain": 3, "elev_loss": 0 }
 ]
 ```
 
-The last split is marked `"partial": true` when the final km is incomplete.
+The last split is marked `"partial": true` when the final km is incomplete. `avg_true_pace` is `null` when no `true_pace` stream data is available (e.g., no weather data). `elev_loss` is the total descent in metres for the km segment.
 
 #### laps
 
@@ -267,121 +322,6 @@ Present only when a workout plan was linked to this activity via `fitops workout
   ]
 }
 ```
-
----
-
-### `fitops activities streams <ID>`
-
-Get time-series stream data for an activity (heart rate, pace, altitude, power, cadence, etc.).
-
-```bash
-fitops activities streams 12345678901 [--fresh]
-```
-
-Streams are fetched from Strava on first request and cached locally. Use `--fresh` to force a re-fetch.
-
-**Output:**
-
-```
-Streams for activity 17972016511
-
-  altitude              3492 data points
-  heartrate             3492 data points
-  cadence               3492 data points
-  velocity_smooth       3492 data points
-  distance              3492 data points
-```
-
-Use `--json` to get the raw data arrays for scripting or analysis.
-
----
-
-### `fitops activities chart <ID>`
-
-Render a time-series stream as an ASCII chart directly in the terminal — useful for quick visual inspection and for AI agents that consume plain text.
-
-```bash
-fitops activities chart 12345678901 [OPTIONS]
-```
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `ID` | Strava activity ID (required) |
-
-**Options:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--stream STREAM` | `heartrate` | Stream to plot (see table below) |
-| `--x-axis VALUE` | `time` | X-axis type: `time` or `distance` |
-| `--from N` | — | Start of zoom window (seconds or metres) |
-| `--to N` | — | End of zoom window (seconds or metres) |
-| `--width N` | auto | Chart width in characters (default: terminal width) |
-| `--height N` | `20` | Chart height in rows |
-| `--resolution N` | auto | Number of data buckets (lower = smoother curve) |
-
-**Supported streams:**
-
-| Stream | Display | Notes |
-|--------|---------|-------|
-| `heartrate` | Heart Rate (bpm) | |
-| `pace` / `velocity_smooth` | Pace (min/km) | Y-axis inverted: faster = higher |
-| `speed` | Speed (km/h) | Auto-selected for cycling when `velocity_smooth` is requested |
-| `gap` | Grade Adj. Pace (min/km) | Derived — requires `velocity_smooth` + `grade_smooth` streams |
-| `wap` | Weighted Avg Pace (min/km) | Derived — 30-sample rolling mean of pace |
-| `altitude` | Altitude (m) | |
-| `cadence` | Cadence (spm) | |
-| `watts` | Power (W) | |
-| `distance` | Distance (m) | |
-
-> **Sport-aware display:** requesting `pace` or `velocity_smooth` on a cycling activity automatically switches to `speed` (km/h).
-
-**Examples:**
-
-```bash
-# Heart rate over the full run
-fitops activities chart 17985851162
-
-# Pace chart
-fitops activities chart 17985851162 --stream pace
-
-# Grade-adjusted pace (GAP) over distance
-fitops activities chart 17985851162 --stream gap --x-axis distance
-
-# Zoom into km 5–10
-fitops activities chart 17985851162 --stream heartrate --x-axis distance --from 5000 --to 10000
-
-# Smooth curve with low resolution
-fitops activities chart 17985851162 --stream heartrate --resolution 30
-
-# Tall, wide chart
-fitops activities chart 17985851162 --stream altitude --width 120 --height 30
-```
-
-**Chart anatomy:**
-
-```
-Activity chart  |  Heart Rate (bpm)  over time (s)  [res: 71]
-min: 142 bpm  avg: 163 bpm  max: 190 bpm  samples: 3492
-
-    190|    ▪▪▪▪  ▪ ▪▪▪▪▪▪▪  ▪ ▪ ▪▪▪▪▪▪▪▪▪▪▪▪▪ ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
-        |  ▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
-    166|▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪
-        | ...
-    142|▪
--------+-----------------------------------------------------------------------
-        0:00                             66:39                           133:17
-```
-
-- `▪` — midpoint of each data bucket (primary trace)
-- `·` — min–max range indicator (shown only when zoomed in tightly)
-- Y-axis labels: top, mid, and bottom values
-- X-axis labels: start, midpoint, and end of the window
-- `[res: N]` in the title shows the active bucket count
-
-See [Output Examples → Activities](../output-examples/activities.md#fitops-activities-chart) for a full rendered example.
 
 ---
 
