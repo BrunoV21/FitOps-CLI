@@ -193,6 +193,50 @@ def test_km_splits_each_split_has_required_keys():
         assert "partial" in split
         assert "pace" in split
         assert "pace_s" in split
+        assert "elev_loss" in split
+        assert "avg_true_pace" in split
+
+
+def test_km_splits_true_pace_populated_when_provided():
+    from fitops.analytics.activity_splits import compute_km_splits
+
+    n = 200
+    spacing_m = 10.0
+    speed_ms = 3.0
+    streams = _make_stream(n, spacing_m=spacing_m, speed_ms=speed_ms)
+    # true_pace values in seconds per km (~333 s/km at 3 m/s)
+    true_pace = [333.0] * n
+    splits = compute_km_splits(streams, "Run", true_pace=true_pace)
+    assert splits is not None
+    for split in splits:
+        assert split["avg_true_pace"] is not None
+        assert "/km" in split["avg_true_pace"]
+
+
+def test_km_splits_true_pace_none_when_not_provided():
+    from fitops.analytics.activity_splits import compute_km_splits
+
+    streams = _make_stream(200, spacing_m=10.0, speed_ms=3.0)
+    splits = compute_km_splits(streams, "Run", true_pace=None)
+    assert splits is not None
+    for split in splits:
+        assert split["avg_true_pace"] is None
+
+
+def test_km_splits_elev_loss_populated_when_altitude_descends():
+    from fitops.analytics.activity_splits import compute_km_splits
+
+    n = 150
+    spacing_m = 10.0
+    dist = [i * spacing_m for i in range(n)]
+    vel = [3.0] * n
+    # Descending altitude: 100m → 50m over 1500m
+    alt = [100.0 - i * (50.0 / (n - 1)) for i in range(n)]
+    streams = {"distance": dist, "velocity_smooth": vel, "altitude": alt}
+    splits = compute_km_splits(streams, "Run")
+    assert splits is not None
+    # At least one split should have elev_loss > 0
+    assert any(sp["elev_loss"] and sp["elev_loss"] > 0 for sp in splits)
 
 
 def test_km_splits_trail_run_supported():

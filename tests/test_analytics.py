@@ -303,7 +303,9 @@ def _make_ride(moving_time_s: int, average_watts: float) -> SimpleNamespace:
     )
 
 
-def _make_settings(threshold_pace_per_km_s=None, ftp=None, lthr=None, max_hr=None, age=None) -> SimpleNamespace:
+def _make_settings(
+    threshold_pace_per_km_s=None, ftp=None, lthr=None, max_hr=None, age=None
+) -> SimpleNamespace:
     return SimpleNamespace(
         threshold_pace_per_km_s=threshold_pace_per_km_s,
         ftp=ftp,
@@ -376,4 +378,6 @@ def test_anaerobic_score_run_higher_than_ride_same_if():
     ride = _make_ride(moving_time_s=3600, average_watts=200)
     settings_run = _make_settings(threshold_pace_per_km_s=int(1000 / (3.5 / 0.9)))
     settings_ride = _make_settings(ftp=int(200 / 0.9))
-    assert compute_anaerobic_score(run, settings_run) > compute_anaerobic_score(ride, settings_ride)
+    assert compute_anaerobic_score(run, settings_run) > compute_anaerobic_score(
+        ride, settings_ride
+    )
