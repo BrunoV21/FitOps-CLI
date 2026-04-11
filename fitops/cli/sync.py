@@ -297,9 +297,13 @@ def sync_streams(
         )
         internal_ids = [r[0] for r in rows]
         strava_ids = [r[1] for r in rows]
-        return await _fetch_streams_for_activities(
+        streams_result = await _fetch_streams_for_activities(
             internal_ids, strava_ids, force=force
         )
+
+        typer.echo(f"Fetching weather for {len(strava_ids)} activities...", err=True)
+        weather_result = await _fetch_weather_for_strava_ids(strava_ids)
+        return {**streams_result, "weather": weather_result}
 
     try:
         result = asyncio.run(_run())

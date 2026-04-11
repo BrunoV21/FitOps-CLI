@@ -17,7 +17,7 @@ from fitops.db.models.workout import Workout
 from fitops.db.session import get_async_session
 from fitops.strava.client import StravaClient
 from fitops.strava.sync_engine import SyncEngine
-from fitops.weather.client import fetch_activity_weather
+from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
 
 router = APIRouter()
 
@@ -39,10 +39,11 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
         rows = result.fetchall()
 
     if not rows:
-        return {"streams_fetched": 0, "errors": 0}
+        return {"streams_fetched": 0, "errors": 0, "strava_ids": []}
 
     client = StravaClient()
     fetched = errors = 0
+    fetched_strava_ids: list[int] = []
     total = len(rows)
     for idx, (internal_id, strava_id) in enumerate(rows, 1):
         try:
@@ -83,12 +84,13 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
                 if row:
                     row.streams_fetched = True
             fetched += 1
+            fetched_strava_ids.append(strava_id)
         except Exception:
             errors += 1
         # Rate limit: ~1 req/sec to stay under 100 req/15min
         if idx < total:
             await asyncio.sleep(1.0)
-    return {"streams_fetched": fetched, "errors": errors}
+    return {"streams_fetched": fetched, "errors": errors, "strava_ids": fetched_strava_ids}
 
 
 async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
@@ -113,6 +115,10 @@ async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
                 continue
             lat, lng = float(coords[0]), float(coords[1])
             weather = await fetch_activity_weather(lat, lng, act.start_date)
+            # Archive API has ~5-day lag — fall back to forecast API for recent activities
+            if weather is None:
+                date_str = act.start_date.strftime("%Y-%m-%d")
+                weather = await fetch_forecast_weather(lat, lng, date_str, act.start_date.hour)
             if weather:
                 tc = weather.get("temperature_c")
                 hum = weather.get("humidity_pct")
@@ -180,9 +186,14 @@ def register() -> APIRouter:
             )
 
         result = await _fetch_streams(limit=limit, force=force)
+        weather_result = None
+        if result.get("strava_ids"):
+            weather_result = await _fetch_weather_for_new_activities(result["strava_ids"])
         return JSONResponse(
             {
-                **result,
+                "streams_fetched": result["streams_fetched"],
+                "errors": result["errors"],
+                "weather": weather_result,
                 "synced_at": datetime.now(UTC).isoformat(),
             }
         )
@@ -251,6 +262,59 @@ def register() -> APIRouter:
             )
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
+
+    @router.post("/api/sync/weather/{strava_id}")
+    async def api_sync_activity_weather(strava_id: int):
+        import json as _json
+
+        from fitops.dashboard.queries.weather import upsert_activity_weather
+
+        settings = get_settings()
+        if not settings.athlete_id:
+            return JSONResponse({"error": "Not authenticated."}, status_code=401)
+
+        async with get_async_session() as session:
+            row = (
+                await session.execute(
+                    select(Activity).where(Activity.strava_id == strava_id)
+                )
+            ).scalar_one_or_none()
+
+        if row is None:
+            return JSONResponse({"error": "Activity not found."}, status_code=404)
+        if not row.start_latlng or not row.start_date:
+            return JSONResponse(
+                {"error": "Activity has no GPS coordinates."}, status_code=422
+            )
+
+        try:
+            coords = _json.loads(row.start_latlng)
+            if not (isinstance(coords, list) and len(coords) == 2):
+                raise ValueError("bad coords")
+            lat, lng = float(coords[0]), float(coords[1])
+        except Exception:
+            return JSONResponse({"error": "Invalid coordinates."}, status_code=422)
+
+        # Try archive API first; fall back to forecast for recent activities
+        weather = await fetch_activity_weather(lat, lng, row.start_date)
+        if weather is None:
+            date_str = row.start_date.strftime("%Y-%m-%d")
+            weather = await fetch_forecast_weather(lat, lng, date_str, row.start_date.hour)
+
+        if weather is None:
+            return JSONResponse(
+                {"error": "Weather data unavailable for this date/location."},
+                status_code=502,
+            )
+
+        tc = weather.get("temperature_c")
+        hum = weather.get("humidity_pct")
+        if tc is not None and hum is not None:
+            weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
+            weather["pace_heat_factor"] = round(pace_heat_factor(tc, hum), 4)
+
+        await upsert_activity_weather(strava_id, weather, source="open-meteo")
+        return JSONResponse({"ok": True})
 
     _ALLOWED_METRIC_KEYS = {
         "max_hr",
