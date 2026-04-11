@@ -232,3 +232,29 @@ def wbgt_flag(wbgt: float) -> str:
         return "red"
     else:
         return "black"
+
+
+def weather_row_to_dict(w) -> dict:
+    """Convert an ActivityWeather ORM row to a plain dict for CLI/dashboard use."""
+    wbgt = w.wbgt_c
+    wcode = w.weather_code
+    return {
+        "temperature_c": w.temperature_c,
+        "apparent_temp_c": w.apparent_temp_c,
+        "humidity_pct": w.humidity_pct,
+        "wind_speed_ms": w.wind_speed_ms,
+        "wind_speed_kmh": round(w.wind_speed_ms * 3.6, 1)
+        if w.wind_speed_ms is not None
+        else None,
+        "wind_direction_deg": w.wind_direction_deg,
+        "wind_dir_compass": deg_to_compass(w.wind_direction_deg)
+        if w.wind_direction_deg is not None
+        else None,
+        "precipitation_mm": w.precipitation_mm,
+        "wbgt_c": wbgt,
+        "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else "green",
+        "pace_heat_factor": w.pace_heat_factor,
+        "source": w.source,
+        "condition": weather_condition_label(wcode) if wcode is not None else None,
+        "temp_fmt": f"{round(w.temperature_c)}°C" if w.temperature_c is not None else None,
+    }
