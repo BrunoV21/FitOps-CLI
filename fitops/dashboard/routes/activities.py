@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -10,21 +11,22 @@ from fastapi.templating import Jinja2Templates
 from fitops.analytics.activity_performance_insights import (
     compute_activity_performance_insights,
 )
+from fitops.analytics.activity_splits import compute_avg_gap, compute_km_splits
 from fitops.analytics.activity_zones import compute_activity_analytics
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.training_scores import (
+    aerobic_label,
+    anaerobic_label,
     compute_aerobic_score,
     compute_anaerobic_score,
 )
 from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_wap_factor,
-    deg_to_compass,
     headwind_ms,
     pace_wind_factor,
     vo2max_heat_factor,
-    wbgt_flag,
-    weather_condition_label,
+    weather_row_to_dict,
 )
 from fitops.analytics.weather_pace import (
     pace_heat_factor as _pace_heat_factor,
@@ -71,31 +73,11 @@ def _pace_str(speed_ms: float | None, sport_type: str) -> str:
 
 
 def _aerobic_label(score: float) -> str:
-    if score >= 4.5:
-        return "Exceptional aerobic session"
-    if score >= 3.5:
-        return "Strong aerobic stimulus"
-    if score >= 2.5:
-        return "Solid aerobic base work"
-    if score >= 1.5:
-        return "Moderate aerobic benefit"
-    if score >= 0.5:
-        return "Light aerobic stimulus"
-    return "Minimal aerobic benefit"
+    return aerobic_label(score)
 
 
 def _anaerobic_label(score: float) -> str:
-    if score >= 4.5:
-        return "Race-intensity effort"
-    if score >= 3.5:
-        return "Hard anaerobic session"
-    if score >= 2.5:
-        return "Significant threshold stress"
-    if score >= 1.5:
-        return "Moderate anaerobic load"
-    if score >= 0.5:
-        return "Light anaerobic stimulus"
-    return "Minimal anaerobic stress"
+    return anaerobic_label(score)
 
 
 def _activity_row(a) -> dict:
@@ -158,30 +140,7 @@ def _activity_row(a) -> dict:
 
 def _weather_summary(w) -> dict:
     """Convert an ActivityWeather row into a template-ready dict."""
-    wbgt = w.wbgt_c
-    wcode = w.weather_code
-    return {
-        "temperature_c": w.temperature_c,
-        "apparent_temp_c": w.apparent_temp_c,
-        "humidity_pct": w.humidity_pct,
-        "wind_speed_ms": w.wind_speed_ms,
-        "wind_speed_kmh": round(w.wind_speed_ms * 3.6, 1)
-        if w.wind_speed_ms is not None
-        else None,
-        "wind_direction_deg": w.wind_direction_deg,
-        "wind_dir_compass": deg_to_compass(w.wind_direction_deg)
-        if w.wind_direction_deg is not None
-        else None,
-        "precipitation_mm": w.precipitation_mm,
-        "wbgt_c": wbgt,
-        "wbgt_flag": wbgt_flag(wbgt) if wbgt is not None else "green",
-        "pace_heat_factor": w.pace_heat_factor,
-        "source": w.source,
-        "condition": weather_condition_label(wcode) if wcode is not None else None,
-        "temp_fmt": f"{round(w.temperature_c)}°C"
-        if w.temperature_c is not None
-        else None,
-    }
+    return weather_row_to_dict(w)
 
 
 def _compute_true_pace_stream(streams: dict, weather) -> list | None:
@@ -284,128 +243,6 @@ def _compute_wap_stream(streams: dict, weather) -> list | None:
     return wap if any(x is not None for x in wap) else None
 
 
-def _compute_km_splits(streams: dict, sport_type: str) -> list[dict] | None:
-    """Compute per-km splits from distance/velocity/heartrate/cadence/altitude streams."""
-    if sport_type not in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}:
-        return None
-
-    dist = streams.get("distance", [])
-    vel = streams.get("velocity_smooth", [])
-    hr = streams.get("heartrate", [])
-    cad = streams.get("cadence", [])
-    alt = streams.get("altitude", [])
-
-    if len(dist) < 10 or len(vel) < 10 or (dist[-1] if dist else 0) < 1000:
-        return None
-
-    is_run = sport_type in {"Run", "TrailRun", "VirtualRun"}
-
-    def _seg_stats(start: int, end: int) -> dict:
-        seg_vel = vel[start : end + 1]
-        valid_vels = [v for v in seg_vel if v and v > 0.1]
-        if not valid_vels:
-            return {}
-        avg_vel = sum(valid_vels) / len(valid_vels)
-        pace_s = round(1000.0 / avg_vel, 1)
-        m, s_rem = divmod(int(pace_s), 60)
-
-        avg_hr_val = None
-        if hr and len(hr) > start:
-            hr_slice = [h for h in hr[start : end + 1] if h and h > 0]
-            if hr_slice:
-                avg_hr_val = round(sum(hr_slice) / len(hr_slice))
-
-        avg_cad = None
-        if cad and len(cad) > start:
-            cad_slice = [c for c in cad[start : end + 1] if c and c > 0]
-            if cad_slice:
-                raw = sum(cad_slice) / len(cad_slice)
-                avg_cad = round(raw * 2 if is_run else raw)
-
-        elev_gain = None
-        if alt and len(alt) > start:
-            alt_slice = alt[start : end + 1]
-            gain = sum(
-                max(0.0, alt_slice[j] - alt_slice[j - 1])
-                for j in range(1, len(alt_slice))
-            )
-            elev_gain = round(gain)
-
-        return {
-            "pace": f"{m}:{s_rem:02d}",
-            "pace_s": pace_s,
-            "avg_hr": avg_hr_val,
-            "avg_cad": avg_cad,
-            "elev_gain": elev_gain,
-        }
-
-    splits = []
-    km_target = 1000.0
-    seg_start = 0
-
-    for i in range(1, len(dist)):
-        if dist[i] < km_target:
-            continue
-
-        stats = _seg_stats(seg_start, i)
-        if not stats:
-            km_target += 1000.0
-            continue
-
-        splits.append(
-            {
-                "km": len(splits) + 1,
-                "label": str(len(splits) + 1),
-                "partial": False,
-                **stats,
-            }
-        )
-
-        seg_start = i
-        km_target += 1000.0
-        if len(splits) >= 100:
-            break
-
-    # Partial last km
-    if seg_start < len(dist) - 1 and (dist[-1] - dist[seg_start]) >= 100:
-        remaining = dist[-1] - dist[seg_start]
-        stats = _seg_stats(seg_start, len(dist) - 1)
-        if stats:
-            splits.append(
-                {
-                    "km": len(splits) + 1,
-                    "label": f"{len(splits) + 1} ({remaining / 1000:.2f}km)",
-                    "partial": True,
-                    **stats,
-                }
-            )
-
-    return splits if splits else None
-
-
-def _compute_avg_gap(streams: dict, sport_type: str) -> str | None:
-    """Compute average grade-adjusted pace from stream data (running only)."""
-    if sport_type not in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}:
-        return None
-
-    gas = streams.get("grade_adjusted_speed", [])
-    if not gas:
-        vel = streams.get("velocity_smooth", [])
-        grade = streams.get("grade_smooth", [])
-        if vel and grade:
-            gas = [
-                v * (1 + 0.033 * g) if v and v > 0.1 else 0.0
-                for v, g in zip(vel, grade, strict=False)
-            ]
-
-    valid = [v for v in gas if v and v > 0.1]
-    if not valid:
-        return None
-
-    avg_v = sum(valid) / len(valid)
-    pace_s = 1000.0 / avg_v
-    m, s = divmod(int(pace_s), 60)
-    return f"{m}:{s:02d}/km"
 
 
 def _downsample_streams(streams: dict, target: int = 500) -> dict:
@@ -421,7 +258,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
     async def activity_list(
         request: Request,
         sport: str | None = None,
-        days: int | None = None,
+        after: str | None = None,
+        before: str | None = None,
+        search: str | None = None,
+        tag: str | None = None,
         limit: int = 50,
         page: int = 1,
     ):
@@ -431,15 +271,42 @@ def register(templates: Jinja2Templates) -> APIRouter:
         page = max(1, page)
         offset = (page - 1) * limit
 
+        since_dt: datetime | None = None
+        before_dt: datetime | None = None
+        if after:
+            try:
+                since_dt = datetime.fromisoformat(after).replace(tzinfo=UTC)
+            except ValueError:
+                after = None
+        if before:
+            try:
+                before_dt = datetime.fromisoformat(before).replace(tzinfo=UTC)
+            except ValueError:
+                before = None
+
         activities = []
         sports = []
         total = 0
         if athlete_id:
             activities = await get_recent_activities(
-                athlete_id, limit=limit, offset=offset, sport=sport, days=days
+                athlete_id,
+                limit=limit,
+                offset=offset,
+                sport=sport,
+                since=since_dt,
+                before=before_dt,
+                search=search,
+                tag=tag,
             )
             sports = await get_distinct_sports(athlete_id)
-            total = await count_activities(athlete_id, sport=sport, days=days)
+            total = await count_activities(
+                athlete_id,
+                sport=sport,
+                since=since_dt,
+                before=before_dt,
+                search=search,
+                tag=tag,
+            )
 
         total_pages = max(1, math.ceil(total / limit)) if total else 1
 
@@ -469,7 +336,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "activities": rows,
                 "sports": sports,
                 "selected_sport": sport,
-                "selected_days": days,
+                "selected_after": after,
+                "selected_before": before,
+                "selected_search": search,
+                "selected_tag": tag,
                 "selected_limit": limit,
                 "current_page": page,
                 "total_pages": total_pages,
@@ -569,8 +439,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
-        km_splits = _compute_km_splits(streams, activity.sport_type)
-        avg_gap = _compute_avg_gap(streams, activity.sport_type)
+        km_splits = compute_km_splits(streams, activity.sport_type)
+        avg_gap = compute_avg_gap(streams, activity.sport_type)
 
         # Fetch all workouts for the assign selector
         all_workouts = []
@@ -683,14 +553,47 @@ def register(templates: Jinja2Templates) -> APIRouter:
                             activity.average_heartrate * (1.0 / vo2_factor - 1.0)
                         )
 
-            # True Pace summary: median of stream values (robust to outliers)
+            # True Pace summary: distance-weighted mean of true_pace stream.
+            # velocity_smooth (m/s at 1 Hz) ≈ metres per sample → use as distance weight
+            # so fast sections aren't under-represented (arithmetic mean biases toward slow).
+            # Fallback: distance-weighted mean of our computed GAP then apply heat factor.
             true_pace_fmt = None
             tp_stream = streams.get("true_pace", [])
-            valid_tp = [p for p in tp_stream if p is not None]
-            if valid_tp:
-                median_tp = sorted(valid_tp)[len(valid_tp) // 2]
-                m_tp, s_tp = divmod(int(median_tp), 60)
+            vel_stream = streams.get("velocity_smooth", [])
+            tp_pairs = [
+                (p, v)
+                for p, v in zip(tp_stream, vel_stream, strict=False)
+                if p and p > 0 and v and v > 0.1
+            ]
+            if tp_pairs:
+                paces, vels = zip(*tp_pairs)
+                total_w = sum(vels)
+                mean_tp = sum(p * v for p, v in zip(paces, vels)) / total_w
+                m_tp, s_tp = divmod(int(round(mean_tp)), 60)
                 true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+            else:
+                vel_raw = streams.get("velocity_smooth", [])
+                grade_raw = streams.get("grade_smooth", [])
+                if vel_raw and grade_raw:
+                    wt_pairs = [
+                        (v * (1 + 0.033 * g), v)
+                        for v, g in zip(vel_raw, grade_raw, strict=False)
+                        if v and v > 0.1
+                    ]
+                else:
+                    wt_pairs = [(v, v) for v in vel_raw if v and v > 0.1]
+                if wt_pairs:
+                    gap_speeds, weights = zip(*wt_pairs)
+                    total_w = sum(weights)
+                    mean_gap_ms = sum(gs * wt for gs, wt in zip(gap_speeds, weights)) / total_w
+                    gap_pace_s = 1000.0 / mean_gap_ms
+                    heat_f = (
+                        _pace_heat_factor(w.temperature_c, w.humidity_pct)
+                        if w.temperature_c is not None and w.humidity_pct is not None
+                        else 1.0
+                    )
+                    m_tp, s_tp = divmod(int(round(gap_pace_s / heat_f)), 60)
+                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
 
             weather_panel = {
                 **ws,
@@ -832,7 +735,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
-        avg_gap = _compute_avg_gap(streams, activity.sport_type)
+        avg_gap = compute_avg_gap(streams, activity.sport_type)
 
         # Linked workout + segments
         workout_data = None

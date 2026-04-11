@@ -223,6 +223,19 @@
     {% endif %}
   </div>
 </div>
+{% elif activity_raw and activity_raw.start_latlng %}
+<div class="panel" style="--delay:440ms;margin-bottom:1px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+  <p style="font-size:12px;color:var(--text-dim);margin:0;">
+    No conditions data for this activity yet.
+  </p>
+  <button id="fetch-weather-btn" class="btn btn-primary" style="flex-shrink:0;" onclick="fetchActivityWeather({{ activity.strava_id }})">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px;">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+    Fetch Conditions
+  </button>
+</div>
 {% endif %}
 
 {# ── Activity Analysis: map + stream chart ──────────────────── #}
@@ -767,6 +780,28 @@ async function fetchActivityStreams(stravaId) {
     setTimeout(() => {
       btn.disabled = false;
       btn.textContent = 'Fetch Streams';
+      btn.style.background = '';
+    }, 4000);
+  }
+}
+
+async function fetchActivityWeather(stravaId) {
+  const btn = document.getElementById('fetch-weather-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fetching…';
+
+  try {
+    const res  = await fetch(`/api/sync/weather/${stravaId}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    btn.textContent = 'Done — reloading…';
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    btn.textContent = 'Error: ' + err.message;
+    btn.style.background = 'var(--accent-red)';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Fetch Conditions';
       btn.style.background = '';
     }, 4000);
   }

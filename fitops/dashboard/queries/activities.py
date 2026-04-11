@@ -57,14 +57,27 @@ async def count_activities(
     athlete_id: int,
     sport: str | None = None,
     days: int | None = None,
+    since: datetime | None = None,
+    before: datetime | None = None,
+    search: str | None = None,
+    tag: str | None = None,
 ) -> int:
     async with get_async_session() as session:
         q = select(func.count(Activity.id)).where(Activity.athlete_id == athlete_id)
         if sport:
             q = q.where(Activity.sport_type == sport)
-        if days:
+        if since:
+            q = q.where(Activity.start_date >= since)
+        elif days:
             cutoff = datetime.now(UTC) - timedelta(days=days)
             q = q.where(Activity.start_date >= cutoff)
+        if before:
+            q = q.where(Activity.start_date <= before)
+        if search:
+            q = q.where(Activity.name.ilike(f"%{search}%"))
+        if tag and tag in _TAG_FILTERS:
+            col_name, val = _TAG_FILTERS[tag]
+            q = q.where(getattr(Activity, col_name) == val)
         result = await session.execute(q)
         return result.scalar_one() or 0
 

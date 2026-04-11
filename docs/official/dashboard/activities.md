@@ -21,11 +21,13 @@ Click an activity name to open it directly on Strava.
 
 Use the filter bar to focus the list:
 
+- **Search** — free-text match on activity name (case-insensitive substring)
 - **Sport type** — pick a specific activity type (Run, Ride, Walk, Swim, …)
-- **Date range** — from/to date picker to zoom into a period
-- **Name search** — free-text match on activity name
+- **Tag** — filter to activities flagged as Race, Trainer, Commute, Manual, or Private
+- **After / Before** — date range pickers (YYYY-MM-DD) to zoom into a period
+- **Per page** — 25 / 50 / 100 / 200 / 500 results
 
-Combine filters freely. The list updates as you change them.
+All filters stack and carry across pagination pages. Hit **Reset** to clear everything.
 
 ## Activity Detail
 
@@ -47,6 +49,8 @@ Click any activity row to open its detail page (`/activities/{id}`). The detail 
 - Heart rate over time
 - Pace over time (with grade-adjusted pace overlay if GPS data is present)
 - Elevation profile
+
+![Activity Analysis — streams, HR drift, scatter plots](../assets/dashboard-activity-analysis.png)
 
 If streams are not yet cached for an activity, a **Fetch Streams** button appears. Click it to pull the full time-series data from Strava — this enables the charts, HR drift analysis, and zone-time breakdowns.
 

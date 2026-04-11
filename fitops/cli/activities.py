@@ -265,45 +265,286 @@ def get_activity(
         row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
         formatted = format_activity_row(row_dict, gear_lookup)
 
-        # Compute aerobic / anaerobic training scores
+        from fitops.analytics.activity_insights import compute_hr_drift
+        from fitops.analytics.activity_performance_insights import (
+            compute_activity_performance_insights,
+        )
+        from fitops.analytics.activity_splits import compute_avg_gap, compute_km_splits
+        from fitops.analytics.activity_zones import compute_activity_analytics
         from fitops.analytics.athlete_settings import get_athlete_settings
         from fitops.analytics.training_scores import (
+            aerobic_label,
+            anaerobic_label,
             compute_aerobic_score,
             compute_anaerobic_score,
         )
+        from fitops.analytics.weather_pace import (
+            compute_bearing,
+            compute_wap_factor,
+            vo2max_heat_factor,
+            weather_row_to_dict,
+        )
+        from fitops.dashboard.queries.activities import (
+            get_activity_laps,
+            get_activity_streams,
+        )
+        from fitops.dashboard.queries.weather import get_weather_for_activities
+        from fitops.dashboard.queries.workouts import get_workout_for_activity
 
         _settings = get_athlete_settings()
+        aerobic_score = compute_aerobic_score(row, _settings)
+        anaerobic_score = compute_anaerobic_score(row, _settings)
+
         formatted.setdefault("insights", {})
-        formatted["insights"]["aerobic_training_score"] = compute_aerobic_score(
-            row, _settings
-        )
-        formatted["insights"]["anaerobic_training_score"] = compute_anaerobic_score(
-            row, _settings
-        )
+        formatted["insights"]["aerobic_training_score"] = aerobic_score
+        formatted["insights"]["aerobic_label"] = aerobic_label(aerobic_score)
+        formatted["insights"]["anaerobic_training_score"] = anaerobic_score
+        formatted["insights"]["anaerobic_label"] = anaerobic_label(anaerobic_score)
 
-        # Enrich with HR drift if streams are available
+        # Load streams
+        streams: dict = {}
         if row.streams_fetched:
-            from fitops.analytics.activity_insights import compute_hr_drift
+            streams = await get_activity_streams(row.id)
 
-            async with get_async_session() as session:
-                hr_res = await session.execute(
-                    select(ActivityStream).where(
-                        ActivityStream.activity_id == row.id,
-                        ActivityStream.stream_type == "heartrate",
-                    )
+        # Load weather early — needed for true_pace stream injection
+        _weather_map = await get_weather_for_activities([activity_id])
+        _weather_obj = _weather_map.get(activity_id)
+
+        # Inject true_pace stream (weather + GAP adjusted) before analytics
+        if streams and _weather_obj:
+            from fitops.dashboard.routes.activities import (
+                _compute_true_pace_stream,
+                _compute_wap_stream,
+            )
+
+            wap_s = _compute_wap_stream(streams, _weather_obj)
+            if wap_s:
+                streams["wap_pace"] = wap_s
+            tp_s = _compute_true_pace_stream(streams, _weather_obj)
+            if tp_s:
+                streams["true_pace"] = tp_s
+                streams["true_velocity"] = [
+                    1000.0 / p if p and p > 0 else 0.0 for p in tp_s
+                ]
+
+        if streams and "true_pace" not in streams:
+            vel_raw = streams.get("velocity_smooth", [])
+            if vel_raw:
+                streams["true_pace"] = [
+                    round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
+                ]
+
+        # HR drift
+        hr_data = streams.get("heartrate", [])
+        vel_data = streams.get("velocity_smooth", [])
+        if hr_data and vel_data:
+            drift = compute_hr_drift(hr_data, vel_data)
+            if drift:
+                formatted["insights"]["hr_drift"] = drift
+
+        # Zone analytics (HR zones + pace zones)
+        if streams:
+            analytics = compute_activity_analytics(row, streams)
+            if analytics:
+                formatted["analytics"] = {
+                    "hr_zones": [
+                        {
+                            "zone": z["zone"],
+                            "name": z["name"],
+                            "min_bpm": z["min_bpm"],
+                            "max_bpm": z["max_bpm"],
+                            "time_s": z["time_s"],
+                            "time_fmt": z["time_fmt"],
+                            "pct": z["pct"],
+                        }
+                        for z in (analytics.hr_zones or [])
+                    ],
+                    "pace_zones": [
+                        {
+                            "zone": z["zone"],
+                            "name": z["name"],
+                            "min_pace": z["min_pace"],
+                            "max_pace": z["max_pace"],
+                            "time_s": z["time_s"],
+                            "time_fmt": z["time_fmt"],
+                            "pct": z["pct"],
+                        }
+                        for z in (analytics.pace_zones or [])
+                    ],
+                    "lt2_bpm": analytics.lt2,
+                    "vo2max": analytics.vo2max,
+                }
+
+        # Per-km splits and average GAP (runs only)
+        km_splits = compute_km_splits(streams, row.sport_type or "")
+        if km_splits is not None:
+            formatted["km_splits"] = km_splits
+        avg_gap = compute_avg_gap(streams, row.sport_type or "")
+        if avg_gap is not None:
+            formatted["avg_gap"] = avg_gap
+
+        # Laps
+        if row.laps_fetched:
+            laps = await get_activity_laps(row.id)
+            is_run = (row.sport_type or "") in {
+                "Run", "TrailRun", "Walk", "Hike", "VirtualRun"
+            }
+            lap_rows = []
+            for lap in laps:
+                spd = lap.average_speed_ms
+                pace_s = (
+                    round(1000.0 / spd, 1) if spd and spd > 0 and is_run else None
                 )
-                vel_res = await session.execute(
-                    select(ActivityStream).where(
-                        ActivityStream.activity_id == row.id,
-                        ActivityStream.stream_type == "velocity_smooth",
-                    )
+                m, s_rem = divmod(int(pace_s), 60) if pace_s else (None, None)
+                lap_rows.append(
+                    {
+                        "index": (lap.lap_index or 0) + 1,
+                        "name": lap.name or f"Lap {(lap.lap_index or 0) + 1}",
+                        "moving_time_s": lap.moving_time_s,
+                        "distance_km": round(lap.distance_m / 1000, 2)
+                        if lap.distance_m
+                        else None,
+                        "pace": f"{m}:{s_rem:02d}/km"
+                        if pace_s and m is not None
+                        else None,
+                        "pace_s": pace_s,
+                        "avg_hr": round(lap.average_heartrate)
+                        if lap.average_heartrate
+                        else None,
+                        "max_hr": lap.max_heartrate,
+                        "avg_watts": round(lap.average_watts)
+                        if lap.average_watts
+                        else None,
+                    }
                 )
-                hr_row = hr_res.scalar_one_or_none()
-                vel_row = vel_res.scalar_one_or_none()
-            if hr_row and vel_row:
-                drift = compute_hr_drift(hr_row.data or [], vel_row.data or [])
-                if drift:
-                    formatted["insights"]["hr_drift"] = drift
+            formatted["laps"] = lap_rows
+
+        # Weather panel
+        if _weather_obj:
+            import json as _json
+
+            ws = weather_row_to_dict(_weather_obj)
+
+            course_bearing: float | None = None
+            if row.start_latlng and row.end_latlng:
+                try:
+                    s_pt = _json.loads(row.start_latlng)
+                    e_pt = _json.loads(row.end_latlng)
+                    if len(s_pt) == 2 and len(e_pt) == 2:
+                        course_bearing = compute_bearing(
+                            s_pt[0], s_pt[1], e_pt[0], e_pt[1]
+                        )
+                except (ValueError, TypeError, IndexError):
+                    pass
+
+            w = _weather_obj
+            wap_factor = 1.0
+            if w.temperature_c is not None and w.humidity_pct is not None:
+                wap_factor = compute_wap_factor(
+                    temp_c=w.temperature_c,
+                    rh_pct=w.humidity_pct,
+                    wind_speed_ms_val=w.wind_speed_ms or 0.0,
+                    wind_dir_deg=w.wind_direction_deg or 0.0,
+                    course_bearing=course_bearing,
+                )
+
+            is_run = (row.sport_type or "") in {
+                "Run", "TrailRun", "Walk", "Hike", "VirtualRun"
+            }
+            wap_fmt = None
+            if row.average_speed_ms and row.average_speed_ms > 0:
+                if is_run:
+                    actual_pace_s = 1000.0 / row.average_speed_ms
+                    wap_s_val = actual_pace_s / wap_factor
+                    m_w, s_w = divmod(int(wap_s_val), 60)
+                    wap_fmt = f"{m_w}:{s_w:02d}/km"
+                else:
+                    wap_speed_kmh = row.average_speed_ms * 3.6 * wap_factor
+                    wap_fmt = f"{wap_speed_kmh:.1f} km/h"
+
+            hr_heat_pct: float | None = None
+            hr_heat_bpm: int | None = None
+            if w.temperature_c is not None and w.humidity_pct is not None:
+                vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
+                if vo2_factor < 0.99:
+                    hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
+                    if row.average_heartrate and row.average_heartrate > 0:
+                        hr_heat_bpm = round(
+                            row.average_heartrate * (1.0 / vo2_factor - 1.0)
+                        )
+
+            true_pace_fmt = None
+            tp_stream = streams.get("true_pace", [])
+            vel_stream = streams.get("velocity_smooth", [])
+            tp_pairs = [
+                (p, v)
+                for p, v in zip(tp_stream, vel_stream, strict=False)
+                if p and p > 0 and v and v > 0.1
+            ]
+            if tp_pairs:
+                paces, vels = zip(*tp_pairs, strict=False)
+                total_wt = sum(vels)
+                mean_tp = sum(p * v for p, v in zip(paces, vels, strict=False)) / total_wt
+                m_tp, s_tp = divmod(int(round(mean_tp)), 60)
+                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+
+            formatted["weather"] = {
+                **ws,
+                "wap_factor": round(wap_factor, 4),
+                "wap_factor_pct": round((wap_factor - 1.0) * 100, 1),
+                "wap_fmt": wap_fmt,
+                "true_pace_fmt": true_pace_fmt,
+                "course_bearing": round(course_bearing, 0)
+                if course_bearing is not None
+                else None,
+                "hr_heat_pct": hr_heat_pct,
+                "hr_heat_bpm": hr_heat_bpm,
+            }
+
+        # Performance insights (new PRs / metric changes)
+        if streams:
+            perf_insights = compute_activity_performance_insights(
+                row, streams, _settings
+            )
+            if perf_insights:
+                formatted["performance_insights"] = [
+                    {
+                        "metric": pi.metric,
+                        "label": pi.label,
+                        "setting_key": pi.setting_key,
+                        "current_value": pi.current_value,
+                        "detected_value": pi.detected_value,
+                        "delta_pct": pi.delta_pct,
+                        "action": pi.action,
+                        "detected_fmt": pi.detected_fmt,
+                        "current_fmt": pi.current_fmt,
+                        "unit": pi.unit,
+                        "explanation": pi.explanation,
+                    }
+                    for pi in perf_insights
+                ]
+
+        # Linked workout + compliance
+        linked = await get_workout_for_activity(row.id)
+        if linked:
+            wo, segs = linked
+            formatted["workout"] = {
+                "id": wo.id,
+                "name": wo.name,
+                "compliance_score": wo.compliance_score,
+                "compliance_pct": round(wo.compliance_score * 100)
+                if wo.compliance_score is not None
+                else None,
+                "segments": [
+                    {
+                        **seg.to_dict(),
+                        "compliance_pct": round(seg.compliance_score * 100)
+                        if seg.compliance_score is not None
+                        else None,
+                    }
+                    for seg in segs
+                ],
+            }
 
         return {"_meta": make_meta(total_count=1), "activity": formatted}
 
