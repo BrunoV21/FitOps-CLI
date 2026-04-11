@@ -124,6 +124,8 @@ Each `##` segment in the workout file is matched to a time slice of the HR strea
 
 See [Output Examples → Workouts](../output-examples/workouts.md) for sample output.
 
+![Workout Compliance Scores](../assets/dashboard-workout-compliance.png)
+
 ---
 
 ### `fitops workouts unlink <activity_id>`

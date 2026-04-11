@@ -33,6 +33,8 @@ fitops analytics training-load --days 42 --sport Run
 fitops analytics training-load --today
 ```
 
+![Training Load Chart](../assets/dashboard-training-load-detailed.png)
+
 See [Concepts → Training Load](../concepts/training-load.md) for how CTL/ATL/TSB are calculated.
 
 ---

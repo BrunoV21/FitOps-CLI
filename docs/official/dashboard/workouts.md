@@ -50,6 +50,8 @@ This is useful for deciding whether a planned session is realistic on a given da
 
 ## Workout Detail & Compliance
 
+![Workout Compliance Scores](../assets/dashboard-workout-compliance.png)
+
 Once you link a workout to a Strava activity (via `fitops workouts link`), the detail view shows:
 
 - A physiology snapshot at the time of the session (CTL, ATL, TSB, VO2max)

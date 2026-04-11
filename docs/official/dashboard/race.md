@@ -37,6 +37,8 @@ This is the same plan `fitops race simulate` produces in the CLI.
 
 ## Race Simulation
 
+![Race Simulation Results](../assets/dashboard-race-simulate-results.png)
+
 The **Simulate** option lets you model different race-day scenarios. Change the target time, weather conditions, or pacer strategy and immediately see how the plan shifts. Useful for stress-testing your pacing before race day.
 
 ## See Also

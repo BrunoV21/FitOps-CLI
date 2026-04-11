@@ -2,6 +2,8 @@
 
 The Overview is the first thing you see when you open the dashboard. It answers the question: *"Where am I right now in my training?"*
 
+![Dashboard Overview](../assets/dashboard-overview-hero.png)
+
 ## Period & Sport Filter
 
 Two controls at the top of the page shape everything on the screen:

@@ -1,5 +1,7 @@
 # FitOps-CLI Roadmap
 
+![FitOps Roadmap Timeline](./assets/roadmap-timeline.png)
+
 ## Phase 1 — Foundation ✅
 
 **Goal:** Strava auth, incremental sync, local SQLite storage, LLM-friendly activity output.

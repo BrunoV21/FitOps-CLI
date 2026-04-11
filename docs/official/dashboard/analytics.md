@@ -12,6 +12,8 @@ A time-series chart showing three lines across your training history:
 
 Hover over any point on the chart to see the exact values for that date.
 
+![Training Load Chart](../assets/dashboard-training-load-detailed.png)
+
 **Controls:**
 
 - **Days** — how many days of history to display (default: 90)

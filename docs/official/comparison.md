@@ -2,6 +2,8 @@
 
 This comparison is grounded in real user opinions gathered from endurance sports communities: r/running, r/cycling, r/triathlon, the Intervals.icu forum, TrainerRoad forum, Slowtwitch, and LetsRun. The goal is not to declare a winner but to paint an accurate picture of where each platform excels, where it frustrates users, and where FitOps fits in.
 
+![FitOps vs Alternatives — Feature Tour](./assets/comparison-animated-feature-tour.gif)
+
 ---
 
 ## Platforms at a Glance
