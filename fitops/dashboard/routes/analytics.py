@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from fitops.analytics.performance_metrics import compute_performance_metrics
 from fitops.analytics.training_load import _compute_overtraining_indicators
 from fitops.analytics.vo2max import (
     compute_race_predictions,
@@ -115,6 +116,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
         best_vo2max = None
         history = []
 
+        perf_metrics = None
+        if athlete_id:
+            perf_metrics = await compute_performance_metrics(athlete_id)
+
         if athlete_id and hr_configured:
             best_vo2max = await estimate_vo2max(athlete_id)
             history = await get_vo2max_history(athlete_id, days=days)
@@ -205,6 +210,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "race_predictions": race_predictions,
                 "hr_configured": hr_configured,
                 "vo2max_override": athlete_settings.vo2max_override,
+                "perf_metrics": perf_metrics,
                 "active_page": "performance",
             },
         )

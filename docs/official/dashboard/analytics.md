@@ -23,18 +23,30 @@ Use this chart to understand the shape of your training blocks — a widening ga
 
 ## Performance Metrics
 
-Below the training load chart, a set of derived numbers based on your recent activity history:
+The Performance page (`/analytics/performance`) surfaces derived numbers from your last 50 activities (up to 12 months). These complement the VO₂max and pace threshold panels at the top of the page.
 
-**For runners:**
+### Running Efficiency panel
 
 | Metric | What it means |
 |--------|--------------|
-| Running economy | Estimated oxygen cost per km (proxy from average pace) |
-| Pace efficiency | 0–100 score based on how consistent your paces are across recent runs |
-| Aerobic threshold HR | Estimated HR at the boundary of Zone 2 |
-| Anaerobic threshold HR | Estimated HR at the boundary of Zone 4/5 |
+| Running economy | Estimated O₂ cost per km (ml/kg/km) from Daniels VO₂ demand model — lower = more efficient |
+| Pace efficiency | 0–100 score based on pace consistency across recent runs (100 − CV×100) |
+| Pace variability | Coefficient of variation of paces — lower means more even training |
+| Reliability | Pace efficiency expressed as a 0–1 fraction |
 
-**For cyclists:**
+### HR Thresholds (within Running Intensity Thresholds panel)
+
+| Metric | How it's derived |
+|--------|-----------------|
+| Max HR estimate | 98th-percentile peak HR across the last 50 runs |
+| Aerobic threshold HR | 75% of Max HR estimate |
+| Anaerobic threshold HR | 85% of Max HR estimate |
+
+These sit alongside the pace-based LT1/LT2/vVO₂max thresholds so you can cross-reference pace zones with HR zones during a run.
+
+### Cycling metrics (CLI only)
+
+The following are available via `fitops analytics performance --sport ride` but not yet surfaced on the dashboard:
 
 | Metric | What it means |
 |--------|--------------|
@@ -42,8 +54,6 @@ Below the training load chart, a set of derived numbers based on your recent act
 | Power-to-weight | FTP / body weight (W/kg) |
 | Normalized power ratio | Average NP/AP ratio — an indicator of ride pacing variability |
 | Power consistency | 0–100 score based on power distribution across recent rides |
-
-**Time range:** use the **Days** slider to change how many days of activities feed into these calculations.
 
 ## See Also
 

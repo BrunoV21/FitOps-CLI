@@ -123,6 +123,41 @@
 
 {% endif %}
 
+{% if perf_metrics and perf_metrics.running %}
+{% set run = perf_metrics.running %}
+<div class="panel" style="margin-top:1px;--delay:125ms">
+  <p class="panel-label">Running Efficiency
+    {% if perf_metrics.overall_reliability is not none %}
+    <span class="panel-sub" style="margin-left:8px;">{{ perf_metrics.activity_count }} runs · reliability {{ (perf_metrics.overall_reliability * 100) | round(1) }}%</span>
+    {% endif %}
+  </p>
+  <div style="display:flex;gap:32px;margin-top:12px;flex-wrap:wrap;">
+    {% if run.running_economy_ml_kg_km %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Running Economy</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-green);">{{ run.running_economy_ml_kg_km }}</p>
+      <p class="panel-sub">ml/kg/km</p>
+    </div>
+    {% endif %}
+    {% if run.pace_efficiency_score is not none %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Pace Efficiency</p>
+      <p style="font-size:22px;font-weight:700;color:{% if run.pace_efficiency_score >= 85 %}var(--accent-green){% elif run.pace_efficiency_score >= 70 %}var(--accent-amber){% else %}var(--accent-red){% endif %};">{{ run.pace_efficiency_score }}</p>
+      <p class="panel-sub">/ 100</p>
+    </div>
+    {% endif %}
+    {% if run.variability_index is not none %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Pace Variability</p>
+      <p style="font-size:22px;font-weight:700;color:var(--text-primary);">{{ run.variability_index }}</p>
+      <p class="panel-sub">CV — lower = more consistent</p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="panel-sub" style="margin-top:10px;">Economy from Daniels VO₂ demand model &middot; efficiency and variability from last {{ perf_metrics.activity_count }} runs</p>
+</div>
+{% endif %}
+
 {% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
 <div class="panel" style="margin-top:1px;--delay:120ms">
   <p class="panel-label">Running Intensity Thresholds
@@ -159,6 +194,28 @@
     </div>
     {% endif %}
   </div>
+  {% if perf_metrics and perf_metrics.running and perf_metrics.running.max_hr_estimate %}
+  {% set run = perf_metrics.running %}
+  <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:32px;flex-wrap:wrap;">
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Max HR estimate</p>
+      <p style="font-size:18px;font-weight:700;color:var(--text-primary);">{{ run.max_hr_estimate }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm</span></p>
+    </div>
+    {% if run.aerobic_threshold_hr %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Aerobic Threshold HR</p>
+      <p style="font-size:18px;font-weight:700;color:var(--accent-green);">{{ run.aerobic_threshold_hr }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm &middot; 75% HRmax</span></p>
+    </div>
+    {% endif %}
+    {% if run.anaerobic_threshold_hr %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Anaerobic Threshold HR</p>
+      <p style="font-size:18px;font-weight:700;color:var(--accent-amber);">{{ run.anaerobic_threshold_hr }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm &middot; 85% HRmax</span></p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="panel-sub" style="margin-top:6px;">HR thresholds from 98th-percentile peak HR across last {{ perf_metrics.activity_count }} runs</p>
+  {% endif %}
   <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces from HR streams &middot; run <code>fitops analytics zones --infer</code> to update</p>
 </div>
 {% endif %}
