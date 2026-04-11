@@ -462,7 +462,16 @@ def print_athlete_profile(athlete: dict) -> None:
 
     phys = athlete.get("physiology") or {}
     has_phys = any(
-        phys.get(k) for k in ("max_hr", "resting_hr", "lthr", "ftp", "lt1_pace", "lt2_pace", "vo2max")
+        phys.get(k)
+        for k in (
+            "max_hr",
+            "resting_hr",
+            "lthr",
+            "ftp",
+            "lt1_pace",
+            "lt2_pace",
+            "vo2max",
+        )
     )
     if has_phys:
         console.print()
@@ -476,15 +485,23 @@ def print_athlete_profile(athlete: dict) -> None:
         if phys.get("ftp"):
             console.print(f"  FTP            {phys['ftp']} W")
         if phys.get("lt1_pace"):
-            console.print(f"  LT1 pace       {phys['lt1_pace']}  [dim](aerobic threshold)[/dim]")
+            console.print(
+                f"  LT1 pace       {phys['lt1_pace']}  [dim](aerobic threshold)[/dim]"
+            )
         if phys.get("lt2_pace"):
-            console.print(f"  LT2 pace       {phys['lt2_pace']}  [dim](lactate threshold)[/dim]")
+            console.print(
+                f"  LT2 pace       {phys['lt2_pace']}  [dim](lactate threshold)[/dim]"
+            )
         if phys.get("vo2max_pace"):
-            console.print(f"  vVO2max        {phys['vo2max_pace']}  [dim](from VDOT)[/dim]")
+            console.print(
+                f"  vVO2max        {phys['vo2max_pace']}  [dim](from VDOT)[/dim]"
+            )
         vo2max = phys.get("vo2max") or {}
         if vo2max.get("estimate"):
             conf = vo2max.get("confidence_label") or ""
-            console.print(f"  VO2max         {vo2max['estimate']:.1f} ml/kg/min  [dim][{conf}][/dim]")
+            console.print(
+                f"  VO2max         {vo2max['estimate']:.1f} ml/kg/min  [dim][{conf}][/dim]"
+            )
             based = vo2max.get("based_on_activity") or {}
             if based.get("name"):
                 console.print(
@@ -587,7 +604,9 @@ def print_athlete_computed_zones(data: dict) -> None:
     if thresholds.get("lt2_pace_fmt"):
         console.print(f"  LT2 pace   {thresholds['lt2_pace_fmt']}  [dim](GAP)[/dim]")
     if thresholds.get("vo2max_pace_fmt"):
-        console.print(f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]")
+        console.print(
+            f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]"
+        )
     console.print()
     if zone_list:
         hr_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -820,8 +839,15 @@ def print_vo2max(data: dict) -> None:
     preds = race.get("predictions") or {}
     if preds:
         console.print()
+        method = race.get("method", "vdot").upper()
+        if method == "VDOT":
+            source_info = f"VDOT {race.get('vdot_source', '?')}"
+        elif method == "LT2":
+            source_info = f"LT2 @ {race.get('lt2_source_pace', '?')}/km"
+        else:
+            source_info = f"from {race.get('riegel_source_distance_km', '?')} km @ {race.get('riegel_source_pace', '?')}/km"
         console.print(
-            f"  [bold]Race Predictions[/bold]  [dim]{race.get('method', 'riegel').upper()} · from {race.get('source_distance_km', '?')} km @ {race.get('source_pace', '?')}/km[/dim]"
+            f"  [bold]Race Predictions[/bold]  [dim]{method} · {source_info}[/dim]"
         )
         for label, pred in preds.items():
             console.print(
@@ -891,17 +917,44 @@ def print_trends(data: dict) -> None:
         f"[bold]Training Trends[/bold]  [dim]{t.get('summary_label') or ''}[/dim]"
     )
     console.print(f"  Activities     {t.get('activity_count') or 0}")
-    vol = t.get("volume_trend") or {}
-    if vol.get("weekly_avg_km"):
-        console.print(f"  Weekly avg     {vol['weekly_avg_km']} km")
-    if vol.get("trend_label"):
-        console.print(f"  Volume trend   {vol['trend_label']}")
+
     cons = t.get("consistency") or {}
-    if cons.get("active_weeks_pct"):
-        console.print(f"  Consistency    {cons['active_weeks_pct']}% active weeks")
+    if cons.get("activities_per_week") is not None:
+        reg = cons.get("regularity_score") or cons.get("weekly_consistency")
+        reg_str = (
+            f"  [dim](regularity {reg * 100:.0f}%)[/dim]" if reg is not None else ""
+        )
+        console.print(f"  Per week       {cons['activities_per_week']}{reg_str}")
+    if cons.get("avg_days_between_activities") is not None:
+        console.print(f"  Avg rest days  {cons['avg_days_between_activities']}")
+
+    vol = t.get("volume_trend") or {}
+    if vol.get("direction"):
+        strength = vol.get("strength", "")
+        console.print(f"  Volume trend   {vol['direction']}  [dim]({strength})[/dim]")
+
+    perf = t.get("performance_trend") or {}
+    if perf.get("pace_direction") and perf["pace_direction"] != "insufficient_data":
+        strength = perf.get("pace_strength", "")
+        console.print(
+            f"  Pace trend     {perf['pace_direction']}  [dim]({strength})[/dim]"
+        )
+    if perf.get("improvement_rate_pct_per_month") is not None:
+        rate = perf["improvement_rate_pct_per_month"]
+        sign = "+" if rate > 0 else ""
+        console.print(f"  Pace change    {sign}{rate:.2f}% / month")
+    if perf.get("hr_direction") and perf["hr_direction"] != "insufficient_data":
+        console.print(f"  HR trend       {perf['hr_direction']}")
+
+    seasonal = t.get("seasonal") or {}
+    if seasonal.get("peak_season"):
+        console.print(f"  Peak season    {seasonal['peak_season']}")
+
     ot = t.get("overtraining_indicators") or {}
-    if ot.get("risk_label"):
-        console.print(f"  OT Risk        {ot['risk_label']}")
+    if ot.get("acwr_label"):
+        console.print(f"  Load (ACWR)    {ot['acwr_label']}")
+    if ot.get("monotony_label"):
+        console.print(f"  Monotony       {ot['monotony_label']}")
     console.print()
 
 
@@ -959,6 +1012,12 @@ def print_pace_zones(data: dict) -> None:
     console.print(
         f"[bold]Pace Zones[/bold]  [dim]threshold: {pz.get('threshold_pace') or '-'}  ({pz.get('source') or ''})[/dim]"
     )
+    if pz.get("lt1_pace"):
+        console.print(f"  LT1 (aerobic)   {pz['lt1_pace']}  [dim](from profile)[/dim]")
+    if pz.get("vo2max_pace"):
+        console.print(
+            f"  VO2max pace     {pz['vo2max_pace']}  [dim](from profile)[/dim]"
+        )
     zone_list = pz.get("zones") or []
     if zone_list:
         table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
