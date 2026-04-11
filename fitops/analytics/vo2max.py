@@ -604,21 +604,32 @@ def compute_vo2max_rolling(
 # Race Predictions
 # ---------------------------------------------------------------------------
 #
-# Industry standard (Jack Daniels VDOT system, Pfitzinger):
-#   Everything derives from ONE consistent effort.  When a measured LT2 pace
-#   is available it is the most reliable anchor because it reflects how the
-#   individual athlete's aerobic system actually performs, not a theoretical
-#   estimate from a training run.
+# Primary method: Jack Daniels VDOT fractional utilization.
+#   Derives race pace by solving the VO2 demand quadratic at the fraction of
+#   VO2max that an athlete can sustain at each race distance.  This is the
+#   same model used in the Daniels VDOT tables and is the most internally
+#   consistent approach — it only requires a single VDOT estimate as input.
 #
-# LT2 → race pace ratios from Daniels VDOT tables (averaged VDOT 40–65):
-#   5K ≈ 7.6% faster than LT2 pace/km
-#   10K ≈ 3.8% faster
-#   Half ≈ 2.0% slower
-#   Marathon ≈ 7.0% slower
+# Fractional utilization by distance (Daniels VDOT tables, averaged VDOT 40–65):
+#   5K  → 97.9% of VO2max
+#   10K → 93.9%
+#   Half → 87.9%
+#   Marathon → 83.8%
 #
-# Riegel (T2 = T1 × (D2/D1)^1.06) is shown alongside for reference but is
-# only reliable when the source effort was near-maximal (race or time-trial).
-# It is NOT reliable from easy or moderate training runs.
+# LT2-anchored (secondary, when a measured threshold pace is available):
+#   Derives race paces from the measured threshold pace via Daniels VDOT
+#   table ratios.  Shown as a reference alongside the primary VDOT prediction.
+#
+# Riegel (T2 = T1 × (D2/D1)^1.06) is computed as tertiary reference but is
+# only accurate when the source effort was near-maximal (race or time-trial).
+
+# Daniels VDOT fractional utilization per race distance
+VDOT_RACE_FRACS: dict[str, float] = {
+    "5K": 0.979,
+    "10K": 0.939,
+    "Half": 0.879,
+    "Marathon": 0.838,
+}
 
 _LT2_RACE_PACE_RATIOS: dict[str, float] = {
     "5K": 0.924,
@@ -626,6 +637,20 @@ _LT2_RACE_PACE_RATIOS: dict[str, float] = {
     "Half": 1.020,
     "Marathon": 1.070,
 }
+
+
+def _vdot_to_race_entry(vdot: float, frac: float, d2_m: float) -> dict:
+    """Predict race time/pace using Daniels VDOT fractional utilization.
+
+    Solves the VO2 demand quadratic for the speed at which the athlete uses
+    ``frac * vdot`` of their aerobic capacity over distance ``d2_m``.
+    """
+    demand = vdot * frac
+    a, b, c = 0.000104, 0.182258, -(demand + 4.6)
+    v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)  # m/min
+    v_ms = v_mpm / 60  # m/s
+    pred_s = d2_m / v_ms
+    return _pred_entry(pred_s, d2_m)
 
 
 def vo2max_from_lt2_pace(lt2_pace_s: float) -> float:
@@ -654,20 +679,33 @@ def compute_race_predictions(
     lt2_pace_s: float | None = None,
 ) -> dict:
     """
-    Predict race times using two complementary methods.
+    Predict race times using three complementary methods.
 
-    LT2-anchored (primary when lt2_pace_s is set):
+    VDOT-anchored (primary, always computed when vdot is available):
+        Uses Daniels VDOT fractional utilization — solves the VO2 demand
+        quadratic at the fraction of VO2max sustainable at each race distance.
+        This is the same model as the Daniels VDOT tables and is the most
+        internally consistent method.
+
+    LT2-anchored (secondary when lt2_pace_s is set):
         Derives race paces from the measured threshold pace via Daniels VDOT
-        table ratios.  This is internally consistent — if your LT2 pace hasn't
-        changed, your race predictions won't change either, regardless of what
-        any individual training run suggests about your VO2max.
+        table ratios.  Shown as a reference alongside the VDOT prediction.
 
-    Riegel (always computed as secondary / reference):
+    Riegel (tertiary reference):
         T2 = T1 × (D2/D1)^1.06 from the best recorded effort.
-        Only accurate when the source effort was near-maximal.  Shown dimmed
-        in the UI so the user can compare.
+        Only accurate when the source effort was near-maximal.
     """
     out: dict = {}
+
+    # --- VDOT-anchored predictions (primary) ---
+    if vo2_result.vdot is not None:
+        vdot_preds = {}
+        for label, d2_m in RACE_DISTANCES.items():
+            vdot_preds[label] = _vdot_to_race_entry(
+                vo2_result.vdot, VDOT_RACE_FRACS[label], d2_m
+            )
+        out["vdot_predictions"] = vdot_preds
+        out["vdot_source"] = round(vo2_result.vdot, 1)
 
     # --- LT2-anchored predictions ---
     if lt2_pace_s is not None:
@@ -691,8 +729,12 @@ def compute_race_predictions(
         out["riegel_source_pace"] = vo2_result.pace_per_km
         out["riegel_source_confidence"] = vo2_result.confidence_label
 
-    # Back-compat: expose ``predictions`` pointing at the most reliable method
-    if "lt2_predictions" in out:
+    # Expose ``predictions`` pointing at the most reliable method:
+    # VDOT > LT2 > Riegel
+    if "vdot_predictions" in out:
+        out["predictions"] = out["vdot_predictions"]
+        out["method"] = "vdot"
+    elif "lt2_predictions" in out:
         out["predictions"] = out["lt2_predictions"]
         out["method"] = "lt2"
     elif "riegel_predictions" in out:

@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.pace_zones import compute_pace_zones
-from fitops.analytics.vo2max import estimate_vo2max
+from fitops.analytics.vo2max import compute_race_predictions, estimate_vo2max
 from fitops.analytics.zones import compute_zones
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.profile import get_athlete, get_equipment_with_stats
@@ -122,26 +122,28 @@ def _build_profile_context(
     # Race predictions from Daniels VDOT using fractional utilization per distance
     race_predictions = None
     if vo2max_result and vo2max_result.vdot:
-        vdot = vo2max_result.vdot
-
-        def _vdot_race(frac: float, dist_m: int) -> dict:
-            """Predict race pace and time for a given fractional utilization."""
-            demand = vdot * frac
-            a, b, c = 0.000104, 0.182258, -(demand + 4.6)
-            v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)
-            pace_s = round(1000 / (v_mpm / 60))
-            total_s = round(dist_m / (v_mpm / 60))
-            h, rem = divmod(total_s, 3600)
-            m, s = divmod(rem, 60)
-            time_fmt = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-            return {"pace": f"{pace_s // 60}:{pace_s % 60:02d}/km", "time": time_fmt}
-
+        preds = compute_race_predictions(vo2max_result).get("vdot_predictions", {})
         race_predictions = [
-            {"label": "5 K", **_vdot_race(0.979, 5000)},
-            {"label": "10 K", **_vdot_race(0.939, 10000)},
-            {"label": "12 K", **_vdot_race(0.922, 12000)},
-            {"label": "Half (21K)", **_vdot_race(0.879, 21097)},
-            {"label": "Marathon", **_vdot_race(0.838, 42195)},
+            {
+                "label": "5 K",
+                "pace": preds["5K"]["predicted_pace"] + "/km",
+                "time": preds["5K"]["hms"],
+            },
+            {
+                "label": "10 K",
+                "pace": preds["10K"]["predicted_pace"] + "/km",
+                "time": preds["10K"]["hms"],
+            },
+            {
+                "label": "Half (21K)",
+                "pace": preds["Half"]["predicted_pace"] + "/km",
+                "time": preds["Half"]["hms"],
+            },
+            {
+                "label": "Marathon",
+                "pace": preds["Marathon"]["predicted_pace"] + "/km",
+                "time": preds["Marathon"]["hms"],
+            },
         ]
 
     # Custom pace zone overrides
