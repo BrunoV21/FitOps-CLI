@@ -144,10 +144,10 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
             "moving_time_formatted": _fmt_seconds(row.get("moving_time_s")),
             "elapsed_time_seconds": row.get("elapsed_time_s"),
             "elapsed_time_formatted": _fmt_seconds(row.get("elapsed_time_s")),
-            "efficiency_pct": round(
-                row["moving_time_s"] / row["elapsed_time_s"] * 100
-            )
-            if row.get("moving_time_s") and row.get("elapsed_time_s") and row["elapsed_time_s"] > 0
+            "efficiency_pct": round(row["moving_time_s"] / row["elapsed_time_s"] * 100)
+            if row.get("moving_time_s")
+            and row.get("elapsed_time_s")
+            and row["elapsed_time_s"] > 0
             else None,
         },
         "distance": {

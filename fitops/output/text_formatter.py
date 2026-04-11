@@ -124,7 +124,75 @@ def print_activity_detail(activity: dict) -> None:
                 f"  HR Drift   {drift['drift_bpm']:+.1f} bpm  ({drift.get('label', '')})"
             )
 
+    # Avg GAP / True Pace (top-level fields from stream analytics)
+    avg_gap = activity.get("avg_gap")
+    weather = activity.get("weather") or {}
+    true_pace_fmt = weather.get("true_pace_fmt")
+    if avg_gap or true_pace_fmt:
+        parts = []
+        if avg_gap:
+            parts.append(f"GAP {avg_gap}")
+        if true_pace_fmt:
+            parts.append(f"True Pace {true_pace_fmt}")
+        console.print(f"  Effort     {'  |  '.join(parts)}")
+
+    # Weather conditions
+    if weather:
+        temp = weather.get("temp_fmt")
+        condition = weather.get("condition")
+        wbgt_flag = weather.get("wbgt_flag")
+        wind_kmh = weather.get("wind_speed_kmh")
+        wind_dir = weather.get("wind_dir_compass")
+        precip = weather.get("precipitation_mm")
+
+        weather_parts = []
+        if temp:
+            weather_parts.append(temp)
+        if condition:
+            weather_parts.append(condition)
+        if wind_kmh is not None:
+            wind_str = f"{wind_kmh} km/h"
+            if wind_dir:
+                wind_str += f" {wind_dir}"
+            weather_parts.append(f"wind {wind_str}")
+        if precip:
+            weather_parts.append(f"{precip} mm rain")
+
+        flag_colour = {
+            "green": "green",
+            "yellow": "yellow",
+            "red": "red",
+            "black": "white on black",
+        }.get(wbgt_flag or "green", "green")
+        flag_str = f" [{flag_colour}]●[/{flag_colour}]" if wbgt_flag else ""
+        if weather_parts:
+            console.print(f"  Weather{flag_str}   {',  '.join(weather_parts)}")
+
+        wap_fmt = weather.get("wap_fmt")
+        wap_pct = weather.get("wap_factor_pct")
+        if wap_fmt and wap_pct is not None:
+            direction = "harder" if wap_pct > 0 else "easier"
+            console.print(
+                f"  Adj Pace   {wap_fmt}  [dim]({wap_pct:+.1f}% conditions {direction})[/dim]"
+            )
+
     console.print()
+
+    # Tip footer — show available sub-commands
+    sport = activity.get("sport_type") or ""
+    is_run = sport in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
+    tips = []
+    if is_run and activity.get("km_splits"):
+        tips.append("--splits")
+    if activity.get("workout"):
+        tips.append("--workout")
+    if activity.get("analytics") or activity.get("km_splits"):
+        tips.append("--chart")
+    if tips:
+        aid = activity.get("strava_activity_id") or ""
+        tip_flags = "  ·  ".join(f"fitops activities get {aid} {f}" for f in tips)
+        console.print(f"[dim]  tip: {tip_flags}[/dim]")
+        console.print()
 
 
 def print_laps_table(laps: list[dict], activity_id: int) -> None:
@@ -173,8 +241,178 @@ def print_streams_summary(streams: dict, activity_id: int) -> None:
     console.print()
 
 
+def print_splits_table(splits: list[dict], activity_id: int) -> None:
+    """Print per-km splits as a Rich table."""
+    if not splits:
+        console.print(
+            "[dim]No splits available (requires streams for a running activity).[/dim]"
+        )
+        return
+
+    has_true_pace = any(s.get("avg_true_pace") for s in splits)
+    has_hr = any(s.get("avg_hr") for s in splits)
+    has_cad = any(s.get("avg_cad") for s in splits)
+    has_elev = any(
+        s.get("elev_gain") is not None or s.get("elev_loss") is not None for s in splits
+    )
+
+    console.print(f"\n[bold]Km Splits[/bold]  (activity {activity_id})\n")
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Km", justify="right")
+    table.add_column("Pace", justify="right")
+    if has_true_pace:
+        table.add_column("True Pace", justify="right")
+    if has_hr:
+        table.add_column("HR", justify="right")
+    if has_cad:
+        table.add_column("Cad", justify="right")
+    if has_elev:
+        table.add_column("Elev+", justify="right")
+        table.add_column("Elev−", justify="right")
+
+    for s in splits:
+        label = s.get("label") or str(s.get("km", ""))
+        pace = s.get("pace") or "-"
+        row = [label, pace]
+        if has_true_pace:
+            tp = s.get("avg_true_pace") or "-"
+            row.append(tp)
+        if has_hr:
+            hr = str(s["avg_hr"]) if s.get("avg_hr") is not None else "-"
+            row.append(hr)
+        if has_cad:
+            cad = str(s["avg_cad"]) if s.get("avg_cad") is not None else "-"
+            row.append(cad)
+        if has_elev:
+            gain = f"+{s['elev_gain']}m" if s.get("elev_gain") is not None else "-"
+            loss = f"-{s['elev_loss']}m" if s.get("elev_loss") is not None else "-"
+            row.extend([gain, loss])
+        table.add_row(*row)
+
+    console.print(table)
+
+
+def print_activity_workout_compliance(activity: dict) -> None:
+    """Print linked workout plan and compliance summary."""
+    workout = activity.get("workout")
+    if not workout:
+        console.print("[dim]No linked workout for this activity.[/dim]")
+        return
+
+    compliance_pct = workout.get("compliance_pct")
+    pct_str = f"{compliance_pct}%" if compliance_pct is not None else "-"
+    console.print(
+        f"\n[bold]{workout.get('name', 'Workout')}[/bold]  compliance: {pct_str}\n"
+    )
+
+    segs = workout.get("segments") or []
+    if not segs:
+        console.print("[dim]No segments.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Segment")
+    table.add_column("Target", justify="right")
+    table.add_column("Actual Pace", justify="right")
+    table.add_column("Actual HR", justify="right")
+    table.add_column("Compliance", justify="right")
+
+    for seg in segs:
+        name = seg.get("name") or "-"
+        target = seg.get("target_description") or seg.get("target_pace") or "-"
+        actuals = seg.get("actuals") or {}
+        actual_pace = (
+            actuals.get("avg_pace_formatted") or seg.get("avg_pace_per_km") or "-"
+        )
+        avg_hr = actuals.get("avg_heartrate")
+        hr_str = str(round(avg_hr)) if avg_hr else "-"
+        seg_compliance = seg.get("compliance_pct")
+        compliance_str = f"{seg_compliance}%" if seg_compliance is not None else "-"
+        table.add_row(name, str(target), str(actual_pace), hr_str, compliance_str)
+
+    console.print(table)
+
+
+def print_workout_splits(activity: dict) -> None:
+    """Print km splits segmented by workout plan intervals."""
+    workout = activity.get("workout")
+    km_splits = activity.get("km_splits") or []
+
+    if not workout:
+        console.print("[dim]No linked workout — showing standard km splits.[/dim]")
+        print_splits_table(km_splits, activity.get("strava_activity_id", 0))
+        return
+
+    if not km_splits:
+        console.print("[dim]No km splits available (requires streams).[/dim]")
+        return
+
+    segs = workout.get("segments") or []
+    if not segs:
+        print_splits_table(km_splits, activity.get("strava_activity_id", 0))
+        return
+
+    has_true_pace = any(s.get("avg_true_pace") for s in km_splits)
+    has_hr = any(s.get("avg_hr") for s in km_splits)
+
+    console.print(
+        f"\n[bold]{workout.get('name', 'Workout')}[/bold] — km splits by interval\n"
+    )
+
+    for seg in segs:
+        seg_name = seg.get("name") or "Segment"
+        start_km = seg.get("start_index")
+        end_km = seg.get("end_index")
+
+        actuals = seg.get("actuals") or {}
+        actual_pace = (
+            actuals.get("avg_pace_formatted") or seg.get("avg_pace_per_km") or "-"
+        )
+        compliance_pct = seg.get("compliance_pct")
+        pct_str = (
+            f" | compliance: {compliance_pct}%" if compliance_pct is not None else ""
+        )
+
+        console.print(f"  [bold]{seg_name}[/bold]  avg pace: {actual_pace}{pct_str}")
+
+        # Filter km splits that fall within this segment's stream index range
+        if start_km is not None and end_km is not None:
+            # km_splits are 1-indexed; start_index/end_index are stream array indices
+            # Map stream indices to approximate km numbers
+            seg_splits = [
+                s
+                for s in km_splits
+                if start_km <= (s.get("km", 0) - 1) * 1000 <= end_km
+            ]
+        else:
+            seg_splits = km_splits
+
+        if seg_splits:
+            table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
+            table.add_column("Km", justify="right")
+            table.add_column("Pace", justify="right")
+            if has_true_pace:
+                table.add_column("True Pace", justify="right")
+            if has_hr:
+                table.add_column("HR", justify="right")
+
+            for s in seg_splits:
+                label = s.get("label") or str(s.get("km", ""))
+                pace = s.get("pace") or "-"
+                row = [label, pace]
+                if has_true_pace:
+                    row.append(s.get("avg_true_pace") or "-")
+                if has_hr:
+                    hr = str(s["avg_hr"]) if s.get("avg_hr") is not None else "-"
+                    row.append(hr)
+                table.add_row(*row)
+            console.print(table)
+
+    console.print()
+
+
 def print_stream_chart(
-    activity_id: int,
+    _activity_id: int,
     stream_type: str,
     data: list[float],
     x_values: list[float],

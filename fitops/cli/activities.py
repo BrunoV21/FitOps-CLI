@@ -18,8 +18,10 @@ from fitops.output.formatter import format_activity_row, make_meta
 from fitops.output.text_formatter import (
     print_activities_table,
     print_activity_detail,
+    print_activity_workout_compliance,
+    print_splits_table,
     print_stream_chart,
-    print_streams_summary,
+    print_workout_splits,
 )
 from fitops.strava.client import StravaClient
 from fitops.utils.exceptions import NotAuthenticatedError
@@ -190,8 +192,59 @@ def get_activity(
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),
+    show_splits: bool = typer.Option(
+        False, "--splits", help="Show per-km splits table (runs only)."
+    ),
+    show_workout: bool = typer.Option(
+        False, "--workout", help="Show linked workout plan + compliance."
+    ),
+    chart: bool = typer.Option(
+        False, "--chart", help="Render an activity stream as an ASCII chart."
+    ),
+    stream: str | None = typer.Option(
+        None,
+        "--stream",
+        help=(
+            "Stream to chart: heartrate, pace, velocity_smooth, speed, gap, wap, "
+            "true_pace, altitude, distance, cadence, watts."
+        ),
+    ),
+    x_axis: str = typer.Option(
+        "time",
+        "--x-axis",
+        help="X-axis source: 'time' (seconds) or 'distance' (meters).",
+    ),
+    from_val: float | None = typer.Option(
+        None,
+        "--from",
+        help="Start of x-axis zoom range (seconds for time, meters for distance).",
+    ),
+    to_val: float | None = typer.Option(
+        None,
+        "--to",
+        help="End of x-axis zoom range (seconds for time, meters for distance).",
+    ),
+    chart_width: int | None = typer.Option(
+        None,
+        "--width",
+        min=3,
+        help="Chart width in characters. Defaults to terminal width minus margins.",
+    ),
+    chart_height: int = typer.Option(
+        20, "--height", min=3, help="Chart height in rows."
+    ),
+    resolution: int | None = typer.Option(
+        None,
+        "--resolution",
+        min=1,
+        help="Number of data buckets for the chart. Defaults to width (full detail).",
+    ),
 ) -> None:
-    """Get detailed info for a single activity."""
+    """Get detailed info for a single activity.
+
+    Add --splits for per-km splits, --workout for linked plan compliance,
+    or --chart to render a stream as an ASCII chart.
+    """
     settings = get_settings()
     try:
         settings.require_auth()
@@ -376,7 +429,9 @@ def get_activity(
                 }
 
         # Per-km splits and average GAP (runs only)
-        km_splits = compute_km_splits(streams, row.sport_type or "")
+        km_splits = compute_km_splits(
+            streams, row.sport_type or "", true_pace=streams.get("true_pace")
+        )
         if km_splits is not None:
             formatted["km_splits"] = km_splits
         avg_gap = compute_avg_gap(streams, row.sport_type or "")
@@ -387,14 +442,16 @@ def get_activity(
         if row.laps_fetched:
             laps = await get_activity_laps(row.id)
             is_run = (row.sport_type or "") in {
-                "Run", "TrailRun", "Walk", "Hike", "VirtualRun"
+                "Run",
+                "TrailRun",
+                "Walk",
+                "Hike",
+                "VirtualRun",
             }
             lap_rows = []
             for lap in laps:
                 spd = lap.average_speed_ms
-                pace_s = (
-                    round(1000.0 / spd, 1) if spd and spd > 0 and is_run else None
-                )
+                pace_s = round(1000.0 / spd, 1) if spd and spd > 0 and is_run else None
                 m, s_rem = divmod(int(pace_s), 60) if pace_s else (None, None)
                 lap_rows.append(
                     {
@@ -449,7 +506,11 @@ def get_activity(
                 )
 
             is_run = (row.sport_type or "") in {
-                "Run", "TrailRun", "Walk", "Hike", "VirtualRun"
+                "Run",
+                "TrailRun",
+                "Walk",
+                "Hike",
+                "VirtualRun",
             }
             wap_fmt = None
             if row.average_speed_ms and row.average_speed_ms > 0:
@@ -484,7 +545,9 @@ def get_activity(
             if tp_pairs:
                 paces, vels = zip(*tp_pairs, strict=False)
                 total_wt = sum(vels)
-                mean_tp = sum(p * v for p, v in zip(paces, vels, strict=False)) / total_wt
+                mean_tp = (
+                    sum(p * v for p, v in zip(paces, vels, strict=False)) / total_wt
+                )
                 m_tp, s_tp = divmod(int(round(mean_tp)), 60)
                 true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
 
@@ -546,89 +609,157 @@ def get_activity(
                 ],
             }
 
-        return {"_meta": make_meta(total_count=1), "activity": formatted}
-
-    output = asyncio.run(_fetch())
-    if json_output:
-        typer.echo(json.dumps(output, indent=2, default=str))
-    else:
-        print_activity_detail(output["activity"])
-
-
-@app.command("streams")
-def get_streams(
-    activity_id: int = typer.Argument(..., help="Strava activity ID."),
-    fetch_fresh: bool = typer.Option(
-        False, "--fresh", help="Re-fetch streams from Strava API."
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output raw JSON instead of formatted text."
-    ),
-) -> None:
-    """Get activity stream data (heartrate, pace, power, etc.)."""
-    settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1)
-
-    init_db()
-
-    async def _fetch():
-        async with get_async_session() as session:
-            result = await session.execute(
-                select(Activity).where(Activity.strava_id == activity_id)
-            )
-            activity = result.scalar_one_or_none()
-            if not activity:
-                typer.echo(f"Activity {activity_id} not found locally.", err=True)
-                raise typer.Exit(1)
-
-            if fetch_fresh or not activity.streams_fetched:
-                client = StravaClient()
-                stream_data = await client.get_activity_streams(activity_id)
-                for stream_type, stream_obj in stream_data.items():
-                    data_list = (
-                        stream_obj.get("data", [])
-                        if isinstance(stream_obj, dict)
-                        else stream_obj
-                    )
-                    existing = await session.execute(
-                        select(ActivityStream).where(
-                            ActivityStream.activity_id == activity.id,
-                            ActivityStream.stream_type == stream_type,
-                        )
-                    )
-                    existing_row = existing.scalar_one_or_none()
-                    if existing_row is None:
-                        session.add(
-                            ActivityStream.from_strava_stream(
-                                activity.id, stream_type, data_list
-                            )
-                        )
-                activity.streams_fetched = True
-
-            streams_result = await session.execute(
-                select(ActivityStream).where(ActivityStream.activity_id == activity.id)
-            )
-            streams = streams_result.scalars().all()
-            activity_id_val = activity_id
-
         return {
-            "_meta": make_meta(),
-            "activity_strava_id": activity_id_val,
-            "streams": {
-                s.stream_type: {"data_length": s.data_length, "data": s.data}
-                for s in streams
-            },
+            "_meta": make_meta(total_count=1),
+            "activity": formatted,
+            "_streams": streams,
+            "_sport_type": row.sport_type or "",
         }
 
-    out = asyncio.run(_fetch())
+    output = asyncio.run(_fetch())
+    activity = output["activity"]
+
     if json_output:
-        typer.echo(json.dumps(out, indent=2, default=str))
+        typer.echo(
+            json.dumps(
+                {"_meta": output["_meta"], "activity": activity}, indent=2, default=str
+            )
+        )
+        return
+
+    if chart:
+        # Chart mode — render ASCII chart for the requested stream
+        _Y_MARGIN = 9
+        effective_width: int
+        if chart_width is not None:
+            effective_width = chart_width
+        else:
+            term_cols = shutil.get_terminal_size(fallback=(80, 24)).columns
+            effective_width = max(20, term_cols - _Y_MARGIN)
+
+        streams_by_type: dict = output["_streams"]
+        sport_type_val: str = output["_sport_type"]
+        is_cycling = sport_type_val in _CYCLING_SPORTS
+
+        requested_stream = stream
+        if requested_stream == "pace":
+            requested_stream = "velocity_smooth"
+
+        if requested_stream is not None and requested_stream not in _VALID_STREAMS:
+            typer.echo(
+                f"Unknown stream '{requested_stream}'. Valid options: {', '.join(sorted(_VALID_STREAMS))}",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        if x_axis not in ("time", "distance"):
+            typer.echo("--x-axis must be 'time' or 'distance'.", err=True)
+            raise typer.Exit(1)
+
+        chosen_stream = requested_stream
+        if chosen_stream is None:
+            chosen_stream = (
+                "heartrate" if "heartrate" in streams_by_type else "velocity_smooth"
+            )
+
+        display_stream = chosen_stream
+        if chosen_stream == "velocity_smooth" and is_cycling:
+            display_stream = "speed"
+
+        derived_streams = {"gap", "wap", "true_pace"}
+
+        if chosen_stream in derived_streams:
+            if chosen_stream == "true_pace":
+                if "true_pace" not in streams_by_type:
+                    typer.echo(
+                        "true_pace stream not available (requires streams + weather data).",
+                        err=True,
+                    )
+                    raise typer.Exit(1)
+                y_data: list[float] = [v or 0.0 for v in streams_by_type["true_pace"]]
+            elif chosen_stream == "gap":
+                if "velocity_smooth" not in streams_by_type:
+                    typer.echo("Stream 'velocity_smooth' required for 'gap'.", err=True)
+                    raise typer.Exit(1)
+                if "grade_smooth" not in streams_by_type:
+                    typer.echo("Stream 'grade_smooth' required for GAP.", err=True)
+                    raise typer.Exit(1)
+                vel = streams_by_type["velocity_smooth"]
+                grade = streams_by_type["grade_smooth"]
+                n_align = min(len(vel), len(grade))
+                y_data = _compute_gap(vel[:n_align], grade[:n_align])
+            else:  # wap
+                if "velocity_smooth" not in streams_by_type:
+                    typer.echo("Stream 'velocity_smooth' required for 'wap'.", err=True)
+                    raise typer.Exit(1)
+                y_data = _compute_wap(streams_by_type["velocity_smooth"])
+        elif chosen_stream == "speed":
+            if "velocity_smooth" not in streams_by_type:
+                typer.echo("Stream 'velocity_smooth' not available.", err=True)
+                raise typer.Exit(1)
+            y_data = streams_by_type["velocity_smooth"]
+            display_stream = "speed"
+        else:
+            if chosen_stream not in streams_by_type:
+                available = ", ".join(sorted(streams_by_type.keys()))
+                typer.echo(
+                    f"Stream '{chosen_stream}' not available. Available: {available}",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            y_data = streams_by_type[chosen_stream]
+
+        if x_axis == "time":
+            if "time" in streams_by_type:
+                x_values: list[float] = [float(v) for v in streams_by_type["time"]]
+                x_label = "time (s)"
+            else:
+                x_values = list(range(len(y_data)))
+                x_label = "time (s)"
+        else:
+            if "distance" not in streams_by_type:
+                typer.echo("Distance stream not available.", err=True)
+                raise typer.Exit(1)
+            x_values = [float(v) for v in streams_by_type["distance"]]
+            x_label = "distance (m)"
+
+        n = min(len(y_data), len(x_values))
+        y_data = y_data[:n]
+        x_values = x_values[:n]
+
+        if from_val is not None or to_val is not None:
+            indices = [
+                i
+                for i, xv in enumerate(x_values)
+                if (from_val is None or xv >= from_val)
+                and (to_val is None or xv <= to_val)
+            ]
+            if not indices:
+                typer.echo("Zoom range produces no data points.", err=True)
+                raise typer.Exit(1)
+            y_data = [y_data[i] for i in indices]
+            x_values = [x_values[i] for i in indices]
+
+        print_stream_chart(
+            activity_id,
+            display_stream,
+            y_data,
+            x_values,
+            x_label,
+            effective_width,
+            chart_height,
+            resolution,
+        )
+        return
+
+    if show_workout and show_splits:
+        print_workout_splits(activity)
+    elif show_workout:
+        print_activity_workout_compliance(activity)
+    elif show_splits:
+        print_splits_table(activity.get("km_splits") or [], activity_id)
     else:
-        print_streams_summary(out["streams"], activity_id)
+        print_activity_detail(activity)
 
 
 _VALID_STREAMS = frozenset(
@@ -639,6 +770,7 @@ _VALID_STREAMS = frozenset(
         "speed",
         "gap",
         "wap",
+        "true_pace",
         "altitude",
         "distance",
         "cadence",
@@ -689,233 +821,3 @@ def _compute_wap(velocity: list[float], window: int = 30) -> list[float]:
         vals = [v for v in velocity[lo:hi] if v is not None and v > 0]
         result.append(sum(vals) / len(vals) if vals else 0.0)
     return result
-
-
-@app.command("chart")
-def chart_activity(
-    activity_id: int = typer.Argument(..., help="Strava activity ID."),
-    stream: str | None = typer.Option(
-        None,
-        "--stream",
-        help=(
-            "Stream to chart: heartrate, pace, velocity_smooth, speed, "
-            "gap (grade-adjusted pace), wap (smoothed pace), "
-            "altitude, distance, cadence, watts. "
-            "pace/velocity_smooth auto-display as speed (km/h) for cycling activities."
-        ),
-    ),
-    x_axis: str = typer.Option(
-        "time",
-        "--x-axis",
-        help="X-axis source: 'time' (seconds) or 'distance' (meters).",
-    ),
-    from_val: float | None = typer.Option(
-        None,
-        "--from",
-        help="Start of x-axis zoom range (seconds for time, meters for distance).",
-    ),
-    to_val: float | None = typer.Option(
-        None,
-        "--to",
-        help="End of x-axis zoom range (seconds for time, meters for distance).",
-    ),
-    width: int | None = typer.Option(
-        None,
-        "--width",
-        min=3,
-        help="Chart width in characters. Defaults to terminal width minus margins.",
-    ),
-    height: int = typer.Option(20, "--height", min=3, help="Chart height in rows."),
-    resolution: int | None = typer.Option(
-        None,
-        "--resolution",
-        min=1,
-        help=(
-            "Number of data buckets. Lower = smoother (interpolated) curve; "
-            "higher = more detail. Max useful value equals --width. "
-            "Defaults to width (full detail)."
-        ),
-    ),
-) -> None:
-    """Render an activity stream as an ASCII chart in the terminal."""
-    settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1)
-
-    init_db()
-
-    # Auto-detect terminal width, leaving room for the Y_MARGIN (8 chars) + 1 safety col.
-    _Y_MARGIN = 9
-    effective_width: int
-    if width is not None:
-        effective_width = width
-    else:
-        term_cols = shutil.get_terminal_size(fallback=(80, 24)).columns
-        effective_width = max(20, term_cols - _Y_MARGIN)
-
-    # Warn if resolution is capped by width (user might not realise)
-    if resolution is not None and resolution > effective_width:
-        typer.echo(
-            f"[dim]Note: --resolution {resolution} capped at --width {effective_width} "
-            f"(can't have more buckets than columns).[/dim]"
-        )
-
-    # Normalise pace alias → velocity_smooth
-    requested_stream = stream
-    if requested_stream == "pace":
-        requested_stream = "velocity_smooth"
-
-    if requested_stream is not None and requested_stream not in _VALID_STREAMS:
-        typer.echo(
-            f"Unknown stream '{requested_stream}'. Valid options: {', '.join(sorted(_VALID_STREAMS))}",
-            err=True,
-        )
-        raise typer.Exit(1)
-
-    if x_axis not in ("time", "distance"):
-        typer.echo("--x-axis must be 'time' or 'distance'.", err=True)
-        raise typer.Exit(1)
-
-    async def _fetch() -> None:
-        async with get_async_session() as session:
-            act_result = await session.execute(
-                select(Activity).where(Activity.strava_id == activity_id)
-            )
-            activity = act_result.scalar_one_or_none()
-
-        if activity is None:
-            typer.echo(
-                f"Activity {activity_id} not found locally. Run `fitops sync run` first.",
-                err=True,
-            )
-            raise typer.Exit(1)
-
-        if not activity.streams_fetched:
-            typer.echo(
-                f"Streams not synced for activity {activity_id}. "
-                f"Run: fitops activities streams {activity_id}",
-                err=True,
-            )
-            raise typer.Exit(1)
-
-        async with get_async_session() as session:
-            streams_result = await session.execute(
-                select(ActivityStream).where(ActivityStream.activity_id == activity.id)
-            )
-            streams_by_type = {
-                s.stream_type: s.data for s in streams_result.scalars().all()
-            }
-
-        is_cycling = activity.sport_type in _CYCLING_SPORTS
-
-        # Default stream selection
-        chosen_stream = requested_stream
-        if chosen_stream is None:
-            chosen_stream = (
-                "heartrate" if "heartrate" in streams_by_type else "velocity_smooth"
-            )
-
-        # For velocity_smooth on cycling → auto-upgrade to speed (km/h) display
-        display_stream = chosen_stream
-        if chosen_stream == "velocity_smooth" and is_cycling:
-            display_stream = "speed"
-
-        # Derived streams: gap and wap are computed, not stored
-        derived_streams = {"gap", "wap"}
-
-        if chosen_stream in derived_streams:
-            if "velocity_smooth" not in streams_by_type:
-                typer.echo(
-                    f"Stream 'velocity_smooth' required for '{chosen_stream}' but not available.",
-                    err=True,
-                )
-                raise typer.Exit(1)
-            vel = streams_by_type["velocity_smooth"]
-
-            if chosen_stream == "gap":
-                if "grade_smooth" not in streams_by_type:
-                    typer.echo(
-                        "Stream 'grade_smooth' required for GAP but not available for this activity.",
-                        err=True,
-                    )
-                    raise typer.Exit(1)
-                grade = streams_by_type["grade_smooth"]
-                n_align = min(len(vel), len(grade))
-                y_data: list[float] = _compute_gap(vel[:n_align], grade[:n_align])
-            else:  # wap
-                y_data = _compute_wap(vel)
-
-        elif chosen_stream == "speed":
-            # Explicit speed request: use velocity_smooth data, display as km/h
-            if "velocity_smooth" not in streams_by_type:
-                typer.echo(
-                    "Stream 'velocity_smooth' not available for this activity.",
-                    err=True,
-                )
-                raise typer.Exit(1)
-            y_data = streams_by_type["velocity_smooth"]
-            display_stream = "speed"
-
-        else:
-            if chosen_stream not in streams_by_type:
-                available = ", ".join(sorted(streams_by_type.keys()))
-                typer.echo(
-                    f"Stream '{chosen_stream}' not available for this activity. "
-                    f"Available: {available}",
-                    err=True,
-                )
-                raise typer.Exit(1)
-            y_data = streams_by_type[chosen_stream]
-
-        # Resolve x-values
-        if x_axis == "time":
-            if "time" in streams_by_type:
-                x_values: list[float] = [float(v) for v in streams_by_type["time"]]
-                x_label = "time (s)"
-            else:
-                typer.echo(
-                    "[dim]No time stream found; using sample index as x-axis.[/dim]"
-                )
-                x_values = list(range(len(y_data)))
-                x_label = "time (s)"
-        else:  # distance
-            if "distance" not in streams_by_type:
-                typer.echo("Distance stream not available for this activity.", err=True)
-                raise typer.Exit(1)
-            x_values = [float(v) for v in streams_by_type["distance"]]
-            x_label = "distance (m)"
-
-        # Align lengths
-        n = min(len(y_data), len(x_values))
-        y_data = y_data[:n]
-        x_values = x_values[:n]
-
-        # Apply zoom
-        if from_val is not None or to_val is not None:
-            indices = [
-                i
-                for i, xv in enumerate(x_values)
-                if (from_val is None or xv >= from_val)
-                and (to_val is None or xv <= to_val)
-            ]
-            if not indices:
-                typer.echo("Zoom range produces no data points.", err=True)
-                raise typer.Exit(1)
-            y_data = [y_data[i] for i in indices]
-            x_values = [x_values[i] for i in indices]
-
-        print_stream_chart(
-            activity_id,
-            display_stream,
-            y_data,
-            x_values,
-            x_label,
-            effective_width,
-            height,
-            resolution,
-        )
-
-    asyncio.run(_fetch())
