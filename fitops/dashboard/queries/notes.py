@@ -26,7 +26,13 @@ async def get_all_notes(
         notes = [n for n in notes if n.activity_id == activity_id]
     if q:
         q_lower = q.lower()
-        notes = [n for n in notes if q_lower in n.title.lower()]
+        notes = [
+            n
+            for n in notes
+            if q_lower in n.title.lower()
+            or q_lower in (n.body_preview or "").lower()
+            or any(q_lower in t.lower() for t in n.tags_list())
+        ]
 
     return notes
 
