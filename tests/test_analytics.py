@@ -1,6 +1,7 @@
 """Tests for analytics calculations."""
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
@@ -277,3 +278,102 @@ def test_vo2max_result_default_method():
     # LT1 is no longer measured from streams; only LT2 measurement field exists
     assert hasattr(result, "measured_lt2_pace_s")
     assert not hasattr(result, "measured_lt1_pace_s")
+
+
+# --- Training scores ---
+
+
+def _make_run(moving_time_s: int, average_speed_ms: float) -> SimpleNamespace:
+    return SimpleNamespace(
+        sport_type="Run",
+        moving_time_s=moving_time_s,
+        average_speed_ms=average_speed_ms,
+        average_watts=None,
+        average_heartrate=None,
+    )
+
+
+def _make_ride(moving_time_s: int, average_watts: float) -> SimpleNamespace:
+    return SimpleNamespace(
+        sport_type="Ride",
+        moving_time_s=moving_time_s,
+        average_speed_ms=None,
+        average_watts=average_watts,
+        average_heartrate=None,
+    )
+
+
+def _make_settings(threshold_pace_per_km_s=None, ftp=None, lthr=None, max_hr=None, age=None) -> SimpleNamespace:
+    return SimpleNamespace(
+        threshold_pace_per_km_s=threshold_pace_per_km_s,
+        ftp=ftp,
+        lthr=lthr,
+        max_hr=max_hr,
+        age=age,
+    )
+
+
+def test_aerobic_score_easy_run():
+    """Aerobic score for easy run: 0.96h at IF≈0.684 → ~3.2 (calibration point)."""
+    from fitops.analytics.training_scores import compute_aerobic_score
+
+    # avg pace = 1000/speed_ms = threshold/IF → speed_ms = 1000*IF/threshold
+    # threshold=234s/km, IF=0.684 → avg_pace=342s/km → speed=1000/342=2.924 m/s
+    act = _make_run(moving_time_s=int(0.96 * 3600), average_speed_ms=2.924)
+    settings = _make_settings(threshold_pace_per_km_s=234)
+    score = compute_aerobic_score(act, settings)
+    assert 2.9 <= score <= 3.5, f"expected ~3.2, got {score}"
+
+
+def test_aerobic_score_threshold_run():
+    """Aerobic score for threshold run: 0.78h IF=1.002 → ~3.8 (calibration point)."""
+    from fitops.analytics.training_scores import compute_aerobic_score
+
+    # speed = 1000*1.002/234 = 4.282 m/s → avg_pace = 233.6 s/km
+    act = _make_run(moving_time_s=int(0.78 * 3600), average_speed_ms=4.282)
+    settings = _make_settings(threshold_pace_per_km_s=234)
+    score = compute_aerobic_score(act, settings)
+    assert 3.5 <= score <= 4.1, f"expected ~3.8, got {score}"
+
+
+def test_anaerobic_score_run_calibration_subthreshold():
+    """Anaerobic score for sub-threshold run: 0.98h IF=0.811 → 3.4 (calibration point)."""
+    from fitops.analytics.training_scores import compute_anaerobic_score
+
+    # IF=0.811 → avg_pace=threshold/IF → speed=1000*0.811/234=3.466 m/s
+    act = _make_run(moving_time_s=int(0.98 * 3600), average_speed_ms=3.466)
+    settings = _make_settings(threshold_pace_per_km_s=234)
+    score = compute_anaerobic_score(act, settings)
+    assert score == 3.4, f"expected 3.4, got {score}"
+
+
+def test_anaerobic_score_run_calibration_threshold():
+    """Anaerobic score for threshold run: 0.78h IF=1.002 → 4.5 (calibration point)."""
+    from fitops.analytics.training_scores import compute_anaerobic_score
+
+    act = _make_run(moving_time_s=int(0.78 * 3600), average_speed_ms=4.282)
+    settings = _make_settings(threshold_pace_per_km_s=234)
+    score = compute_anaerobic_score(act, settings)
+    assert score == 4.5, f"expected 4.5, got {score}"
+
+
+def test_anaerobic_score_ride_calibration():
+    """Anaerobic score for ride: 2.22h IF=0.812 → 1.7 (calibration point)."""
+    from fitops.analytics.training_scores import compute_anaerobic_score
+
+    # watts = IF * FTP = 0.812 * 250 = 203
+    act = _make_ride(moving_time_s=int(2.22 * 3600), average_watts=203)
+    settings = _make_settings(ftp=250)
+    score = compute_anaerobic_score(act, settings)
+    assert score == 1.7, f"expected 1.7, got {score}"
+
+
+def test_anaerobic_score_run_higher_than_ride_same_if():
+    """Runs produce more anaerobic stress than rides at the same IF and duration."""
+    from fitops.analytics.training_scores import compute_anaerobic_score
+
+    run = _make_run(moving_time_s=3600, average_speed_ms=3.5)
+    ride = _make_ride(moving_time_s=3600, average_watts=200)
+    settings_run = _make_settings(threshold_pace_per_km_s=int(1000 / (3.5 / 0.9)))
+    settings_ride = _make_settings(ftp=int(200 / 0.9))
+    assert compute_anaerobic_score(run, settings_run) > compute_anaerobic_score(ride, settings_ride)

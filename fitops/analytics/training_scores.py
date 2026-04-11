@@ -66,14 +66,15 @@ def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> fl
     """
     Anaerobic training score (unbounded, typically 0–6+).
 
-    Power-law model calibrated against Huawei watch reference values:
-      score = 4.7 × IF^5.8 × duration_h^0.24
+    Sport-specific power-law models calibrated against Huawei watch reference values.
 
-    The steep IF exponent (5.8) captures how anaerobic stress ramps sharply
-    above threshold — a small intensity increase drives a large anaerobic response.
+    Running: score = 4.77 × IF^1.59 × duration_h^0.24
+      Calibration: 0.98h run IF=0.811 → 3.4, 0.78h threshold run IF=1.002 → 4.5
 
-    Calibration data points:
-      2.22h ride IF=0.812 → 1.7, 0.78h threshold run IF=1.002 → 4.5
+    Cycling: score = 4.7 × IF^5.8 × duration_h^0.24
+      Calibration: 2.22h ride IF=0.812 → 1.7
+      The steep IF exponent captures how cycling anaerobic stress ramps sharply
+      above threshold.
     """
     duration_h = (activity.moving_time_s or 0) / 3600.0
     if duration_h <= 0:
@@ -83,4 +84,37 @@ def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> fl
     if intensity <= 0:
         return 0.0
 
+    sport = activity.sport_type or ""
+    if sport in RUN_TYPES:
+        return round(4.77 * (intensity**1.59) * (duration_h**0.24), 1)
     return round(4.7 * (intensity**5.8) * (duration_h**0.24), 1)
+
+
+def aerobic_label(score: float) -> str:
+    """Human-readable label for an aerobic training score."""
+    if score >= 4.5:
+        return "Exceptional aerobic session"
+    if score >= 3.5:
+        return "Strong aerobic stimulus"
+    if score >= 2.5:
+        return "Solid aerobic base work"
+    if score >= 1.5:
+        return "Moderate aerobic benefit"
+    if score >= 0.5:
+        return "Light aerobic stimulus"
+    return "Minimal aerobic benefit"
+
+
+def anaerobic_label(score: float) -> str:
+    """Human-readable label for an anaerobic training score."""
+    if score >= 4.5:
+        return "Race-intensity effort"
+    if score >= 3.5:
+        return "Hard anaerobic session"
+    if score >= 2.5:
+        return "Significant threshold stress"
+    if score >= 1.5:
+        return "Moderate anaerobic load"
+    if score >= 0.5:
+        return "Light anaerobic stimulus"
+    return "Minimal anaerobic stress"
