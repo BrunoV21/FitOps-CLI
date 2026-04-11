@@ -87,7 +87,9 @@ def profile(
                 "confidence_label": vo2max_result.confidence_label,
                 "based_on_activity": {
                     "name": vo2max_result.activity_name,
-                    "date": str(vo2max_result.activity_date) if vo2max_result.activity_date else None,
+                    "date": str(vo2max_result.activity_date)
+                    if vo2max_result.activity_date
+                    else None,
                     "distance_km": vo2max_result.distance_km,
                     "pace_per_km": vo2max_result.pace_per_km,
                 },

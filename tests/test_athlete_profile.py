@@ -93,11 +93,41 @@ _ZONES_DATA = {
         "max_hr_bpm": 190,
         "resting_hr_bpm": 45,
         "heart_rate_zones": [
-            {"zone": 1, "name": "Recovery", "min_bpm": 0, "max_bpm": 139, "description": "Active recovery"},
-            {"zone": 2, "name": "Aerobic", "min_bpm": 140, "max_bpm": 156, "description": "Aerobic base"},
-            {"zone": 3, "name": "Tempo", "min_bpm": 157, "max_bpm": 166, "description": "Comfortably hard"},
-            {"zone": 4, "name": "Threshold", "min_bpm": 167, "max_bpm": 176, "description": "Threshold effort"},
-            {"zone": 5, "name": "VO2max", "min_bpm": 177, "max_bpm": 999, "description": "High intensity"},
+            {
+                "zone": 1,
+                "name": "Recovery",
+                "min_bpm": 0,
+                "max_bpm": 139,
+                "description": "Active recovery",
+            },
+            {
+                "zone": 2,
+                "name": "Aerobic",
+                "min_bpm": 140,
+                "max_bpm": 156,
+                "description": "Aerobic base",
+            },
+            {
+                "zone": 3,
+                "name": "Tempo",
+                "min_bpm": 157,
+                "max_bpm": 166,
+                "description": "Comfortably hard",
+            },
+            {
+                "zone": 4,
+                "name": "Threshold",
+                "min_bpm": 167,
+                "max_bpm": 176,
+                "description": "Threshold effort",
+            },
+            {
+                "zone": 5,
+                "name": "VO2max",
+                "min_bpm": 177,
+                "max_bpm": 999,
+                "description": "High intensity",
+            },
         ],
         "thresholds": {
             "lt1_bpm": 156,
@@ -111,11 +141,46 @@ _ZONES_DATA = {
         },
     },
     "pace_zones": [
-        {"zone": 1, "name": "Easy", "min_s_per_km": 342, "max_s_per_km": None, "min_pace_fmt": "5:42", "max_pace_fmt": None},
-        {"zone": 2, "name": "Aerobic", "min_s_per_km": 318, "max_s_per_km": 342, "min_pace_fmt": "5:18", "max_pace_fmt": "5:42"},
-        {"zone": 3, "name": "Tempo", "min_s_per_km": 301, "max_s_per_km": 318, "min_pace_fmt": "5:01", "max_pace_fmt": "5:18"},
-        {"zone": 4, "name": "Threshold", "min_s_per_km": 283, "max_s_per_km": 301, "min_pace_fmt": "4:43", "max_pace_fmt": "5:01"},
-        {"zone": 5, "name": "VO2max", "min_s_per_km": None, "max_s_per_km": 283, "min_pace_fmt": None, "max_pace_fmt": "4:43"},
+        {
+            "zone": 1,
+            "name": "Easy",
+            "min_s_per_km": 342,
+            "max_s_per_km": None,
+            "min_pace_fmt": "5:42",
+            "max_pace_fmt": None,
+        },
+        {
+            "zone": 2,
+            "name": "Aerobic",
+            "min_s_per_km": 318,
+            "max_s_per_km": 342,
+            "min_pace_fmt": "5:18",
+            "max_pace_fmt": "5:42",
+        },
+        {
+            "zone": 3,
+            "name": "Tempo",
+            "min_s_per_km": 301,
+            "max_s_per_km": 318,
+            "min_pace_fmt": "5:01",
+            "max_pace_fmt": "5:18",
+        },
+        {
+            "zone": 4,
+            "name": "Threshold",
+            "min_s_per_km": 283,
+            "max_s_per_km": 301,
+            "min_pace_fmt": "4:43",
+            "max_pace_fmt": "5:01",
+        },
+        {
+            "zone": 5,
+            "name": "VO2max",
+            "min_s_per_km": None,
+            "max_s_per_km": 283,
+            "min_pace_fmt": None,
+            "max_pace_fmt": "4:43",
+        },
     ],
 }
 
@@ -190,13 +255,28 @@ def test_zones_json_max_hr_only_method():
 def test_profile_physiology_block_keys():
     """All expected physiology keys are present in the structure."""
     phys = _FULL_ATHLETE["physiology"]
-    for key in ("max_hr", "resting_hr", "lthr", "ftp", "lt1_pace", "lt2_pace", "vo2max_pace", "vo2max"):
+    for key in (
+        "max_hr",
+        "resting_hr",
+        "lthr",
+        "ftp",
+        "lt1_pace",
+        "lt2_pace",
+        "vo2max_pace",
+        "vo2max",
+    ):
         assert key in phys
 
 
 def test_profile_physiology_vo2max_keys():
     vo2max = _FULL_ATHLETE["physiology"]["vo2max"]
-    for key in ("estimate", "vdot", "confidence", "confidence_label", "based_on_activity"):
+    for key in (
+        "estimate",
+        "vdot",
+        "confidence",
+        "confidence_label",
+        "based_on_activity",
+    ):
         assert key in vo2max
 
 
