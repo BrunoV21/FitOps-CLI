@@ -243,8 +243,6 @@ def _compute_wap_stream(streams: dict, weather) -> list | None:
     return wap if any(x is not None for x in wap) else None
 
 
-
-
 def _downsample_streams(streams: dict, target: int = 500) -> dict:
     n = max((len(v) for v in streams.values()), default=0)
     if n <= target:
@@ -439,7 +437,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
-        km_splits = compute_km_splits(streams, activity.sport_type)
+        km_splits = compute_km_splits(
+            streams, activity.sport_type, true_pace=streams.get("true_pace")
+        )
         avg_gap = compute_avg_gap(streams, activity.sport_type)
 
         # Fetch all workouts for the assign selector
@@ -566,9 +566,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 if p and p > 0 and v and v > 0.1
             ]
             if tp_pairs:
-                paces, vels = zip(*tp_pairs)
+                paces, vels = zip(*tp_pairs, strict=False)
                 total_w = sum(vels)
-                mean_tp = sum(p * v for p, v in zip(paces, vels)) / total_w
+                mean_tp = (
+                    sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
+                )
                 m_tp, s_tp = divmod(int(round(mean_tp)), 60)
                 true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
             else:
@@ -583,9 +585,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 else:
                     wt_pairs = [(v, v) for v in vel_raw if v and v > 0.1]
                 if wt_pairs:
-                    gap_speeds, weights = zip(*wt_pairs)
+                    gap_speeds, weights = zip(*wt_pairs, strict=False)
                     total_w = sum(weights)
-                    mean_gap_ms = sum(gs * wt for gs, wt in zip(gap_speeds, weights)) / total_w
+                    mean_gap_ms = (
+                        sum(
+                            gs * wt for gs, wt in zip(gap_speeds, weights, strict=False)
+                        )
+                        / total_w
+                    )
                     gap_pace_s = 1000.0 / mean_gap_ms
                     heat_f = (
                         _pace_heat_factor(w.temperature_c, w.humidity_pct)

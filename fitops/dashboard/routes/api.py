@@ -90,7 +90,11 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
         # Rate limit: ~1 req/sec to stay under 100 req/15min
         if idx < total:
             await asyncio.sleep(1.0)
-    return {"streams_fetched": fetched, "errors": errors, "strava_ids": fetched_strava_ids}
+    return {
+        "streams_fetched": fetched,
+        "errors": errors,
+        "strava_ids": fetched_strava_ids,
+    }
 
 
 async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
@@ -118,7 +122,9 @@ async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
             # Archive API has ~5-day lag — fall back to forecast API for recent activities
             if weather is None:
                 date_str = act.start_date.strftime("%Y-%m-%d")
-                weather = await fetch_forecast_weather(lat, lng, date_str, act.start_date.hour)
+                weather = await fetch_forecast_weather(
+                    lat, lng, date_str, act.start_date.hour
+                )
             if weather:
                 tc = weather.get("temperature_c")
                 hum = weather.get("humidity_pct")
@@ -188,7 +194,9 @@ def register() -> APIRouter:
         result = await _fetch_streams(limit=limit, force=force)
         weather_result = None
         if result.get("strava_ids"):
-            weather_result = await _fetch_weather_for_new_activities(result["strava_ids"])
+            weather_result = await _fetch_weather_for_new_activities(
+                result["strava_ids"]
+            )
         return JSONResponse(
             {
                 "streams_fetched": result["streams_fetched"],
@@ -299,7 +307,9 @@ def register() -> APIRouter:
         weather = await fetch_activity_weather(lat, lng, row.start_date)
         if weather is None:
             date_str = row.start_date.strftime("%Y-%m-%d")
-            weather = await fetch_forecast_weather(lat, lng, date_str, row.start_date.hour)
+            weather = await fetch_forecast_weather(
+                lat, lng, date_str, row.start_date.hour
+            )
 
         if weather is None:
             return JSONResponse(

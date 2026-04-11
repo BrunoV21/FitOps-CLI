@@ -430,9 +430,11 @@
 {% endfor %}
 {% set pace_range = ns.max_s - ns.min_s %}
 
-{% set show_hr  = km_splits | selectattr('avg_hr')   | list | length > 0 %}
-{% set show_cad = km_splits | selectattr('avg_cad')  | list | length > 0 %}
-{% set show_alt = km_splits | selectattr('elev_gain') | list | length > 0 %}
+{% set show_hr         = km_splits | selectattr('avg_hr')        | list | length > 0 %}
+{% set show_cad        = km_splits | selectattr('avg_cad')       | list | length > 0 %}
+{% set show_alt        = km_splits | selectattr('elev_gain')     | list | length > 0 %}
+{% set show_elev_loss  = km_splits | selectattr('elev_loss')     | list | length > 0 %}
+{% set show_true_pace  = km_splits | selectattr('avg_true_pace') | list | length > 0 %}
 <div class="table-wrap" style="--delay:600ms;margin-bottom:1px;">
   <div class="splits-header">
     <p class="panel-label" style="margin:0;">Per-km Splits</p>
@@ -443,9 +445,11 @@
       <tr>
         <th>km</th>
         <th class="r">Pace</th>
+        {% if show_true_pace %}<th class="r">True Pace</th>{% endif %}
         {% if show_hr  %}<th class="r">Avg HR</th>{% endif %}
         {% if show_cad %}<th class="r">Cadence</th>{% endif %}
         {% if show_alt %}<th class="r">Elev +</th>{% endif %}
+        {% if show_elev_loss %}<th class="r">Elev −</th>{% endif %}
         <th></th>
       </tr>
     </thead>
@@ -464,9 +468,11 @@
       <tr{% if sp.partial %} style="opacity:0.65;"{% endif %}>
         <td style="color:var(--text-dim);">{{ sp.label }}</td>
         <td class="r" style="color:var(--text-primary);font-weight:600;">{{ sp.pace }}</td>
+        {% if show_true_pace %}<td class="r" style="color:var(--text-dim);">{% if sp.avg_true_pace %}{{ sp.avg_true_pace }}{% else %}—{% endif %}</td>{% endif %}
         {% if show_hr  %}<td class="r">{% if sp.avg_hr %}{{ sp.avg_hr }} bpm{% else %}—{% endif %}</td>{% endif %}
         {% if show_cad %}<td class="r">{% if sp.avg_cad %}{{ sp.avg_cad }} spm{% else %}—{% endif %}</td>{% endif %}
         {% if show_alt %}<td class="r">{% if sp.elev_gain %}+{{ sp.elev_gain }} m{% else %}—{% endif %}</td>{% endif %}
+        {% if show_elev_loss %}<td class="r" style="color:var(--accent-red);">{% if sp.elev_loss %}−{{ sp.elev_loss }} m{% else %}—{% endif %}</td>{% endif %}
         <td style="width:80px;">
           <div class="pace-bar {{ bar_cls }}" style="width:{{ bar_w }}px;"></div>
         </td>
