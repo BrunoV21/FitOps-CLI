@@ -6,15 +6,18 @@ import json
 import typer
 from sqlalchemy import select
 
+from fitops.analytics.athlete_settings import get_athlete_settings
+from fitops.analytics.pace_zones import compute_pace_zones
+from fitops.analytics.zones import compute_zones
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
 from fitops.output.formatter import make_meta
 from fitops.output.text_formatter import (
+    print_athlete_computed_zones,
     print_athlete_profile,
     print_athlete_stats,
-    print_athlete_zones,
     print_equipment_table,
 )
 from fitops.strava.client import StravaClient
@@ -52,6 +55,46 @@ def profile(
             )
             raise typer.Exit(1)
 
+        # Load local physiology settings
+        asettings = get_athlete_settings()
+        sd = asettings.to_dict()
+
+        def _fmt_pace(s: float | None) -> str | None:
+            if s is None:
+                return None
+            si = int(s)
+            return f"{si // 60}:{si % 60:02d}/km"
+
+        # Estimate VO2max from recent activities
+        from fitops.analytics.vo2max import estimate_vo2max
+
+        vo2max_result = await estimate_vo2max(athlete_id=settings.athlete_id)
+
+        physiology: dict = {
+            "max_hr": sd.get("max_hr"),
+            "resting_hr": sd.get("resting_hr"),
+            "lthr": sd.get("lthr"),
+            "ftp": sd.get("ftp"),
+            "lt1_pace": _fmt_pace(sd.get("lt1_pace_s")),
+            "lt2_pace": _fmt_pace(sd.get("threshold_pace_per_km_s")),
+            "vo2max_pace": _fmt_pace(sd.get("vo2max_pace_s")),
+        }
+        if vo2max_result:
+            physiology["vo2max"] = {
+                "estimate": vo2max_result.estimate,
+                "vdot": vo2max_result.vdot,
+                "confidence": vo2max_result.confidence,
+                "confidence_label": vo2max_result.confidence_label,
+                "based_on_activity": {
+                    "name": vo2max_result.activity_name,
+                    "date": str(vo2max_result.activity_date) if vo2max_result.activity_date else None,
+                    "distance_km": vo2max_result.distance_km,
+                    "pace_per_km": vo2max_result.pace_per_km,
+                },
+            }
+        else:
+            physiology["vo2max"] = None
+
         return {
             "_meta": make_meta(),
             "athlete": {
@@ -68,6 +111,7 @@ def profile(
                     "bikes": athlete.bikes,
                     "shoes": athlete.shoes,
                 },
+                "physiology": physiology,
             },
         }
 
@@ -110,24 +154,59 @@ def zones(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),
 ) -> None:
-    """Show HR and power zones configured in Strava."""
-    settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
+    """Show computed HR and pace zones from local physiology settings."""
+    asettings = get_athlete_settings()
+    method = asettings.best_zone_method()
+
+    if method == "none":
+        typer.echo(
+            "No zone parameters configured. Set LTHR: fitops analytics zones --set-lthr 165",
+            err=True,
+        )
         raise typer.Exit(1)
 
-    async def _fetch():
-        client = StravaClient()
-        data = await client.get_athlete_zones()
-        return {"_meta": make_meta(), "zones": data}
+    zone_result = compute_zones(
+        method=method,
+        lthr=asettings.lthr,
+        max_hr=asettings.max_hr,
+        resting_hr=asettings.resting_hr,
+    )
+    if zone_result is None:
+        typer.echo(f"Missing parameters for method '{method}'.", err=True)
+        raise typer.Exit(1)
 
-    out = asyncio.run(_fetch())
+    out: dict = {"_meta": make_meta(), "zones": zone_result.to_dict()}
+
+    def _inject_pace(key_fmt: str, key_s: str, pace_s: float | None) -> None:
+        if pace_s is not None:
+            out["zones"]["thresholds"][key_fmt] = (
+                f"{int(pace_s // 60)}:{int(pace_s % 60):02d}/km"
+            )
+            out["zones"]["thresholds"][key_s] = pace_s
+
+    _inject_pace("lt1_pace_fmt", "lt1_pace_s", asettings.lt1_pace_s)
+    _inject_pace("lt2_pace_fmt", "lt2_pace_s", asettings.threshold_pace_per_km_s)
+    _inject_pace("vo2max_pace_fmt", "vo2max_pace_s", asettings.vo2max_pace_s)
+
+    threshold_pace_s = asettings.threshold_pace_per_km_s
+    if threshold_pace_s:
+        pz = compute_pace_zones(int(threshold_pace_s))
+        out["pace_zones"] = [
+            {
+                "zone": z["zone"],
+                "name": z["name"],
+                "min_s_per_km": z.get("min_s_per_km"),
+                "max_s_per_km": z.get("max_s_per_km"),
+                "min_pace_fmt": z.get("min_pace_fmt"),
+                "max_pace_fmt": z.get("max_pace_fmt"),
+            }
+            for z in pz.zones
+        ]
+
     if json_output:
         typer.echo(json.dumps(out, indent=2, default=str))
     else:
-        print_athlete_zones(out["zones"])
+        print_athlete_computed_zones(out)
 
 
 @app.command("set")

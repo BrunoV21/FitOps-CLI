@@ -459,6 +459,38 @@ def print_athlete_profile(athlete: dict) -> None:
     shoes = equip.get("shoes") or []
     console.print(f"  Bikes      {len(bikes)}")
     console.print(f"  Shoes      {len(shoes)}")
+
+    phys = athlete.get("physiology") or {}
+    has_phys = any(
+        phys.get(k) for k in ("max_hr", "resting_hr", "lthr", "ftp", "lt1_pace", "lt2_pace", "vo2max")
+    )
+    if has_phys:
+        console.print()
+        console.print("[bold]Physiology[/bold]")
+        if phys.get("max_hr"):
+            console.print(f"  Max HR         {phys['max_hr']} bpm")
+        if phys.get("lthr"):
+            console.print(f"  LTHR           {phys['lthr']} bpm")
+        if phys.get("resting_hr"):
+            console.print(f"  Resting HR     {phys['resting_hr']} bpm")
+        if phys.get("ftp"):
+            console.print(f"  FTP            {phys['ftp']} W")
+        if phys.get("lt1_pace"):
+            console.print(f"  LT1 pace       {phys['lt1_pace']}  [dim](aerobic threshold)[/dim]")
+        if phys.get("lt2_pace"):
+            console.print(f"  LT2 pace       {phys['lt2_pace']}  [dim](lactate threshold)[/dim]")
+        if phys.get("vo2max_pace"):
+            console.print(f"  vVO2max        {phys['vo2max_pace']}  [dim](from VDOT)[/dim]")
+        vo2max = phys.get("vo2max") or {}
+        if vo2max.get("estimate"):
+            conf = vo2max.get("confidence_label") or ""
+            console.print(f"  VO2max         {vo2max['estimate']:.1f} ml/kg/min  [dim][{conf}][/dim]")
+            based = vo2max.get("based_on_activity") or {}
+            if based.get("name"):
+                console.print(
+                    f"                 based on: {based['name']}  ({based.get('date') or ''})"
+                )
+
     console.print()
 
 
@@ -525,6 +557,66 @@ def print_athlete_zones(zones: dict) -> None:
 
     if not hr_zone_list and not pz_list:
         console.print("[dim]No zones configured in Strava.[/dim]")
+    console.print()
+
+
+def print_athlete_computed_zones(data: dict) -> None:
+    """Display computed HR + pace zones from local physiology settings."""
+    zones = data.get("zones") or {}
+    method = zones.get("method") or ""
+    zone_list = zones.get("heart_rate_zones") or []
+    thresholds = zones.get("thresholds") or {}
+    pace_zones = data.get("pace_zones") or []
+
+    console.print()
+    console.print(f"[bold]HR Zones[/bold]  [dim]method: {method}[/dim]")
+    if zones.get("lthr_bpm"):
+        parts = [f"LTHR {zones['lthr_bpm']} bpm"]
+        if zones.get("max_hr_bpm"):
+            parts.append(f"Max HR {zones['max_hr_bpm']} bpm")
+        if zones.get("resting_hr_bpm"):
+            parts.append(f"Resting HR {zones['resting_hr_bpm']} bpm")
+        console.print(f"  {' | '.join(parts)}")
+    th = zones.get("thresholds") or {}
+    if th.get("lt1_bpm"):
+        console.print(f"  LT1  {th['lt1_bpm']} bpm")
+    if th.get("lt2_bpm"):
+        console.print(f"  LT2  {th['lt2_bpm']} bpm")
+    if thresholds.get("lt1_pace_fmt"):
+        console.print(f"  LT1 pace   {thresholds['lt1_pace_fmt']}  [dim](GAP)[/dim]")
+    if thresholds.get("lt2_pace_fmt"):
+        console.print(f"  LT2 pace   {thresholds['lt2_pace_fmt']}  [dim](GAP)[/dim]")
+    if thresholds.get("vo2max_pace_fmt"):
+        console.print(f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]")
+    console.print()
+    if zone_list:
+        hr_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        hr_table.add_column("Zone", justify="right")
+        hr_table.add_column("Name")
+        hr_table.add_column("Min bpm", justify="right")
+        hr_table.add_column("Max bpm", justify="right")
+        for z in zone_list:
+            mn = str(z.get("min_bpm") or "-")
+            mx_raw = z.get("max_bpm")
+            mx = str(mx_raw) if mx_raw and mx_raw < 999 else "-"
+            hr_table.add_row(str(z.get("zone") or ""), z.get("name") or "", mn, mx)
+        console.print(hr_table)
+
+    if pace_zones:
+        console.print()
+        console.print("[bold]Pace Zones[/bold]")
+        console.print()
+        pz_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        pz_table.add_column("Zone", justify="right")
+        pz_table.add_column("Name")
+        pz_table.add_column("Min pace", justify="right")
+        pz_table.add_column("Max pace", justify="right")
+        for z in pace_zones:
+            mn = z.get("min_pace_fmt") or "-"
+            mx = z.get("max_pace_fmt") or "-"
+            pz_table.add_row(str(z.get("zone") or ""), z.get("name") or "", mn, mx)
+        console.print(pz_table)
+
     console.print()
 
 
@@ -758,13 +850,16 @@ def print_analytics_zones(data: dict) -> None:
 
     zones = data.get("zones") or {}
     method = zones.get("method") or ""
-    zone_list = zones.get("zones") or []
+    zone_list = zones.get("heart_rate_zones") or []
     console.print()
     console.print(f"[bold]HR Zones[/bold]  [dim]method: {method}[/dim]")
-    if zones.get("lthr"):
-        console.print(
-            f"  LTHR {zones['lthr']} bpm  |  Max HR {zones.get('max_hr') or '-'} bpm"
-        )
+    if zones.get("lthr_bpm"):
+        parts = [f"LTHR {zones['lthr_bpm']} bpm"]
+        if zones.get("max_hr_bpm"):
+            parts.append(f"Max HR {zones['max_hr_bpm']} bpm")
+        if zones.get("resting_hr_bpm"):
+            parts.append(f"Resting HR {zones['resting_hr_bpm']} bpm")
+        console.print(f"  {' | '.join(parts)}")
     thresholds = zones.get("thresholds") or {}
     if thresholds.get("lt1_pace_fmt"):
         console.print(f"  LT1 pace   {thresholds['lt1_pace_fmt']}  [dim](GAP)[/dim]")
