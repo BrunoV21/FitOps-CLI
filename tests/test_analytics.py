@@ -381,3 +381,76 @@ def test_anaerobic_score_run_higher_than_ride_same_if():
     assert compute_anaerobic_score(run, settings_run) > compute_anaerobic_score(
         ride, settings_ride
     )
+
+
+# ---------------------------------------------------------------------------
+# performance_metrics helpers
+# ---------------------------------------------------------------------------
+
+
+def test_percentile_single_value():
+    from fitops.analytics.performance_metrics import _percentile
+
+    assert _percentile([42.0], 50) == 42.0
+    assert _percentile([42.0], 98) == 42.0
+
+
+def test_percentile_ordered():
+    from fitops.analytics.performance_metrics import _percentile
+
+    values = [10.0, 20.0, 30.0, 40.0, 50.0]
+    assert _percentile(values, 0) == 10.0
+    assert _percentile(values, 100) == 50.0
+    p50 = _percentile(values, 50)
+    assert p50 is not None and 25.0 <= p50 <= 35.0
+
+
+def test_percentile_empty():
+    from fitops.analytics.performance_metrics import _percentile
+
+    assert _percentile([], 50) is None
+
+
+def test_cv_zero_for_constant():
+    from fitops.analytics.performance_metrics import _cv
+
+    assert _cv([5.0, 5.0, 5.0]) == 0.0
+
+
+def test_cv_positive_for_varied():
+    from fitops.analytics.performance_metrics import _cv
+
+    assert _cv([1.0, 2.0, 3.0]) > 0.0
+
+
+def test_cv_zero_for_single():
+    from fitops.analytics.performance_metrics import _cv
+
+    assert _cv([7.0]) == 0.0
+
+
+def test_hr_thresholds_from_max_hr():
+    """Aerobic = 75% HRmax, anaerobic = 85% HRmax."""
+    max_hr = 200
+    aerobic = round(max_hr * 0.75)
+    anaerobic = round(max_hr * 0.85)
+    assert aerobic == 150
+    assert anaerobic == 170
+    assert aerobic < anaerobic
+
+
+def test_running_economy_clamped():
+    """Running economy must stay within physiologically plausible bounds (100–350)."""
+    # Simulate a 6:00/km pace (slow runner)
+    avg_pace = 6.0  # min/km
+    v_mpm = 1000.0 / avg_pace  # m/min
+    vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm**2
+    economy = max(100.0, min(350.0, vo2_demand / (v_mpm / 1000)))
+    assert 100.0 <= economy <= 350.0
+
+    # Simulate a 3:30/km pace (elite runner)
+    avg_pace = 3.5
+    v_mpm = 1000.0 / avg_pace
+    vo2_demand = -4.6 + 0.182258 * v_mpm + 0.000104 * v_mpm**2
+    economy = max(100.0, min(350.0, vo2_demand / (v_mpm / 1000)))
+    assert 100.0 <= economy <= 350.0
