@@ -76,6 +76,51 @@
     {% endfor %}
   </div>
 </div>
+{% if vo2max_override %}
+<!-- VO2max override comparison -->
+{% set predicted = current_rolling %}
+{% set override_val = vo2max_override %}
+{% set predicted_higher = predicted > override_val %}
+<div class="panel {% if predicted_higher %}panel--accent-green{% endif %}" style="margin-top:1px;--delay:130ms">
+  <p class="panel-label">VO₂max — Predicted vs. Profile Override</p>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Current predicted</p>
+      <p style="font-size:26px;font-weight:700;color:{% if predicted_higher %}var(--accent-green){% else %}var(--text-primary){% endif %};">
+        {{ predicted }} <span style="font-size:13px;font-weight:400;color:var(--text-muted);">ml/kg/min</span>
+      </p>
+    </div>
+    <div style="font-size:22px;color:var(--text-muted);">vs.</div>
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Set in profile</p>
+      <p style="font-size:26px;font-weight:700;color:{% if predicted_higher %}var(--text-muted){% else %}var(--accent-green){% endif %};">
+        {{ override_val }} <span style="font-size:13px;font-weight:400;color:var(--text-muted);">ml/kg/min</span>
+      </p>
+    </div>
+    {% if predicted_higher %}
+    <div style="margin-left:auto;">
+      <button
+        class="btn btn-primary"
+        onclick="upgradeVo2max({{ predicted }})"
+        title="Update your profile VO₂max override to {{ predicted }}">
+        Update profile to {{ predicted }} &uarr;
+      </button>
+    </div>
+    {% endif %}
+  </div>
+  {% if predicted_higher %}
+  <p class="panel-sub" style="margin-top:10px;">
+    Your fitness has improved — current predicted is <strong>{{ (predicted - override_val) | round(1) }} ml/kg/min higher</strong> than your profile override.
+    Click to accept the new value.
+  </p>
+  {% else %}
+  <p class="panel-sub" style="margin-top:10px;">
+    Your profile override is at or above the current predicted value — no update needed.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% endif %}
 
 {% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
@@ -270,6 +315,24 @@ const VO2MAX_HISTORY = {{ history_json | safe }};
 if (VO2MAX_HISTORY.length > 0) {
   renderVo2maxChart("vo2maxChart", VO2MAX_HISTORY);
   renderPaceEvolutionChart("paceEvolutionChart", VO2MAX_HISTORY);
+}
+
+async function upgradeVo2max(value) {
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    const res = await fetch("/api/settings/metric", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({key: "vo2max_override", value}),
+    });
+    if (!res.ok) throw new Error("request failed");
+    location.reload();
+  } catch {
+    btn.disabled = false;
+    btn.textContent = `Update profile to ${value} ↑`;
+  }
 }
 </script>
 {% endblock %}

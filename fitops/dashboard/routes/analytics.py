@@ -204,6 +204,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "vo2max_pace_fmt": _fmt_pace(vo2max_pace_s),
                 "race_predictions": race_predictions,
                 "hr_configured": hr_configured,
+                "vo2max_override": athlete_settings.vo2max_override,
                 "active_page": "performance",
             },
         )
