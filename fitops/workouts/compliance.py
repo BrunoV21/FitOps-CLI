@@ -25,6 +25,7 @@ class SegmentCompliance:
     avg_speed_ms: float | None = None
     avg_cadence: float | None = None  # spm (already doubled for runs)
     avg_gap_per_km: float | None = None  # grade-adjusted pace, s/km
+    distance_actual_m: float | None = None  # meters covered in this segment
 
     # Compliance metrics
     target_achieved: bool = False
@@ -51,11 +52,12 @@ def _compute_actuals(
     end_idx: int,
     is_run: bool = True,
 ) -> dict:
-    """Compute pace/speed/cadence/GAP actuals for a stream slice."""
+    """Compute pace/speed/cadence/GAP/distance actuals for a stream slice."""
     vel = streams.get("velocity_smooth", [])
     cad = streams.get("cadence", [])
     gas = streams.get("grade_adjusted_speed", [])
     grade = streams.get("grade_smooth", [])
+    dist = streams.get("distance", [])
 
     vel_slice = [v for v in vel[start_idx:end_idx] if v and v > 0.1] if vel else []
     cad_slice = [c for c in cad[start_idx:end_idx] if c and c > 0] if cad else []
@@ -86,12 +88,33 @@ def _compute_actuals(
         round(1000.0 / (sum(valid_gas) / len(valid_gas)), 1) if valid_gas else None
     )
 
+    # Distance from cumulative distance stream
+    distance_actual_m: float | None = None
+    if dist and len(dist) > end_idx > start_idx:
+        d_start = dist[start_idx]
+        d_end = dist[end_idx - 1]
+        if d_start is not None and d_end is not None:
+            distance_actual_m = round(float(d_end) - float(d_start), 1)
+    elif dist and end_idx > start_idx:
+        # Partial slice near end of stream
+        safe_end = min(end_idx, len(dist)) - 1
+        safe_start = min(start_idx, len(dist) - 1)
+        if (
+            safe_end > safe_start
+            and dist[safe_start] is not None
+            and dist[safe_end] is not None
+        ):
+            distance_actual_m = round(
+                float(dist[safe_end]) - float(dist[safe_start]), 1
+            )
+
     return {
         "avg_speed_ms": avg_speed,
         "avg_pace_per_km": avg_pace,
         "avg_cadence": avg_cad,
         "avg_gap_per_km": avg_gap,
         "has_pace": avg_speed is not None,
+        "distance_actual_m": distance_actual_m,
     }
 
 
