@@ -189,6 +189,114 @@ fitops race delete 1
 
 ---
 
+### `fitops race plan-save <course_id>`
+
+Save a simulation as a named Race Plan. Runs the full simulation at save time and caches the per-km splits. Weather and strategy can be updated later with `plan-save` run again.
+
+```bash
+fitops race plan-save <course_id> --name "Berlin 2026 Sub-3" --target-time 3:00:00 [OPTIONS]
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name TEXT` | — | Plan display name (required) |
+| `--target-time HH:MM:SS` | — | Target finish time |
+| `--target-pace MM:SS` | — | Target average pace per km |
+| `--strategy STRATEGY` | `even` | Pacing strategy: `even`, `negative`, or `positive` |
+| `--pacer-pace MM:SS` | — | Pacer pace per km |
+| `--drop-at-km N` | — | Km to break from pacer |
+| `--date YYYY-MM-DD` | — | Race date (used for weather fetch) |
+| `--hour N` | `9` | Race start hour for weather fetch |
+| `--temp C` | — | Manual temperature override °C |
+| `--humidity PCT` | — | Manual humidity override % |
+| `--wind MS` | — | Wind speed m/s |
+| `--wind-dir DEG` | — | Wind direction degrees (0=N) |
+| `--json` | — | Output raw JSON |
+
+**Examples:**
+
+```bash
+# Save a plan for Berlin with auto-fetched weather
+fitops race plan-save 1 --name "Berlin 2026 Sub-3" --target-time 3:00:00 --date 2026-09-29 --hour 9
+
+# Negative split plan with manual weather
+fitops race plan-save 1 --name "Berlin Negative" --target-time 3:05:00 --strategy negative --temp 18 --humidity 60
+```
+
+---
+
+### `fitops race plans`
+
+List all saved race plans.
+
+```bash
+fitops race plans [--json]
+```
+
+**Output:**
+
+```
+  ID   Name                  Course  Date        Target    Strategy  Activity
+ ───────────────────────────────────────────────────────────────────────────────
+   1   Berlin 2026 Sub-3     1       2026-09-29  3:00:00   even      pending
+   2   Local 10K A-race      2       2026-06-15  42:00     negative  linked
+```
+
+---
+
+### `fitops race plan <plan_id>`
+
+Show the detail view of a saved plan: summary, weather conditions at save time, and the full per-km simulation splits.
+
+```bash
+fitops race plan 1 [--json]
+```
+
+---
+
+### `fitops race plan-compare <plan_id>`
+
+Compare the simulated per-km splits against the actual splits from the linked activity. Requires the plan to have an associated activity (`activity_id` set by auto-matching during `fitops sync`).
+
+```bash
+fitops race plan-compare 1 [--json]
+```
+
+**Output:**
+
+```
+  km   Sim Pace   Actual Pace   Δ       HR    Cadence
+ ──────────────────────────────────────────────────────
+   1   4:15       4:18          +3s     152   172
+   2   4:13       4:10          -3s     155   174
+  ...
+Actual finish: 3:01:24   Avg pace: 4:18/km
+```
+
+Delta is colour-coded: green when you ran faster than plan, red when slower.
+
+---
+
+### `fitops race plan-delete <plan_id>`
+
+Delete a saved race plan.
+
+```bash
+fitops race plan-delete 1
+```
+
+---
+
+## Activity Auto-Matching
+
+When `fitops sync` fetches activity streams, it automatically checks all unlinked plans whose `race_date` is within ±1 day of the activity's start date. If the activity's GPS start point is within 500 m of the course start coordinates, the plan's `activity_id` is set automatically.
+
+Once linked, `plan-compare` and the dashboard plan detail page show side-by-side split comparison.
+
+---
+
 ## Weather Auto-Fetch
 
 When `--date` is provided and the course has GPS coordinates (start lat/lng), FitOps automatically fetches weather from Open-Meteo:
@@ -201,6 +309,7 @@ Manual `--temp` + `--humidity` always override auto-fetched weather. If weather 
 ## See Also
 
 - [Concepts → Weather & Pace](../concepts/weather-pace.md) — WAP and GAP adjustment models
+- [Dashboard → Race Plans](../dashboard/race-plans.md) — visual split comparison and plan management
 - [`fitops workouts simulate`](./workouts.md) — simulate a structured workout on a course
 - [`fitops weather forecast`](./weather.md) — standalone race-day forecast
 
