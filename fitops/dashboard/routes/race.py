@@ -12,9 +12,15 @@ from fastapi.templating import Jinja2Templates
 from fitops.analytics.weather_pace import headwind_ms
 from fitops.dashboard.queries.race import (
     delete_course,
+    delete_race_plan,
     get_all_courses,
+    get_all_race_plans,
     get_course,
+    get_plans_for_course,
+    get_race_plan,
     save_course,
+    save_race_plan,
+    update_race_plan,
 )
 from fitops.db.migrations import create_all_tables
 from fitops.race.course_parser import (
@@ -39,6 +45,42 @@ def _sample_route_coords(
         return pts
     step = len(pts) / max_points
     return [pts[round(i * step)] for i in range(max_points)]
+
+
+def _build_km_segment_coords(
+    course, max_pts_per_seg: int = 60
+) -> list[list[list[float]]]:
+    """Return per-km lists of [[lat, lon], ...] for coloured map polylines.
+
+    Index 0 → km 1 (0–1 km), index 1 → km 2, etc.
+    Points without lat/lon are silently skipped.
+    """
+    points = course.get_course_points()
+    segments = course.get_km_segments()
+    if not points or not segments:
+        return []
+
+    result: list[list[list[float]]] = []
+    for seg in segments:
+        km = seg["km"]
+        start_m = (km - 1) * 1000.0
+        end_m = km * 1000.0
+        seg_pts = [
+            [p["lat"], p["lon"]]
+            for p in points
+            if "lat" in p
+            and "lon" in p
+            and p["distance_from_start_m"] >= start_m
+            and p["distance_from_start_m"] <= end_m
+        ]
+        if not seg_pts:
+            result.append([])
+            continue
+        if len(seg_pts) > max_pts_per_seg:
+            step = len(seg_pts) / max_pts_per_seg
+            seg_pts = [seg_pts[round(i * step)] for i in range(max_pts_per_seg)]
+        result.append(seg_pts)
+    return result
 
 
 def _parse_finish_time(s: str) -> tuple[float, str]:
@@ -282,7 +324,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
             )
 
         summary = course.to_summary_dict()
-        route_coords = _sample_route_coords(course.get_course_points())
+        course_points = course.get_course_points()
+        route_coords = _sample_route_coords(course_points)
+        segment_coords = _build_km_segment_coords(course)
+        existing_plans = await get_plans_for_course(course_id)
         return templates.TemplateResponse(
             request,
             "race/simulate.html",
@@ -295,6 +340,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "form": {},
                 "weather_info": None,
                 "route_coords_json": json.dumps(route_coords),
+                "segment_coords_json": json.dumps(segment_coords),
+                "existing_plans": existing_plans,
                 "active_page": "race",
             },
         )
@@ -347,8 +394,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
             "wind_dir": wind_dir or "",
         }
 
-        route_coords = _sample_route_coords(course.get_course_points())
+        course_points = course.get_course_points()
+        route_coords = _sample_route_coords(course_points)
         route_coords_json = json.dumps(route_coords)
+        segment_coords = _build_km_segment_coords(course)
+        segment_coords_json = json.dumps(segment_coords)
+
+        existing_plans = await get_plans_for_course(course_id)
 
         def _render_error(msg: str, weather_info: dict | None = None):
             return templates.TemplateResponse(
@@ -363,6 +415,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "form": form_vals,
                     "weather_info": weather_info,
                     "route_coords_json": route_coords_json,
+                    "segment_coords_json": segment_coords_json,
+                    "existing_plans": existing_plans,
                     "active_page": "race",
                 },
             )
@@ -573,6 +627,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "drop_at_km": drop_km_for_chart,
                 "elevation_profile_json": json.dumps(elevation_profile),
                 "wind_profile_json": json.dumps(wind_profile),
+                "segment_coords_json": segment_coords_json,
                 "weather_info": {
                     "source": weather_source,
                     "temperature_c": weather["temperature_c"],
@@ -581,8 +636,490 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "wind_direction_deg": weather["wind_direction_deg"],
                 },
                 "route_coords_json": route_coords_json,
+                "existing_plans": existing_plans,
                 "active_page": "race",
             },
         )
+
+    # ------------------------------------------------------------------
+    # Race Plan routes
+    # ------------------------------------------------------------------
+
+    @router.post("/race/{course_id}/plans", response_class=HTMLResponse)
+    async def race_plan_save(
+        request: Request,
+        course_id: int,
+        plan_name: str = Form(...),
+        target_time: str | None = Form(None),
+        strategy: str | None = Form(None),
+        pacer_pace: str | None = Form(None),
+        drop_at_km: str | None = Form(None),
+        race_date: str | None = Form(None),
+        race_hour: str | None = Form(None),
+        temp: str | None = Form(None),
+        humidity: str | None = Form(None),
+        wind: str | None = Form(None),
+        wind_dir: str | None = Form(None),
+        override_plan_id: str | None = Form(None),
+    ):
+        """Save a simulation result as a named race plan."""
+        await create_all_tables()
+        course = await get_course(course_id)
+        if course is None:
+            return HTMLResponse(
+                content="<h1>404 — Course not found</h1>", status_code=404
+            )
+
+        segments = course.get_km_segments()
+
+        try:
+            target_total_s, target_time_normalized = _parse_finish_time(
+                target_time or ""
+            )
+        except (ValueError, AttributeError):
+            return HTMLResponse(content="<p>Invalid target time.</p>", status_code=400)
+
+        strat = (strategy or "even").lower()
+        if strat not in ("even", "negative", "positive"):
+            strat = "even"
+
+        weather_source_val = "neutral"
+        weather = {
+            "temperature_c": 15.0,
+            "humidity_pct": 40.0,
+            "wind_speed_ms": 0.0,
+            "wind_direction_deg": 0.0,
+        }
+
+        if temp and humidity:
+            try:
+                weather = {
+                    "temperature_c": float(temp),
+                    "humidity_pct": float(humidity),
+                    "wind_speed_ms": float(wind) if wind else 0.0,
+                    "wind_direction_deg": float(wind_dir) if wind_dir else 0.0,
+                }
+                weather_source_val = "manual"
+            except ValueError:
+                pass
+
+        elif (
+            race_date and course.start_lat is not None and course.start_lon is not None
+        ):
+            from fitops.weather.client import (
+                fetch_activity_weather,
+                fetch_forecast_weather,
+            )
+
+            try:
+                parsed_date = datetime.date.fromisoformat(race_date)
+                hour = int(race_hour) if race_hour and race_hour.isdigit() else 9
+                today = datetime.date.today()
+                if parsed_date > today:
+                    fetched = await fetch_forecast_weather(
+                        course.start_lat, course.start_lon, race_date, hour
+                    )
+                    if fetched:
+                        weather = {
+                            "temperature_c": fetched.get("temperature_c", 15.0),
+                            "humidity_pct": fetched.get("humidity_pct", 40.0),
+                            "wind_speed_ms": fetched.get("wind_speed_ms", 0.0),
+                            "wind_direction_deg": fetched.get(
+                                "wind_direction_deg", 0.0
+                            ),
+                        }
+                        weather_source_val = "forecast"
+                else:
+                    race_dt = datetime.datetime(
+                        parsed_date.year,
+                        parsed_date.month,
+                        parsed_date.day,
+                        hour,
+                        0,
+                        0,
+                        tzinfo=datetime.UTC,
+                    )
+                    fetched = await fetch_activity_weather(
+                        course.start_lat, course.start_lon, race_dt
+                    )
+                    if fetched:
+                        weather = {
+                            "temperature_c": fetched.get("temperature_c", 15.0),
+                            "humidity_pct": fetched.get("humidity_pct", 40.0),
+                            "wind_speed_ms": fetched.get("wind_speed_ms", 0.0),
+                            "wind_direction_deg": fetched.get(
+                                "wind_direction_deg", 0.0
+                            ),
+                        }
+                        weather_source_val = "archive"
+            except (ValueError, TypeError):
+                pass
+
+        use_pacer = bool(pacer_pace and drop_at_km)
+        try:
+            if use_pacer:
+                pacer_pace_s = _parse_pace(pacer_pace)
+                drop_km_f = float(drop_at_km)
+                pacer_data = simulate_pacer_mode(
+                    segments, target_total_s, pacer_pace_s, drop_km_f, weather
+                )
+                sit_pace_s = pacer_pace_s
+                sit_splits = [
+                    {
+                        "km": seg["km"],
+                        "distance_m": seg["distance_m"],
+                        "target_pace_s": sit_pace_s,
+                        "target_pace_fmt": pacer_data["sit_phase"]["pacer_pace_fmt"],
+                        "segment_time_s": sit_pace_s * (seg["distance_m"] / 1000.0),
+                        "phase": "sit",
+                    }
+                    for seg in segments
+                    if seg["km"] <= drop_km_f
+                ]
+                splits_to_save = sit_splits + pacer_data["push_phase"]["splits"]
+            else:
+                splits_to_save = simulate_splits(
+                    segments, target_total_s, weather, strategy=strat
+                )
+        except ValueError as exc:
+            return HTMLResponse(
+                content=f"<p>Simulation error: {exc}</p>", status_code=400
+            )
+
+        race_hour_int = int(race_hour) if race_hour and race_hour.isdigit() else 9
+        drop_km_val = float(drop_at_km) if drop_at_km and use_pacer else None
+
+        # Determine whether to overwrite an existing plan or create a new one
+        override_id: int | None = None
+        if override_plan_id and override_plan_id.strip().lstrip("-").isdigit():
+            _oid = int(override_plan_id)
+            if _oid > 0:
+                override_id = _oid
+
+        if override_id is not None:
+            await update_race_plan(
+                override_id,
+                name=plan_name.strip(),
+                race_date=race_date or None,
+                race_hour=race_hour_int,
+                target_time=target_time_normalized,
+                target_time_s=target_total_s,
+                strategy=strat,
+                pacer_pace=pacer_pace or None,
+                drop_at_km=drop_km_val,
+                weather_temp_c=weather["temperature_c"],
+                weather_humidity_pct=weather["humidity_pct"],
+                weather_wind_ms=weather["wind_speed_ms"],
+                weather_wind_dir_deg=weather["wind_direction_deg"],
+                weather_source=weather_source_val,
+                splits_json=json.dumps(splits_to_save),
+                activity_id=None,  # reset link so sweep can re-match
+            )
+            saved_id = override_id
+        else:
+            plan = await save_race_plan(
+                course_id=course_id,
+                name=plan_name.strip(),
+                race_date=race_date or None,
+                race_hour=race_hour_int,
+                target_time=target_time_normalized,
+                target_time_s=target_total_s,
+                strategy=strat,
+                pacer_pace=pacer_pace or None,
+                drop_at_km=drop_km_val,
+                weather_temp_c=weather["temperature_c"],
+                weather_humidity_pct=weather["humidity_pct"],
+                weather_wind_ms=weather["wind_speed_ms"],
+                weather_wind_dir_deg=weather["wind_direction_deg"],
+                weather_source=weather_source_val,
+                splits=splits_to_save,
+            )
+            saved_id = plan["id"]
+
+        # Immediately try to associate this plan with an existing activity
+        try:
+            from fitops.analytics.race_plan import sweep_unlinked_plans
+
+            await sweep_unlinked_plans()
+        except Exception:
+            pass
+
+        return RedirectResponse(url=f"/race/plans/{saved_id}", status_code=303)
+
+    @router.get("/race/plans", response_class=HTMLResponse)
+    async def race_plans_list(request: Request):
+        await create_all_tables()
+        plans = await get_all_race_plans()
+        # Enrich with course names
+        course_cache: dict[int, str] = {}
+        for p in plans:
+            cid = p["course_id"]
+            if cid not in course_cache:
+                c = await get_course(cid)
+                course_cache[cid] = c.name if c else f"Course {cid}"
+            p["course_name"] = course_cache[cid]
+        return templates.TemplateResponse(
+            request,
+            "race/plans.html",
+            {"request": request, "plans": plans, "active_page": "race"},
+        )
+
+    @router.get("/race/plans/{plan_id}", response_class=HTMLResponse)
+    async def race_plan_detail(request: Request, plan_id: int):
+        await create_all_tables()
+        plan = await get_race_plan(plan_id)
+        if plan is None:
+            return HTMLResponse(
+                content="<h1>404 — Plan not found</h1>", status_code=404
+            )
+
+        course = await get_course(plan.course_id)
+        if course is None:
+            return HTMLResponse(
+                content="<h1>404 — Course not found</h1>", status_code=404
+            )
+
+        plan_dict = plan.to_detail_dict()
+        course_dict = course.to_summary_dict()
+
+        # Annotate simulated splits with wind label
+        wind_speed = plan.weather_wind_ms or 0.0
+        wind_dir_deg = plan.weather_wind_dir_deg or 0.0
+        for sp in plan_dict["splits"]:
+            sp["wind"] = _wind_label(
+                sp.get("bearing_deg", 0.0), wind_speed, wind_dir_deg
+            )
+
+        # Build chart data for simulated splits
+        sim_chart_labels = [s["km"] for s in plan_dict["splits"]]
+        sim_chart_paces = [s.get("target_pace_s", 0) for s in plan_dict["splits"]]
+
+        # Compute avg pace
+        from fitops.race.course_parser import _fmt_duration
+
+        total_time = sum(s.get("segment_time_s", 0) for s in plan_dict["splits"])
+        total_dist_km = (
+            sum(s.get("distance_m", 0) for s in plan_dict["splits"]) / 1000.0
+        )
+        avg_pace_s = (total_time / total_dist_km) if total_dist_km > 0 else 0.0
+        avg_pace_fmt = _fmt_duration(avg_pace_s) if avg_pace_s > 0 else "—"
+
+        # Actual splits if activity is linked
+        actual_splits = None
+        actual_avg_pace_fmt = None
+        actual_finish_fmt = None
+        compare_chart_labels = None
+        compare_sim_paces = None
+        compare_actual_paces = None
+        activity_strava_id = None
+
+        if plan.activity_id is not None:
+            from sqlalchemy import select as _select
+
+            from fitops.analytics.activity_splits import compute_km_splits
+            from fitops.db.models.activity import Activity as _Activity
+            from fitops.db.models.activity_stream import ActivityStream
+            from fitops.db.session import get_async_session
+
+            async with get_async_session() as session:
+                act_res = await session.execute(
+                    _select(_Activity).where(_Activity.id == plan.activity_id)
+                )
+                act = act_res.scalar_one_or_none()
+                if act:
+                    activity_strava_id = act.strava_id
+                streams_res = await session.execute(
+                    _select(ActivityStream).where(
+                        ActivityStream.activity_id == plan.activity_id
+                    )
+                )
+                all_streams = {
+                    row.stream_type: row.data for row in streams_res.scalars().all()
+                }
+
+            if act and all_streams:
+                km_splits = compute_km_splits(all_streams, act.sport_type or "Run")
+                if km_splits:
+                    actual_splits = km_splits
+                    act_total_s = sum(
+                        s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0)
+                        for s in actual_splits
+                    )
+                    act_total_dist = (
+                        sum(s.get("distance_m", 0) for s in actual_splits) / 1000.0
+                    )
+                    act_avg_pace_s = (
+                        (act_total_s / act_total_dist) if act_total_dist > 0 else 0.0
+                    )
+                    actual_avg_pace_fmt = (
+                        _fmt_duration(act_avg_pace_s) if act_avg_pace_s > 0 else "—"
+                    )
+                    actual_finish_s = sum(
+                        s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0)
+                        for s in actual_splits
+                    )
+                    actual_finish_fmt = _fmt_duration(actual_finish_s)
+
+                    # Build comparison chart (align by km index)
+                    n = min(len(plan_dict["splits"]), len(actual_splits))
+                    compare_chart_labels = [
+                        plan_dict["splits"][i]["km"] for i in range(n)
+                    ]
+                    compare_sim_paces = [
+                        plan_dict["splits"][i].get("target_pace_s", 0) for i in range(n)
+                    ]
+                    compare_actual_paces = [
+                        actual_splits[i].get("pace_s", 0) for i in range(n)
+                    ]
+
+        elevation_profile = _build_elevation_profile(course)
+        segment_coords = _build_km_segment_coords(course)
+        route_coords = _sample_route_coords(course.get_course_points())
+
+        return templates.TemplateResponse(
+            request,
+            "race/plan_detail.html",
+            {
+                "request": request,
+                "plan": plan_dict,
+                "course": course_dict,
+                "avg_pace_s": round(avg_pace_s, 1),
+                "avg_pace_fmt": avg_pace_fmt,
+                "sim_chart_labels_json": json.dumps(sim_chart_labels),
+                "sim_chart_paces_json": json.dumps(sim_chart_paces),
+                "actual_splits": actual_splits,
+                "actual_avg_pace_fmt": actual_avg_pace_fmt,
+                "actual_finish_fmt": actual_finish_fmt,
+                "compare_chart_labels_json": json.dumps(compare_chart_labels or []),
+                "compare_sim_paces_json": json.dumps(compare_sim_paces or []),
+                "compare_actual_paces_json": json.dumps(compare_actual_paces or []),
+                "elevation_profile_json": json.dumps(elevation_profile),
+                "segment_coords_json": json.dumps(segment_coords),
+                "route_coords_json": json.dumps(route_coords),
+                "activity_strava_id": activity_strava_id,
+                "active_page": "race",
+            },
+        )
+
+    @router.post("/race/plans/{plan_id}/edit", response_class=HTMLResponse)
+    async def race_plan_edit(
+        request: Request,
+        plan_id: int,
+        plan_name: str = Form(...),
+        target_time: str | None = Form(None),
+        strategy: str | None = Form(None),
+        pacer_pace: str | None = Form(None),
+        drop_at_km: str | None = Form(None),
+        race_date: str | None = Form(None),
+        race_hour: str | None = Form(None),
+        temp: str | None = Form(None),
+        humidity: str | None = Form(None),
+        wind: str | None = Form(None),
+        wind_dir: str | None = Form(None),
+    ):
+        """Re-simulate and update an existing plan."""
+        await create_all_tables()
+        plan = await get_race_plan(plan_id)
+        if plan is None:
+            return HTMLResponse(
+                content="<h1>404 — Plan not found</h1>", status_code=404
+            )
+
+        course = await get_course(plan.course_id)
+        if course is None:
+            return HTMLResponse(
+                content="<h1>404 — Course not found</h1>", status_code=404
+            )
+
+        segments = course.get_km_segments()
+        try:
+            target_total_s, target_time_normalized = _parse_finish_time(
+                target_time or ""
+            )
+        except (ValueError, AttributeError):
+            return HTMLResponse(content="<p>Invalid target time.</p>", status_code=400)
+
+        strat = (strategy or "even").lower()
+        if strat not in ("even", "negative", "positive"):
+            strat = "even"
+
+        weather = {
+            "temperature_c": 15.0,
+            "humidity_pct": 40.0,
+            "wind_speed_ms": 0.0,
+            "wind_direction_deg": 0.0,
+        }
+        weather_source_val = "neutral"
+        if temp and humidity:
+            try:
+                weather = {
+                    "temperature_c": float(temp),
+                    "humidity_pct": float(humidity),
+                    "wind_speed_ms": float(wind) if wind else 0.0,
+                    "wind_direction_deg": float(wind_dir) if wind_dir else 0.0,
+                }
+                weather_source_val = "manual"
+            except ValueError:
+                pass
+
+        use_pacer = bool(pacer_pace and drop_at_km)
+        try:
+            if use_pacer:
+                pacer_pace_s = _parse_pace(pacer_pace)
+                drop_km_f = float(drop_at_km)
+                pacer_data = simulate_pacer_mode(
+                    segments, target_total_s, pacer_pace_s, drop_km_f, weather
+                )
+                sit_splits = [
+                    {
+                        "km": seg["km"],
+                        "distance_m": seg["distance_m"],
+                        "target_pace_s": pacer_pace_s,
+                        "target_pace_fmt": pacer_data["sit_phase"]["pacer_pace_fmt"],
+                        "segment_time_s": pacer_pace_s * (seg["distance_m"] / 1000.0),
+                        "phase": "sit",
+                    }
+                    for seg in segments
+                    if seg["km"] <= drop_km_f
+                ]
+                splits_to_save = sit_splits + pacer_data["push_phase"]["splits"]
+                drop_km_val = drop_km_f
+            else:
+                splits_to_save = simulate_splits(
+                    segments, target_total_s, weather, strategy=strat
+                )
+                drop_km_val = None
+        except ValueError as exc:
+            return HTMLResponse(
+                content=f"<p>Simulation error: {exc}</p>", status_code=400
+            )
+
+        import json as _json
+
+        race_hour_int = int(race_hour) if race_hour and race_hour.isdigit() else 9
+        await update_race_plan(
+            plan_id,
+            name=plan_name.strip(),
+            race_date=race_date or None,
+            race_hour=race_hour_int,
+            target_time=target_time_normalized,
+            target_time_s=target_total_s,
+            strategy=strat,
+            pacer_pace=pacer_pace or None,
+            drop_at_km=drop_km_val,
+            weather_temp_c=weather["temperature_c"],
+            weather_humidity_pct=weather["humidity_pct"],
+            weather_wind_ms=weather["wind_speed_ms"],
+            weather_wind_dir_deg=weather["wind_direction_deg"],
+            weather_source=weather_source_val,
+            splits_json=_json.dumps(splits_to_save),
+        )
+        return RedirectResponse(url=f"/race/plans/{plan_id}", status_code=303)
+
+    @router.post("/race/plans/{plan_id}/delete", response_class=HTMLResponse)
+    async def race_plan_delete(request: Request, plan_id: int):
+        await create_all_tables()
+        await delete_race_plan(plan_id)
+        return RedirectResponse(url="/race/plans", status_code=303)
 
     return router

@@ -9,10 +9,17 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
+from fitops.analytics.athlete_settings import get_athlete_settings
+from fitops.analytics.training_scores import (
+    compute_aerobic_score,
+    compute_anaerobic_score,
+)
+from fitops.analytics.weather_pace import weather_row_to_dict
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.race import get_all_courses, get_course
+from fitops.dashboard.queries.weather import get_weather_for_activities
 from fitops.dashboard.queries.workouts import (
-    get_activity_for_workout,
+    get_linked_activities_for_workout,
     get_workout_with_segments,
 )
 from fitops.db.models.workout import Workout
@@ -444,11 +451,44 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/workouts", response_class=HTMLResponse)
     async def workouts_list(request: Request):
+        from fitops.workouts.loader import list_workout_files
+
         settings = get_settings()
         athlete_id = settings.athlete_id
 
         rows = []
         if athlete_id:
+            # Auto-import any markdown-only workouts that have no DB record yet
+            async with get_async_session() as session:
+                existing_result = await session.execute(
+                    select(Workout.workout_file_name).where(
+                        Workout.athlete_id == athlete_id
+                    )
+                )
+                existing_file_names = {r[0] for r in existing_result.fetchall() if r[0]}
+
+            for wf in list_workout_files():
+                if wf.file_name not in existing_file_names:
+                    # workout_meta is stored as a JSON string in frontmatter
+                    raw_meta = wf.meta.get("workout_meta")
+                    meta_line = (
+                        raw_meta
+                        if isinstance(raw_meta, str)
+                        else (json.dumps(raw_meta) if raw_meta else None)
+                    )
+                    async with get_async_session() as session:
+                        session.add(
+                            Workout(
+                                name=wf.name,
+                                sport_type=wf.sport or "run",
+                                athlete_id=athlete_id,
+                                workout_file_name=wf.file_name,
+                                workout_meta=meta_line,
+                                status="planned",
+                            )
+                        )
+                        await session.commit()
+
             async with get_async_session() as session:
                 result = await session.execute(
                     select(Workout)
@@ -584,6 +624,21 @@ def register(templates: Jinja2Templates) -> APIRouter:
         file_path = d / f"{slug}.md"
         file_path.write_text(markdown, encoding="utf-8")
 
+        # Also insert a Workout DB record so it appears in lists and assign dropdowns
+        settings = get_settings()
+        if settings.athlete_id:
+            async with get_async_session() as session:
+                db_workout = Workout(
+                    name=name,
+                    sport_type=sport,
+                    athlete_id=settings.athlete_id,
+                    workout_file_name=file_path.name,
+                    workout_meta=meta_line,
+                    status="planned",
+                )
+                session.add(db_workout)
+                await session.commit()
+
         created = {
             "name": name,
             "file_name": file_path.name,
@@ -637,22 +692,82 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         workout, segments = result
 
-        # Linked activity info
-        linked_activity = None
-        if workout.activity_id:
-            act = await get_activity_for_workout(workout.activity_id)
-            if act:
-                linked_activity = {
+        # All linked activities (newest first)
+        raw_links = await get_linked_activities_for_workout(workout_id)
+
+        # Batch-load weather for all linked activities
+        linked_strava_ids = [act.strava_id for _, act in raw_links]
+        weather_map = (
+            await get_weather_for_activities(linked_strava_ids)
+            if linked_strava_ids
+            else {}
+        )
+
+        _athlete_settings = get_athlete_settings()
+
+        linked_activities = []
+        for lnk, act in raw_links:
+            dist_km = round(act.distance_m / 1000, 2) if act.distance_m else None
+            dur_s = act.moving_time_s or 0
+            if dur_s >= 3600:
+                h, rem = divmod(dur_s, 3600)
+                m, s = divmod(rem, 60)
+                dur_fmt = f"{h}:{m:02d}:{s:02d}"
+            else:
+                m, s = divmod(dur_s, 60)
+                dur_fmt = f"{m}:{s:02d}"
+            pace_fmt = None
+            if act.distance_m and act.moving_time_s and act.distance_m > 0:
+                pace_s = act.moving_time_s / (act.distance_m / 1000)
+                pm, ps = divmod(int(pace_s), 60)
+                pace_fmt = f"{pm}:{ps:02d}/km"
+            comp_pct = (
+                round(lnk.compliance_score * 100)
+                if lnk.compliance_score is not None
+                else None
+            )
+            aerobic_score = compute_aerobic_score(act, _athlete_settings)
+            anaerobic_score = compute_anaerobic_score(act, _athlete_settings)
+            w = weather_map.get(act.strava_id)
+            weather_info = weather_row_to_dict(w) if w else None
+            linked_activities.append(
+                {
                     "strava_id": act.strava_id,
                     "name": act.name,
                     "date": act.start_date_local.strftime("%d %b %Y")
                     if act.start_date_local
                     else "—",
                     "sport_type": act.sport_type,
+                    "distance_km": dist_km,
+                    "duration": dur_fmt,
+                    "pace": pace_fmt,
+                    "avg_hr": round(act.average_heartrate)
+                    if act.average_heartrate
+                    else None,
+                    "elevation_m": round(act.total_elevation_gain_m)
+                    if act.total_elevation_gain_m
+                    else None,
+                    "compliance_pct": comp_pct,
+                    "linked_at": lnk.linked_at.strftime("%d %b %Y")
+                    if lnk.linked_at
+                    else None,
+                    "aerobic_score": aerobic_score,
+                    "aerobic_score_int": int(aerobic_score),
+                    "anaerobic_score": anaerobic_score,
+                    "anaerobic_score_int": int(anaerobic_score),
+                    "weather": weather_info,
                 }
+            )
 
-        # Physiology snapshot
-        physiology = workout.get_physiology_snapshot() or {}
+        # Most recent link for header compliance + physiology
+        most_recent_link = raw_links[0][0] if raw_links else None
+
+        # Physiology snapshot — prefer most recent link's snapshot
+        physiology = (
+            most_recent_link.get_physiology_snapshot()
+            if most_recent_link and most_recent_link.physiology_snapshot
+            else workout.get_physiology_snapshot()
+        ) or {}
 
         # Build segment rows for template
         seg_rows = []
@@ -677,10 +792,61 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
+        # If no WorkoutSegment records exist yet, build a plain structure preview
+        # from the workout_meta JSON so unlinked workouts still show their composition.
+        planned_segments = []
+        if not segments and workout.workout_meta:
+            try:
+                from fitops.workouts.json_parser import parse_segments_from_json
+
+                meta_dict = json.loads(workout.workout_meta)
+                defs = parse_segments_from_json(meta_dict)
+                for d in defs:
+                    target_hr_range = None
+                    target_pace_range = None
+                    if (
+                        d.target_hr_min_bpm is not None
+                        or d.target_hr_max_bpm is not None
+                    ):
+                        target_hr_range = {
+                            "min_bpm": d.target_hr_min_bpm,
+                            "max_bpm": d.target_hr_max_bpm,
+                        }
+                    if (
+                        d.target_pace_min_s_per_km is not None
+                        or d.target_pace_max_s_per_km is not None
+                    ):
+                        target_pace_range = {
+                            "min_formatted": _fmt_pace(d.target_pace_min_s_per_km),
+                            "max_formatted": _fmt_pace(d.target_pace_max_s_per_km),
+                        }
+                    seg_dict = {
+                        "target_focus_type": d.target_focus_type,
+                        "target_hr_range": target_hr_range,
+                        "target_pace_range": target_pace_range,
+                        "target_zone": d.target_zone,
+                    }
+                    planned_segments.append(
+                        {
+                            "name": d.name,
+                            "step_type": d.step_type,
+                            "duration_min": round(d.duration_min, 1)
+                            if d.duration_min
+                            else None,
+                            "target_label": _segment_target_label(seg_dict),
+                        }
+                    )
+            except Exception:
+                pass
+
+        # Overall compliance: most recent link's score, fallback to workout row
+        best_compliance = (
+            most_recent_link.compliance_score
+            if most_recent_link and most_recent_link.compliance_score is not None
+            else workout.compliance_score
+        )
         overall_pct = (
-            round(workout.compliance_score * 100)
-            if workout.compliance_score is not None
-            else None
+            round(best_compliance * 100) if best_compliance is not None else None
         )
 
         return templates.TemplateResponse(
@@ -688,15 +854,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
             "workouts/detail.html",
             {
                 "request": request,
+                "planned_segments": planned_segments,
                 "workout": {
                     "id": workout.id,
                     "name": workout.name,
                     "sport_type": workout.sport_type,
                     "status": workout.status,
-                    "linked_at": workout.linked_at.strftime("%d %b %Y")
-                    if workout.linked_at
+                    "linked_at": linked_activities[0]["linked_at"]
+                    if linked_activities
                     else None,
-                    "compliance_score": workout.compliance_score,
+                    "compliance_score": best_compliance,
                     "compliance_pct": overall_pct,
                     "score_class": (
                         "green"
@@ -709,7 +876,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     ),
                     "notes": workout.notes,
                 },
-                "linked_activity": linked_activity,
+                "linked_activities": linked_activities,
                 "physiology": physiology,
                 "grouped_segments": _group_interval_segments(seg_rows),
                 "active_page": "workouts",

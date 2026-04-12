@@ -6,7 +6,7 @@
 <div class="page-header">
   <div>
     <p class="page-title">Create Workout</p>
-    <p class="page-subtitle">Define a workout from a JSON structure and save it to your workout library</p>
+    <p class="page-subtitle">Build a structured workout and save it to your library</p>
   </div>
   <a href="/workouts" class="back-link">← Workouts</a>
 </div>
@@ -51,28 +51,28 @@
 
 {% else %}
 {# ── Create form ───────────────────────────────────────────────── #}
-<div class="panel" style="margin-bottom:1.25rem;">
-  <div class="panel-header">
-    <span class="panel-title">Workout Definition</span>
+<form id="workout-form" method="post" action="/workouts/create">
+  <input type="hidden" name="workout_json_str" id="workout_json_str" />
+
+  {% if error %}
+  <div class="alert alert-red" style="margin-bottom:1rem;">
+    <strong>Error:</strong> {{ error }}
   </div>
-  <form method="post" action="/workouts/create" style="padding:1rem 1.25rem;">
+  {% endif %}
 
-    {% if error %}
-    <div class="alert alert-red" style="margin-bottom:1rem;">
-      <strong>Error:</strong> {{ error }}
-    </div>
-    {% endif %}
-
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1rem;">
+  {# ── Basic info ── #}
+  <div class="panel" style="margin-bottom:1rem;">
+    <div class="panel-header"><span class="panel-title">Basic Info</span></div>
+    <div style="padding:1rem 1.25rem;display:grid;grid-template-columns:2fr 1fr;gap:1rem;">
       <div>
-        <label style="display:block;font-size:0.78rem;color:#888;margin-bottom:0.3rem;">Workout Name</label>
-        <input type="text" name="name" value="{{ form.name or '' }}" placeholder="e.g. Thursday Threshold Run"
+        <label class="field-label">Workout Name</label>
+        <input type="text" name="name" id="workout-name" value="{{ form.name or '' }}" placeholder="e.g. Thursday Threshold Run"
                required
                style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
       </div>
       <div>
-        <label style="display:block;font-size:0.78rem;color:#888;margin-bottom:0.3rem;">Sport</label>
-        <select name="sport"
+        <label class="field-label">Sport</label>
+        <select name="sport" id="workout-sport"
                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;">
           {% for s in [('run','Run'),('ride','Ride'),('swim','Swim'),('walk','Walk'),('hike','Hike')] %}
           <option value="{{ s[0] }}" {% if (form.sport or 'run') == s[0] %}selected{% endif %}>{{ s[1] }}</option>
@@ -80,62 +80,388 @@
         </select>
       </div>
     </div>
+  </div>
 
-    <div style="margin-bottom:1rem;">
-      <label style="display:block;font-size:0.78rem;color:#888;margin-bottom:0.3rem;">
-        Workout JSON
-        <span style="color:var(--text-dim);font-weight:400;margin-left:6px;">— paste your workout definition below</span>
+  {# ── Warmup ── #}
+  <div class="panel" style="margin-bottom:1rem;">
+    <div class="panel-header" style="display:flex;align-items:center;gap:10px;">
+      <span class="panel-title">Warmup</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="warmup-enabled" checked onchange="toggleSection('warmup-fields',this.checked)" />
+        Include
       </label>
-      <textarea name="workout_json_str" rows="20" required
-                placeholder='{
-  "training": {
-    "warmup": {
-      "time_minutes": 10,
-      "heart_rate_range_bpm": { "min": 120, "max": 145 }
-    },
-    "intervals": [
-      {
-        "sets": 5,
-        "run": {
-          "time_seconds": 300,
-          "pace_per_km": { "min": "4:30", "max": "5:00" }
-        },
-        "rest": { "time_seconds": 90 }
+    </div>
+    <div id="warmup-fields" style="padding:1rem 1.25rem;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+        <div>
+          <label class="field-label">Duration (minutes)</label>
+          <input type="number" id="warmup-time" min="1" max="60" step="1" value="10" placeholder="10"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR min (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="warmup-hr-min" min="80" max="220" step="1" placeholder="120"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR max (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="warmup-hr-max" min="80" max="220" step="1" placeholder="145"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Interval Groups ── #}
+  <div class="panel" style="margin-bottom:1rem;">
+    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="panel-title">Intervals</span>
+      <button type="button" onclick="addIntervalGroup()"
+              style="font-size:12px;padding:0.25rem 0.75rem;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;cursor:pointer;">
+        + Add Group
+      </button>
+    </div>
+    <div id="intervals-container" style="padding:0.5rem 1.25rem 1rem;">
+      {# Groups injected by JS #}
+      <p id="no-intervals-msg" style="font-size:12px;color:var(--text-dim);padding:0.5rem 0;">
+        No interval groups yet. Click <strong>+ Add Group</strong> to add one.
+      </p>
+    </div>
+  </div>
+
+  {# ── Cooldown ── #}
+  <div class="panel" style="margin-bottom:1rem;">
+    <div class="panel-header" style="display:flex;align-items:center;gap:10px;">
+      <span class="panel-title">Cooldown</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="cooldown-enabled" checked onchange="toggleSection('cooldown-fields',this.checked)" />
+        Include
+      </label>
+    </div>
+    <div id="cooldown-fields" style="padding:1rem 1.25rem;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+        <div>
+          <label class="field-label">Duration (minutes)</label>
+          <input type="number" id="cooldown-time" min="1" max="60" step="1" value="10" placeholder="10"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR min (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="cooldown-hr-min" min="80" max="220" step="1" placeholder="110"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR max (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="cooldown-hr-max" min="80" max="220" step="1" placeholder="140"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Preview ── #}
+  <div class="panel" style="margin-bottom:1rem;">
+    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="panel-title">Preview</span>
+      <button type="button" onclick="refreshPreview()"
+              style="font-size:12px;padding:0.25rem 0.75rem;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;cursor:pointer;">
+        Refresh
+      </button>
+    </div>
+    <div style="padding:0.75rem 1.25rem;">
+      <div id="preview-segments" style="font-size:12px;color:var(--text-dim);">
+        Fill in the form above to see a preview.
+      </div>
+    </div>
+  </div>
+
+  {# ── Submit ── #}
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:2rem;">
+    <button type="submit" id="submit-btn"
+            style="padding:0.4rem 1.1rem;background:var(--accent-primary);color:#000;border:none;border-radius:4px;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.04em;">
+      Create Workout
+    </button>
+    <a href="/workouts" style="font-size:0.82rem;color:var(--text-dim);">Cancel</a>
+  </div>
+
+</form>
+
+<style>
+  .field-label {
+    display: block;
+    font-size: 0.78rem;
+    color: #888;
+    margin-bottom: 0.3rem;
+  }
+  .interval-group {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    background: var(--surface-1);
+  }
+  .interval-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  .interval-group-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .remove-group-btn {
+    font-size: 11px;
+    padding: 0.15rem 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .remove-group-btn:hover { color: #e05; border-color: #e05; }
+  .interval-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.75rem;
+  }
+  @media (max-width: 900px) {
+    .interval-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .interval-field input {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  .preview-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .preview-row:last-child { border-bottom: none; }
+  .preview-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    min-width: 64px;
+    text-align: center;
+  }
+  .badge-warmup    { background: #2a3a2a; color: #6e9; }
+  .badge-interval  { background: #2a2a3e; color: #88f; }
+  .badge-recovery  { background: #2e2a1e; color: #fa8; }
+  .badge-cooldown  { background: #1e2e2e; color: #5ce; }
+</style>
+
+<script>
+  let groupCounter = 0;
+
+  function toggleSection(id, show) {
+    document.getElementById(id).style.display = show ? '' : 'none';
+    refreshPreview();
+  }
+
+  function addIntervalGroup() {
+    groupCounter++;
+    const idx = groupCounter;
+    const container = document.getElementById('intervals-container');
+    document.getElementById('no-intervals-msg').style.display = 'none';
+
+    const div = document.createElement('div');
+    div.className = 'interval-group';
+    div.id = `group-${idx}`;
+    div.innerHTML = `
+      <div class="interval-group-header">
+        <span class="interval-group-title">Interval Group ${idx}</span>
+        <button type="button" class="remove-group-btn" onclick="removeGroup(${idx})">Remove</button>
+      </div>
+      <div class="interval-grid">
+        <div class="interval-field">
+          <label class="field-label">Sets</label>
+          <input type="number" id="g${idx}-sets" min="1" max="30" step="1" value="4" placeholder="4" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Work duration (s)</label>
+          <input type="number" id="g${idx}-run-s" min="10" max="3600" step="5" value="300" placeholder="300" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Pace min <span style="font-weight:400;color:var(--text-dim);">(M:SS/km)</span></label>
+          <input type="text" id="g${idx}-pace-min" placeholder="4:30" pattern="\\d+:\\d{2}" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Pace max <span style="font-weight:400;color:var(--text-dim);">(M:SS/km)</span></label>
+          <input type="text" id="g${idx}-pace-max" placeholder="5:00" pattern="\\d+:\\d{2}" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Rest duration (s)</label>
+          <input type="number" id="g${idx}-rest-s" min="0" max="1800" step="5" value="90" placeholder="90" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Rest pace min <span style="font-weight:400;color:var(--text-dim);">opt.</span></label>
+          <input type="text" id="g${idx}-rest-pace-min" placeholder="6:00" pattern="\\d+:\\d{2}" oninput="refreshPreview()" />
+        </div>
+      </div>
+    `;
+    container.appendChild(div);
+    refreshPreview();
+  }
+
+  function removeGroup(idx) {
+    const el = document.getElementById(`group-${idx}`);
+    if (el) el.remove();
+    // Show placeholder if no groups left
+    const container = document.getElementById('intervals-container');
+    const remaining = container.querySelectorAll('.interval-group');
+    if (remaining.length === 0) {
+      document.getElementById('no-intervals-msg').style.display = '';
+    }
+    refreshPreview();
+  }
+
+  function fmtDuration(seconds) {
+    if (!seconds || seconds <= 0) return '—';
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s === 0 ? `${m}min` : `${m}min ${s}s`;
+  }
+
+  function buildJSON() {
+    const training = {};
+
+    // Warmup
+    const warmupEnabled = document.getElementById('warmup-enabled').checked;
+    if (warmupEnabled) {
+      const mins = parseFloat(document.getElementById('warmup-time').value) || 0;
+      const hrMin = document.getElementById('warmup-hr-min').value;
+      const hrMax = document.getElementById('warmup-hr-max').value;
+      const warmup = { time_minutes: mins };
+      if (hrMin && hrMax) {
+        warmup.heart_rate_range_bpm = { min: parseInt(hrMin), max: parseInt(hrMax) };
       }
-    ],
-    "cooldown_rest": {
-      "time_minutes": 10,
-      "heart_rate_range_bpm": { "min": 110, "max": 140 }
+      training.warmup = warmup;
+    }
+
+    // Intervals
+    const groups = document.querySelectorAll('.interval-group');
+    if (groups.length > 0) {
+      training.intervals = [];
+      groups.forEach(g => {
+        const id = g.id.replace('group-', '');
+        const sets = parseInt(document.getElementById(`g${id}-sets`).value) || 1;
+        const runS = parseInt(document.getElementById(`g${id}-run-s`).value) || 0;
+        const paceMin = document.getElementById(`g${id}-pace-min`).value.trim();
+        const paceMax = document.getElementById(`g${id}-pace-max`).value.trim();
+        const restS = parseInt(document.getElementById(`g${id}-rest-s`).value) || 0;
+        const restPaceMin = document.getElementById(`g${id}-rest-pace-min`).value.trim();
+
+        const run = { time_seconds: runS };
+        if (paceMin || paceMax) {
+          run.pace_per_km = {};
+          if (paceMin) run.pace_per_km.min = paceMin;
+          if (paceMax) run.pace_per_km.max = paceMax;
+        }
+
+        const rest = { time_seconds: restS };
+        if (restPaceMin) {
+          rest.pace_per_km = { min: restPaceMin };
+        }
+
+        training.intervals.push({ sets, run, rest });
+      });
+    }
+
+    // Cooldown
+    const cooldownEnabled = document.getElementById('cooldown-enabled').checked;
+    if (cooldownEnabled) {
+      const mins = parseFloat(document.getElementById('cooldown-time').value) || 0;
+      const hrMin = document.getElementById('cooldown-hr-min').value;
+      const hrMax = document.getElementById('cooldown-hr-max').value;
+      const cooldown = { time_minutes: mins };
+      if (hrMin && hrMax) {
+        cooldown.heart_rate_range_bpm = { min: parseInt(hrMin), max: parseInt(hrMax) };
+      }
+      training.cooldown_rest = cooldown;
+    }
+
+    return { training };
+  }
+
+  function refreshPreview() {
+    const data = buildJSON();
+    const training = data.training;
+    const preview = document.getElementById('preview-segments');
+    const rows = [];
+
+    if (training.warmup) {
+      const w = training.warmup;
+      let detail = `${w.time_minutes} min`;
+      if (w.heart_rate_range_bpm) detail += ` · HR ${w.heart_rate_range_bpm.min}–${w.heart_rate_range_bpm.max} bpm`;
+      rows.push(`<div class="preview-row"><span class="preview-badge badge-warmup">Warmup</span><span style="font-size:12px;">${detail}</span></div>`);
+    }
+
+    (training.intervals || []).forEach((g, i) => {
+      const runFmt = fmtDuration(g.run.time_seconds);
+      let pacePart = '';
+      if (g.run.pace_per_km) {
+        const p = g.run.pace_per_km;
+        pacePart = ` @ ${p.min || ''}${p.min && p.max ? '–' : ''}${p.max || ''}/km`;
+      }
+      const restFmt = g.rest.time_seconds > 0 ? ` · ${fmtDuration(g.rest.time_seconds)} rest` : '';
+      const label = `${g.sets}×${runFmt}${pacePart}${restFmt}`;
+      rows.push(`<div class="preview-row"><span class="preview-badge badge-interval">Intervals</span><span style="font-size:12px;">${label}</span></div>`);
+    });
+
+    if (training.cooldown_rest) {
+      const c = training.cooldown_rest;
+      let detail = `${c.time_minutes} min`;
+      if (c.heart_rate_range_bpm) detail += ` · HR ${c.heart_rate_range_bpm.min}–${c.heart_rate_range_bpm.max} bpm`;
+      rows.push(`<div class="preview-row"><span class="preview-badge badge-cooldown">Cooldown</span><span style="font-size:12px;">${detail}</span></div>`);
+    }
+
+    if (rows.length === 0) {
+      preview.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">Enable at least one section to see a preview.</span>';
+    } else {
+      preview.innerHTML = rows.join('');
     }
   }
-}'
-                style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 0.75rem;border-radius:4px;font-size:0.82rem;font-family:ui-monospace,monospace;resize:vertical;">{{ form.workout_json_str or '' }}</textarea>
-    </div>
 
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button type="submit"
-              style="padding:0.4rem 1.1rem;background:var(--accent-primary);color:#000;border:none;border-radius:4px;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.04em;">
-        Create Workout
-      </button>
-      <a href="/workouts" style="font-size:0.82rem;color:var(--text-dim);">Cancel</a>
-    </div>
+  document.getElementById('workout-form').addEventListener('submit', function(e) {
+    const data = buildJSON();
+    const training = data.training;
 
-  </form>
-</div>
+    // Validate: need at least one section
+    const hasSomething = training.warmup || (training.intervals && training.intervals.length) || training.cooldown_rest;
+    if (!hasSomething) {
+      e.preventDefault();
+      alert('Add at least a warmup, cooldown, or one interval group.');
+      return;
+    }
 
-<div class="panel" style="margin-bottom:1.25rem;">
-  <div class="panel-header"><span class="panel-title">JSON Format Reference</span></div>
-  <div style="padding:0.75rem 1.25rem;font-size:11px;color:var(--text-dim);line-height:1.7;">
-    <p style="margin-bottom:6px;">The top-level <code>training</code> key supports:</p>
-    <ul style="margin:0 0 8px 16px;">
-      <li><code>warmup</code> — <code>time_minutes</code>, optional <code>heart_rate_range_bpm</code> <em>{min, max}</em></li>
-      <li><code>intervals</code> — array of interval groups, each with <code>sets</code>, <code>run</code> and <code>rest</code> blocks</li>
-      <li><code>cooldown_rest</code> — same shape as warmup</li>
-    </ul>
-    <p style="margin-bottom:4px;">Each <strong>run</strong> block: <code>time_seconds</code>, optional <code>pace_per_km</code> <em>{min, max}</em> as <code>"M:SS"</code></p>
-    <p>Each <strong>rest</strong> block: <code>time_seconds</code></p>
-  </div>
-</div>
+    document.getElementById('workout_json_str').value = JSON.stringify(data);
+  });
+
+  // Wire up live preview refresh on all static inputs
+  ['warmup-time','warmup-hr-min','warmup-hr-max','cooldown-time','cooldown-hr-min','cooldown-hr-max'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', refreshPreview);
+  });
+
+  // Initial render
+  refreshPreview();
+</script>
 {% endif %}
 
 {% endblock %}

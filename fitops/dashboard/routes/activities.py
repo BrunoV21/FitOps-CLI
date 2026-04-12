@@ -41,6 +41,7 @@ from fitops.dashboard.queries.activities import (
     get_recent_activities,
 )
 from fitops.dashboard.queries.athlete import get_athlete
+from fitops.dashboard.queries.race import get_race_plan_for_activity
 from fitops.dashboard.queries.weather import get_weather_for_activities
 from fitops.dashboard.queries.workouts import (
     get_all_workouts,
@@ -452,7 +453,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if activity.id:
             linked = await get_workout_for_activity(activity.id)
             if linked:
-                w, segs = linked
+                w, lnk, segs = linked
 
                 def _fmt_pace_local(pace_s):
                     if pace_s is None:
@@ -478,9 +479,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 workout_data = {
                     "id": w.id,
                     "name": w.name,
-                    "compliance_score": w.compliance_score,
-                    "compliance_pct": round(w.compliance_score * 100)
-                    if w.compliance_score is not None
+                    "compliance_score": lnk.compliance_score,
+                    "compliance_pct": round(lnk.compliance_score * 100)
+                    if lnk.compliance_score is not None
                     else None,
                     "segments": [
                         {
@@ -501,6 +502,19 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         }
                         for s in segs
                     ],
+                }
+
+        # Look up linked race plan (if this activity is a planned race)
+        linked_race_plan: dict | None = None
+        if activity.id:
+            rp = await get_race_plan_for_activity(activity.id)
+            if rp is not None:
+                from fitops.dashboard.queries.race import get_course
+
+                rp_course = await get_course(rp.course_id)
+                linked_race_plan = {
+                    **rp.to_summary_dict(),
+                    "course_name": rp_course.name if rp_course else None,
                 }
 
         # Build weather panel (weather already loaded above)
@@ -637,6 +651,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     {"id": w.id, "name": w.name, "sport_type": w.sport_type}
                     for w in all_workouts
                 ],
+                "linked_race_plan": linked_race_plan,
                 "weather": weather_panel,
                 "insights": insights,
                 "lt2_hr": get_athlete_settings().lthr,
@@ -750,7 +765,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if activity.id:
             linked = await get_workout_for_activity(activity.id)
             if linked:
-                w, segs = linked
+                w, lnk, segs = linked
 
                 def _fmt_pace_local(pace_s_val):
                     if pace_s_val is None:
@@ -776,9 +791,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 workout_data = {
                     "id": w.id,
                     "name": w.name,
-                    "compliance_score": w.compliance_score,
-                    "compliance_pct": round(w.compliance_score * 100)
-                    if w.compliance_score is not None
+                    "compliance_score": lnk.compliance_score,
+                    "compliance_pct": round(lnk.compliance_score * 100)
+                    if lnk.compliance_score is not None
                     else None,
                     "segments": [
                         {

@@ -156,6 +156,38 @@ function renderActivityMap(containerId, latlng, windData) {
 
 
 /**
+ * Resample a time-indexed value stream to uniform distance intervals via linear interpolation.
+ * @param {number[]} distStream - cumulative distance in meters at each time sample
+ * @param {(number|null)[]} valueStream - values at each time sample
+ * @param {number} stepMeters - desired spacing in meters between output samples
+ * @returns {(number|null)[]}
+ */
+function _resampleAtDist(distStream, valueStream, stepMeters) {
+  const n = Math.min(distStream.length, valueStream.length);
+  if (n === 0 || stepMeters <= 0) return [];
+  const totalDist = distStream[n - 1];
+  const result = [];
+  let j = 0;
+  for (let d = 0; d <= totalDist + 1e-9; d += stepMeters) {
+    // Advance j so distStream[j] is the last index <= d
+    while (j < n - 1 && distStream[j + 1] <= d) j++;
+    const d0 = distStream[j];
+    const d1 = j + 1 < n ? distStream[j + 1] : d0;
+    const v0 = valueStream[j];
+    const v1 = j + 1 < n ? valueStream[j + 1] : v0;
+    if (v0 == null || v1 == null) {
+      result.push(null);
+    } else if (d1 <= d0) {
+      result.push(v0);
+    } else {
+      result.push(v0 + (v1 - v0) * ((d - d0) / (d1 - d0)));
+    }
+  }
+  return result;
+}
+
+
+/**
  * Format seconds as M:SS.
  * @param {number} s
  * @returns {string}
@@ -183,9 +215,24 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   const isRun = RUN_SPORTS.has(sportType);
 
   // X-axis label arrays
-  const distLabels = (streams.distance || []).map(m => (m / 1000).toFixed(2));
+  // Distance labels are built at uniform distance intervals so that the chart
+  // compresses fast sections and expands slow ones (true distance-axis behaviour).
+  // Time labels stay at 1-sample-per-second (uniform time).
+  const rawDistStream = streams.distance || [];
+  let distLabels = null;
+  let _distStep = 0;
+  if (rawDistStream.length > 0) {
+    const totalDistM = rawDistStream[rawDistStream.length - 1];
+    // Target ~1000 display points; clamp to at least 10 m per step.
+    _distStep = Math.max(10, Math.round(totalDistM / 1000));
+    distLabels = [];
+    for (let d = 0; d <= totalDistM + 1e-9; d += _distStep) {
+      distLabels.push((d / 1000).toFixed(2));
+    }
+  }
   const timeLabels = (streams.time || []).map(s => _fmtMMSS(s));
-  const xLabels = distLabels.length > 0 ? distLabels : timeLabels;
+  // Default to time mode.
+  const xLabels = timeLabels.length > 0 ? timeLabels : (distLabels ?? []);
 
   const datasets = [];
   const scales = {
@@ -440,6 +487,31 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     }
   }
 
+  // ── Build per-dataset time / distance data arrays ──────────────────────────
+  // Datasets were built with time-indexed (1/sec) arrays. When a distance stream
+  // is present we also compute distance-resampled arrays so that toggling the
+  // x-axis actually reshapes the traces (fast → compressed, slow → expanded).
+  if (distLabels && rawDistStream.length > 0) {
+    for (const ds of datasets) {
+      if (ds._isThreshold) {
+        // Constant threshold lines — resize to match each axis's label count.
+        const val = ds.data[0];
+        ds._timeData = Array(timeLabels.length).fill(val);
+        ds._distData = Array(distLabels.length).fill(val);
+      } else {
+        ds._timeData = ds.data.slice();
+        ds._distData = _resampleAtDist(rawDistStream, ds.data, _distStep);
+      }
+      // Start in time mode (matches the default xLabels = timeLabels).
+      ds.data = ds._timeData;
+    }
+  } else {
+    for (const ds of datasets) {
+      ds._timeData = ds.data;
+      ds._distData = null;
+    }
+  }
+
   const crosshairPlugin = {
     id: 'crosshair',
     afterDraw(ch) {
@@ -510,7 +582,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   });
 
   // Store label arrays for x-axis toggle
-  chart._distLabels = distLabels.length > 0 ? distLabels : null;
+  chart._distLabels = distLabels && distLabels.length > 0 ? distLabels : null;
   chart._timeLabels = timeLabels.length > 0 ? timeLabels : null;
   window._activeStreamChart = chart;
   _activitySync.chart = chart;
@@ -598,6 +670,17 @@ function setXAxis(mode) {
   if (!labels) return;
 
   chart.data.labels = labels;
+
+  // Swap each dataset's data array to match the new axis mode so the trace
+  // shape actually changes (distance mode compresses fast sections).
+  for (const ds of chart.data.datasets) {
+    if (mode === 'distance' && ds._distData) {
+      ds.data = ds._distData;
+    } else if (mode === 'time' && ds._timeData) {
+      ds.data = ds._timeData;
+    }
+  }
+
   chart.update();
 
   const btnDist = document.getElementById('xaxis-distance');

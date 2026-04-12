@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
 from fitops.db.models.activity import Activity
 from fitops.db.models.workout import Workout
+from fitops.db.models.workout_activity_link import WorkoutActivityLink
 from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
 
@@ -12,7 +13,11 @@ async def get_workout_with_segments(
     workout_id: int,
     athlete_id: int,
 ) -> tuple[Workout, list[WorkoutSegment]] | None:
-    """Fetch a workout and its segments by workout id (guarded by athlete_id)."""
+    """Fetch a workout and its segments by workout id (guarded by athlete_id).
+
+    Returns the most-recently-linked activity's segments when multiple activities
+    are linked to the same workout.
+    """
     async with get_async_session() as session:
         res = await session.execute(
             select(Workout).where(
@@ -24,34 +29,78 @@ async def get_workout_with_segments(
         if workout is None:
             return None
 
+        # Find the most recently linked activity to scope the segments
+        link_res = await session.execute(
+            select(WorkoutActivityLink)
+            .where(WorkoutActivityLink.workout_id == workout_id)
+            .order_by(desc(WorkoutActivityLink.linked_at))
+            .limit(1)
+        )
+        latest_link = link_res.scalar_one_or_none()
+
+        seg_query = select(WorkoutSegment).where(
+            WorkoutSegment.workout_id == workout_id
+        )
+        if latest_link is not None:
+            seg_query = seg_query.where(
+                WorkoutSegment.activity_id == latest_link.activity_id
+            )
         seg_res = await session.execute(
-            select(WorkoutSegment)
-            .where(WorkoutSegment.workout_id == workout_id)
-            .order_by(WorkoutSegment.segment_index)
+            seg_query.order_by(WorkoutSegment.segment_index)
         )
         segments = list(seg_res.scalars().all())
         return workout, segments
 
 
-async def get_workout_for_activity(
-    activity_id: int,
-) -> tuple[Workout, list[WorkoutSegment]] | None:
-    """Fetch the workout (and its segments) linked to an internal activity id."""
+async def get_linked_activities_for_workout(
+    workout_id: int,
+) -> list[tuple[WorkoutActivityLink, Activity]]:
+    """Return all (link, activity) pairs for a workout, newest activity date first."""
     async with get_async_session() as session:
         res = await session.execute(
-            select(Workout).where(Workout.activity_id == activity_id)
+            select(WorkoutActivityLink, Activity)
+            .join(Activity, Activity.id == WorkoutActivityLink.activity_id)
+            .where(WorkoutActivityLink.workout_id == workout_id)
+            .order_by(desc(Activity.start_date_local))
         )
-        workout = res.scalar_one_or_none()
+        return list(res.all())
+
+
+async def get_workout_for_activity(
+    activity_id: int,
+) -> tuple[Workout, WorkoutActivityLink, list[WorkoutSegment]] | None:
+    """Fetch the workout (and its segments) linked to an internal activity id.
+
+    Returns ``(workout, link, segments)`` so callers can read per-activity
+    compliance metadata from the link row rather than the workout row.
+    """
+    async with get_async_session() as session:
+        link_res = await session.execute(
+            select(WorkoutActivityLink).where(
+                WorkoutActivityLink.activity_id == activity_id
+            )
+        )
+        link = link_res.scalar_one_or_none()
+        if link is None:
+            return None
+
+        workout_res = await session.execute(
+            select(Workout).where(Workout.id == link.workout_id)
+        )
+        workout = workout_res.scalar_one_or_none()
         if workout is None:
             return None
 
         seg_res = await session.execute(
             select(WorkoutSegment)
-            .where(WorkoutSegment.workout_id == workout.id)
+            .where(
+                WorkoutSegment.workout_id == link.workout_id,
+                WorkoutSegment.activity_id == activity_id,
+            )
             .order_by(WorkoutSegment.segment_index)
         )
         segments = list(seg_res.scalars().all())
-        return workout, segments
+        return workout, link, segments
 
 
 async def get_workout_names_for_activities(activity_ids: list[int]) -> dict[int, str]:
@@ -60,9 +109,9 @@ async def get_workout_names_for_activities(activity_ids: list[int]) -> dict[int,
         return {}
     async with get_async_session() as session:
         res = await session.execute(
-            select(Workout.activity_id, Workout.name).where(
-                Workout.activity_id.in_(activity_ids)
-            )
+            select(WorkoutActivityLink.activity_id, Workout.name)
+            .join(Workout, Workout.id == WorkoutActivityLink.workout_id)
+            .where(WorkoutActivityLink.activity_id.in_(activity_ids))
         )
         return {row.activity_id: row.name for row in res.all()}
 

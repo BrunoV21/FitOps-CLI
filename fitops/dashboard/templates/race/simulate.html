@@ -2,6 +2,10 @@
 {% block title %}{{ course.name }} — Race Simulation — FitOps{% endblock %}
 {% block page_name %}Race{% endblock %}
 
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -187,6 +191,15 @@
   </div>
 </div>
 
+<!-- Route Map with Pace Colouring -->
+<div class="panel" id="simMapPanel">
+  <div class="panel-header">
+    <span class="panel-title">Course Map</span>
+    <span class="panel-meta" id="simMapMeta">hover a split to highlight</span>
+  </div>
+  <div id="simRouteMap" style="height:320px; border-radius:4px;"></div>
+</div>
+
 <!-- Split Table -->
 <div class="panel">
   <div class="panel-header">
@@ -216,7 +229,7 @@
           </td>
         </tr>
         {% endif %}
-        <tr {% if pacer_data and sp.phase == 'sit' %}style="color:#94a3b8;"{% endif %}>
+        <tr data-km="{{ sp.km }}" {% if pacer_data and sp.phase == 'sit' %}style="color:#94a3b8;"{% endif %}>
           <td class="text-muted">{{ sp.km }}</td>
           <td style="font-size:0.82rem;">
             {%- set eg = sp.elevation_gain_m if sp.elevation_gain_m is defined else 0 -%}
@@ -252,6 +265,87 @@
   </div>
 </div>
 
+<!-- Save as Plan -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Save as Race Plan</span>
+    <span class="panel-meta">store this simulation for comparison after the race</span>
+  </div>
+  <form method="post" action="/race/{{ course.id }}/plans" style="padding:1rem 1.25rem;">
+    <!-- Echo all simulation params as hidden fields -->
+    <input type="hidden" name="target_time" value="{{ form.target_time or '' }}">
+    <input type="hidden" name="strategy" value="{{ form.strategy or 'even' }}">
+    <input type="hidden" name="pacer_pace" value="{{ form.pacer_pace or '' }}">
+    <input type="hidden" name="drop_at_km" value="{{ form.drop_at_km or '' }}">
+    <input type="hidden" name="race_date" value="{{ form.race_date or '' }}">
+    <input type="hidden" name="race_hour" value="{{ form.race_hour or '9' }}">
+    <input type="hidden" name="temp" value="{{ form.temp or '' }}">
+    <input type="hidden" name="humidity" value="{{ form.humidity or '' }}">
+    <input type="hidden" name="wind" value="{{ form.wind or '' }}">
+    <input type="hidden" name="wind_dir" value="{{ form.wind_dir or '' }}">
+    <div style="display:grid; grid-template-columns:1fr {% if existing_plans %}1fr{% endif %} auto; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
+      <div>
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Plan Name</label>
+        <input type="text" name="plan_name" required placeholder="e.g. Berlin 2026 Sub-3"
+               style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+      </div>
+      {% if existing_plans %}
+      <div>
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Overwrite existing plan <span style="color:#666;">(optional)</span></label>
+        <select name="override_plan_id" style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem; appearance:none; -webkit-appearance:none;">
+          <option value="">— Create new plan —</option>
+          {% for p in existing_plans %}
+          <option value="{{ p.id }}">{{ p.name }}{% if p.race_date %} ({{ p.race_date }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <button type="submit" class="btn btn-primary" style="white-space:nowrap; align-self:flex-end;">Save Plan</button>
+    </div>
+  </form>
+</div>
+
+{% endif %}
+
+{% if existing_plans %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Saved Plans for This Course</span>
+    <span class="panel-meta">{{ existing_plans | length }} plan{% if existing_plans | length != 1 %}s{% endif %}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Date</th>
+          <th>Target</th>
+          <th>Strategy</th>
+          <th>Activity</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in existing_plans %}
+        <tr>
+          <td><a href="/race/plans/{{ p.id }}" style="color:var(--accent);">{{ p.name }}</a></td>
+          <td class="text-muted">{{ p.race_date or '—' }}</td>
+          <td>{{ p.target_time or '—' }}</td>
+          <td style="text-transform:capitalize;">{{ p.strategy }}</td>
+          <td>
+            {% if p.activity_id %}
+            <a href="/activities/{{ p.activity_id }}" style="font-size:0.8rem; color:#4ade80;">linked</a>
+            {% else %}
+            <span style="color:#555; font-size:0.8rem;">—</span>
+            {% endif %}
+          </td>
+          <td><a href="/race/plans/{{ p.id }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.78rem;">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 
@@ -423,6 +517,13 @@
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onHover: (event, elements) => {
+        if (elements.length > 0 && elements[0].datasetIndex === 0) {
+          if (window._simMapHighlight) window._simMapHighlight(elements[0].index);
+        } else {
+          if (window._simMapReset) window._simMapReset();
+        }
+      },
       scales: {
         x: {
           title: { display: true, text: 'Kilometre' },
@@ -449,6 +550,75 @@
         }
       }
     }
+  });
+})();
+</script>
+
+<script>
+(function() {
+  const segCoords = {{ segment_coords_json | safe }};
+  const routeCoords = {{ route_coords_json | safe }};
+  const paces = {{ chart_paces_json | safe }};
+  const avgPace = {{ avg_pace_s }};
+
+  if (!routeCoords || routeCoords.length < 2) return;
+
+  function paceColor(s) {
+    if (s < avgPace * 0.95) return '#22c55e';
+    if (s > avgPace * 1.05) return '#ef4444';
+    return '#f59e0b';
+  }
+
+  const map = L.map('simRouteMap', { scrollWheelZoom: false, zoomControl: true });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  }).addTo(map);
+
+  const segPolylines = segCoords.map((coords, i) => {
+    if (!coords || coords.length < 2) return null;
+    return L.polyline(coords, {
+      color: paceColor(paces[i] != null ? paces[i] : avgPace),
+      weight: 4,
+      opacity: 0.85,
+    }).addTo(map);
+  });
+
+  L.circleMarker(routeCoords[0], { radius: 5, color: '#00ff87', fillColor: '#00ff87', fillOpacity: 1, weight: 2 })
+    .addTo(map).bindTooltip('Start');
+  L.circleMarker(routeCoords[routeCoords.length - 1], { radius: 5, color: '#ff3355', fillColor: '#ff3355', fillOpacity: 1, weight: 2 })
+    .addTo(map).bindTooltip('Finish');
+
+  map.fitBounds(L.polyline(routeCoords).getBounds(), { padding: [16, 16] });
+  setTimeout(() => map.invalidateSize(), 200);
+
+  let _activeIdx = -1;
+
+  window._simMapHighlight = function(idx) {
+    if (idx === _activeIdx) return;
+    window._simMapReset();
+    _activeIdx = idx;
+    const pl = segPolylines[idx];
+    if (pl) { pl.setStyle({ weight: 8, opacity: 1 }); pl.bringToFront(); }
+    const meta = document.getElementById('simMapMeta');
+    if (meta) meta.textContent = `km ${idx + 1}`;
+  };
+
+  window._simMapReset = function() {
+    if (_activeIdx >= 0) {
+      const pl = segPolylines[_activeIdx];
+      if (pl) pl.setStyle({ weight: 4, opacity: 0.85 });
+    }
+    _activeIdx = -1;
+    const meta = document.getElementById('simMapMeta');
+    if (meta) meta.textContent = 'hover a split to highlight';
+  };
+
+  document.querySelectorAll('.data-table tbody tr[data-km]').forEach(row => {
+    const km = parseInt(row.dataset.km, 10);
+    row.addEventListener('mouseenter', () => window._simMapHighlight(km - 1));
+    row.addEventListener('mouseleave', window._simMapReset);
   });
 })();
 </script>

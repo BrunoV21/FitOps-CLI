@@ -14,6 +14,8 @@ from fitops.config.settings import get_settings
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.models.workout import Workout
+from fitops.db.models.workout_activity_link import WorkoutActivityLink
+from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
 from fitops.strava.client import StravaClient
 from fitops.strava.sync_engine import SyncEngine
@@ -83,6 +85,13 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
                 ).scalar_one_or_none()
                 if row:
                     row.streams_fetched = True
+            # Silently try to auto-associate to a race plan
+            try:
+                from fitops.analytics.race_plan import match_activity_to_plans
+
+                await match_activity_to_plans(internal_id)
+            except Exception:
+                pass
             fetched += 1
             fetched_strava_ids.append(strava_id)
         except Exception:
@@ -170,6 +179,16 @@ def register() -> APIRouter:
                 new_strava_ids = [r[0] for r in newest.all()]
             weather_result = await _fetch_weather_for_new_activities(new_strava_ids)
 
+        # Always sweep for unlinked plans — catches plans created after their
+        # matching activity was already synced.
+        plans_linked = 0
+        try:
+            from fitops.analytics.race_plan import sweep_unlinked_plans
+
+            plans_linked = await sweep_unlinked_plans()
+        except Exception:
+            pass
+
         return JSONResponse(
             {
                 "activities_created": result.activities_created,
@@ -178,6 +197,7 @@ def register() -> APIRouter:
                 "duration_s": round(result.duration_s, 2),
                 "streams": streams_result,
                 "weather": weather_result,
+                "plans_linked": plans_linked,
                 "synced_at": datetime.now(UTC).isoformat(),
             }
         )
@@ -390,24 +410,59 @@ def register() -> APIRouter:
             if wkt is None:
                 return JSONResponse({"error": "Workout not found."}, status_code=404)
 
-            # Unlink any other workout already assigned to this activity
-            prev = (
+            # If this activity already has a different workout linked, remove that link
+            prev_link = (
                 await session.execute(
-                    select(Workout).where(Workout.activity_id == act.id)
+                    select(WorkoutActivityLink).where(
+                        WorkoutActivityLink.activity_id == act.id
+                    )
                 )
             ).scalar_one_or_none()
-            if prev and prev.id != wkt.id:
-                prev.activity_id = None
-                prev.linked_at = None
-                prev.status = "planned"
+            if prev_link and prev_link.workout_id != wkt.id:
+                await session.delete(prev_link)
 
-            # Assign
-            wkt.activity_id = act.id
-            wkt.linked_at = datetime.now(UTC)
-            wkt.status = "completed"
+            # Upsert the WorkoutActivityLink for this (workout, activity) pair
+            link = prev_link if (prev_link and prev_link.workout_id == wkt.id) else None
+            if link is None:
+                link = WorkoutActivityLink(
+                    workout_id=wkt.id,
+                    activity_id=act.id,
+                    linked_at=datetime.now(UTC),
+                    status="completed",
+                )
+                session.add(link)
+            else:
+                link.linked_at = datetime.now(UTC)
+                link.status = "completed"
+
+            activity_internal_id = act.id
+            workout_id_assigned = wkt.id
+            workout_name_assigned = wkt.name
+
+        # Run compliance scoring automatically after assignment
+        compliance_result = None
+        compliance_error = None
+        try:
+            from fitops.workouts.engine import run_compliance_for_activity
+
+            result, err = await run_compliance_for_activity(
+                activity_internal_id, recalculate=True
+            )
+            if err:
+                compliance_error = err
+            else:
+                compliance_result = result
+        except Exception as exc:
+            compliance_error = str(exc)
 
         return JSONResponse(
-            {"ok": True, "workout_id": wkt.id, "workout_name": wkt.name}
+            {
+                "ok": True,
+                "workout_id": workout_id_assigned,
+                "workout_name": workout_name_assigned,
+                "compliance": compliance_result,
+                "compliance_error": compliance_error,
+            }
         )
 
     @router.post("/api/activities/{strava_id}/unassign-workout")
@@ -428,17 +483,25 @@ def register() -> APIRouter:
             if act is None:
                 return JSONResponse({"error": "Activity not found."}, status_code=404)
 
-            wkt = (
+            link = (
                 await session.execute(
-                    select(Workout).where(Workout.activity_id == act.id)
+                    select(WorkoutActivityLink).where(
+                        WorkoutActivityLink.activity_id == act.id
+                    )
                 )
             ).scalar_one_or_none()
-            if wkt is None:
+            if link is None:
                 return JSONResponse({"error": "No workout linked."}, status_code=404)
 
-            wkt.activity_id = None
-            wkt.linked_at = None
-            wkt.status = "planned"
+            workout_id_to_clean = link.workout_id
+            await session.delete(link)
+            # Also remove the compliance segments for this (workout, activity) pair
+            await session.execute(
+                sa_delete(WorkoutSegment).where(
+                    WorkoutSegment.workout_id == workout_id_to_clean,
+                    WorkoutSegment.activity_id == act.id,
+                )
+            )
 
         return JSONResponse({"ok": True})
 

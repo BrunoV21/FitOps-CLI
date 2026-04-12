@@ -29,10 +29,8 @@
     </thead>
     <tbody>
       {% for w in workouts %}
-      <tr style="cursor:pointer;" onclick="toggleSegments({{ loop.index }})">
-        <td class="w" style="font-weight:600;">
-          <a href="/workouts/{{ w.id }}" class="panel-link" style="color:var(--text-primary);" onclick="event.stopPropagation();">{{ w.name }}</a>
-        </td>
+      <tr style="cursor:pointer;" onclick="window.location='/workouts/{{ w.id }}'">
+        <td class="w" style="font-weight:600;">{{ w.name }}</td>
         <td>
           <span style="display:flex;align-items:center;gap:6px;opacity:0.8;">
             {{ sport_icon(w.sport_type) }} {{ w.sport_type }}
@@ -63,98 +61,13 @@
         </td>
         <td class="r">{{ w.segment_count }}</td>
       </tr>
-      {% if w.segments %}
-      <tr id="segments-{{ loop.index }}" class="hidden">
-        <td colspan="6" style="padding:0;">
-          <div style="background:var(--surface);border-top:1px solid var(--border);">
-            <p style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);padding:12px 16px 8px;">
-              Segment Breakdown
-            </p>
-            <table class="data-table" style="margin:0;">
-              <thead>
-                <tr>
-                  <th>Segment</th>
-                  <th>Type</th>
-                  <th>Target</th>
-                  <th class="r">Avg Pace</th>
-                  <th class="r">Avg HR</th>
-                  <th class="r">Avg Speed</th>
-                  <th class="r">Avg GAP</th>
-                  <th class="r">Avg Cadence</th>
-                  <th class="r">In Target</th>
-                  <th class="r">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for seg in w.segments %}
-                <tr>
-                  <td style="font-weight:600;color:var(--text-primary);">
-                    {{ seg.segment_name or ("Segment " ~ seg.segment_index) }}
-                  </td>
-                  <td style="font-size:11px;color:var(--text-dim);">{{ seg.step_type or "—" }}</td>
-                  <td style="font-size:11px;color:var(--text-muted);">{{ seg.target_label }}</td>
-                  <td class="r">
-                    {% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}
-                  </td>
-                  <td class="r">
-                    {% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}
-                  </td>
-                  <td class="r">
-                    {% if seg.actuals.avg_speed_kmh %}{{ "%.1f" | format(seg.actuals.avg_speed_kmh) }} km/h{% else %}—{% endif %}
-                  </td>
-                  <td class="r">
-                    {% if seg.actuals.avg_gap_formatted %}{{ seg.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}
-                  </td>
-                  <td class="r">
-                    {% if seg.actuals.avg_cadence %}{{ "%.0f" | format(seg.actuals.avg_cadence) }} spm{% else %}—{% endif %}
-                  </td>
-                  <td class="r">
-                    {% if seg.compliance.time_in_target_pct is not none %}
-                      {{ "%.0f%%" | format(seg.compliance.time_in_target_pct * 100) }}
-                    {% else %}—{% endif %}
-                  </td>
-                  <td class="r">
-                    {% if seg.compliance_pct is not none %}
-                    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
-                      <div class="compliance-bar-track" style="width:40px;">
-                        <div class="compliance-bar-fill" style="width:{{ seg.compliance_pct }}%;background:
-                          {% if seg.compliance_pct >= 80 %}var(--accent-primary)
-                          {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
-                          {% else %}var(--accent-red){% endif %};"></div>
-                      </div>
-                      <span style="font-weight:700;min-width:30px;text-align:right;color:
-                        {% if seg.compliance_pct >= 80 %}var(--accent-primary)
-                        {% elif seg.compliance_pct >= 60 %}var(--accent-amber)
-                        {% else %}var(--accent-red){% endif %};">
-                        {{ seg.compliance_pct }}%
-                      </span>
-                    </div>
-                    {% else %}<span style="color:var(--text-dim);">—</span>{% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </td>
-      </tr>
-      {% endif %}
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% else %}
 <div class="empty-state">
-  No workouts found. Link workouts to activities with <code>fitops workouts link</code>.
+  No workouts yet. <a href="/workouts/create" style="color:var(--accent-primary);">Create your first workout</a> to get started.
 </div>
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
-<script>
-function toggleSegments(idx) {
-  const row = document.getElementById(`segments-${idx}`);
-  if (row) row.classList.toggle('hidden');
-}
-</script>
 {% endblock %}
