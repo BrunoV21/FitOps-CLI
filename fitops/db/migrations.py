@@ -16,7 +16,9 @@ from fitops.db.models.analytics_snapshot import AnalyticsSnapshot  # noqa: F401
 from fitops.db.models.athlete import Athlete  # noqa: F401
 from fitops.db.models.note import Note  # noqa: F401
 from fitops.db.models.race_course import RaceCourse  # noqa: F401
+from fitops.db.models.race_plan import RacePlan  # noqa: F401
 from fitops.db.models.workout import Workout  # noqa: F401
+from fitops.db.models.workout_activity_link import WorkoutActivityLink  # noqa: F401
 from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
 from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
 from fitops.db.session import get_engine
@@ -87,6 +89,8 @@ _WORKOUT_SEGMENT_NEW_COLUMNS: list[tuple[str, str]] = [
     ("target_hr_max_bpm", "REAL"),
     ("target_pace_min_s_per_km", "REAL"),
     ("target_pace_max_s_per_km", "REAL"),
+    ("duration_actual_s", "INTEGER"),
+    ("distance_actual_m", "REAL"),
 ]
 
 
@@ -101,6 +105,86 @@ async def _migrate_workout_segment_columns(conn) -> None:
             )
 
 
+async def _migrate_race_plans(conn) -> None:
+    """Create race_plans table if it doesn't exist yet."""
+    await conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS race_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            race_date TEXT,
+            race_hour INTEGER DEFAULT 9,
+            target_time TEXT,
+            target_time_s REAL,
+            strategy TEXT DEFAULT 'even',
+            pacer_pace TEXT,
+            drop_at_km REAL,
+            weather_temp_c REAL,
+            weather_humidity_pct REAL,
+            weather_wind_ms REAL,
+            weather_wind_dir_deg REAL,
+            weather_source TEXT,
+            splits_json TEXT,
+            activity_id INTEGER,
+            created_at DATETIME,
+            updated_at DATETIME
+        )
+        """)
+    )
+
+
+async def _migrate_workout_activity_links(conn) -> None:
+    """Create workout_activity_links table and migrate any existing Workout.activity_id data."""
+    # Create table (Base.metadata.create_all handles it, but we also need the data migration)
+    await conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS workout_activity_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_id INTEGER NOT NULL,
+            activity_id INTEGER NOT NULL,
+            linked_at DATETIME,
+            physiology_snapshot TEXT,
+            compliance_score REAL,
+            status TEXT DEFAULT 'completed'
+        )
+        """)
+    )
+    # Migrate existing 1:1 links from workouts.activity_id
+    result = await conn.execute(
+        text(
+            "SELECT id, activity_id, linked_at, physiology_snapshot, compliance_score, status "
+            "FROM workouts WHERE activity_id IS NOT NULL"
+        )
+    )
+    rows = result.fetchall()
+    for row in rows:
+        workout_id, activity_id, linked_at, phys, comp, status = row
+        existing = await conn.execute(
+            text(
+                "SELECT id FROM workout_activity_links "
+                "WHERE workout_id = :wid AND activity_id = :aid"
+            ),
+            {"wid": workout_id, "aid": activity_id},
+        )
+        if existing.scalar_one_or_none() is None:
+            await conn.execute(
+                text(
+                    "INSERT INTO workout_activity_links "
+                    "(workout_id, activity_id, linked_at, physiology_snapshot, compliance_score, status) "
+                    "VALUES (:wid, :aid, :lat, :phys, :comp, :status)"
+                ),
+                {
+                    "wid": workout_id,
+                    "aid": activity_id,
+                    "lat": linked_at,
+                    "phys": phys,
+                    "comp": comp,
+                    "status": status or "completed",
+                },
+            )
+
+
 async def create_all_tables(engine: AsyncEngine | None = None) -> None:
     if engine is None:
         engine = get_engine()
@@ -111,6 +195,8 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_activity_columns(conn)
         await _migrate_workout_columns(conn)
         await _migrate_workout_segment_columns(conn)
+        await _migrate_workout_activity_links(conn)
+        await _migrate_race_plans(conn)
 
 
 def init_db() -> None:

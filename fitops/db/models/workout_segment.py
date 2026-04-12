@@ -37,6 +37,10 @@ class WorkoutSegment(Base):
     start_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Segment duration and distance actuals
+    duration_actual_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    distance_actual_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Target
     target_focus_type: Mapped[str | None] = mapped_column(
         Text, nullable=True
@@ -115,6 +119,10 @@ class WorkoutSegment(Base):
             step_type=seg.step_type,
             start_index=result.start_index,
             end_index=result.end_index,
+            duration_actual_s=result.duration_actual_s
+            if result.duration_actual_s
+            else None,
+            distance_actual_m=result.distance_actual_m,
             target_focus_type=seg.target_focus_type
             if seg.target_focus_type != "hr_zone" or seg.target_zone
             else None,
@@ -153,6 +161,19 @@ class WorkoutSegment(Base):
         m, s = divmod(int(pace_s), 60)
         return f"{m}:{s:02d}"
 
+    def _fmt_duration(self, secs: int | None) -> str | None:
+        if secs is None or secs <= 0:
+            return None
+        m, s = divmod(secs, 60)
+        return f"{m}:{s:02d}"
+
+    def _fmt_distance(self, meters: float | None) -> str | None:
+        if meters is None or meters <= 0:
+            return None
+        if meters >= 1000:
+            return f"{meters / 1000:.2f} km"
+        return f"{meters:.0f} m"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "segment_index": self.segment_index,
@@ -182,6 +203,10 @@ class WorkoutSegment(Base):
                 "end_index": self.end_index,
             },
             "actuals": {
+                "duration_actual_s": self.duration_actual_s,
+                "duration_formatted": self._fmt_duration(self.duration_actual_s),
+                "distance_actual_m": self.distance_actual_m,
+                "distance_formatted": self._fmt_distance(self.distance_actual_m),
                 "avg_heartrate_bpm": self.avg_heartrate,
                 "avg_pace_per_km": self.avg_pace_per_km,
                 "avg_pace_formatted": self._fmt_pace(self.avg_pace_per_km),
