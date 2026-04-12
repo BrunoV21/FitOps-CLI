@@ -1593,6 +1593,157 @@ def print_weather_fetch_all(data: dict) -> None:
             console.print(f"    {e.get('activity_id')}  {e['result'].get('error')}")
 
 
+def print_race_plans_list(data: dict) -> None:
+    plans = data.get("plans") or []
+    if not plans:
+        console.print("[dim]No race plans saved yet.[/dim]")
+        console.print(
+            "  Simulate a course and save it: fitops race plan-save <course_id> --name <name> --target-time H:MM:SS"
+        )
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("ID", justify="right", style="dim", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("Course", justify="right", style="dim", no_wrap=True)
+    table.add_column("Date", no_wrap=True)
+    table.add_column("Target", justify="right", no_wrap=True)
+    table.add_column("Strategy", no_wrap=True)
+    table.add_column("Activity", justify="right", no_wrap=True)
+
+    for p in plans:
+        act_id = p.get("activity_id")
+        act_str = f"[green]#{act_id}[/green]" if act_id else "[dim]pending[/dim]"
+        table.add_row(
+            str(p.get("id") or ""),
+            p.get("name") or "",
+            str(p.get("course_id") or ""),
+            p.get("race_date") or "—",
+            p.get("target_time") or "—",
+            p.get("strategy") or "even",
+            act_str,
+        )
+
+    console.print(table)
+
+
+def print_race_plan_detail(data: dict) -> None:
+    plan = data.get("plan") or {}
+    splits = plan.get("splits") or []
+
+    console.print()
+    console.print(
+        f"[bold]{plan.get('name') or 'Race Plan'}[/bold]  [dim]ID {plan.get('id')}[/dim]"
+    )
+    console.print(f"  Course      #{plan.get('course_id')}")
+    console.print(f"  Target      {plan.get('target_time') or '—'}")
+    console.print(f"  Strategy    {plan.get('strategy') or 'even'}")
+    if plan.get("race_date"):
+        console.print(
+            f"  Date        {plan['race_date']}  hour {plan.get('race_hour', 9)}"
+        )
+    if plan.get("weather_temp_c") is not None:
+        console.print(
+            f"  Weather     {plan['weather_temp_c']}°C  "
+            f"{plan.get('weather_humidity_pct', '?')}% RH  "
+            f"wind {plan.get('weather_wind_ms', 0):.1f} m/s  "
+            f"[dim]{plan.get('weather_source') or 'manual'}[/dim]"
+        )
+    if plan.get("activity_id"):
+        console.print(f"  Activity    [green]#{plan['activity_id']} linked[/green]")
+    else:
+        console.print("  Activity    [dim]pending[/dim]")
+    console.print()
+
+    if not splits:
+        console.print("[dim]No simulated splits stored.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right")
+    table.add_column("Pace", justify="right", no_wrap=True)
+    table.add_column("Elapsed", justify="right", no_wrap=True)
+    table.add_column("Elev Δ", justify="right", no_wrap=True)
+    table.add_column("Adj Factor", justify="right", no_wrap=True)
+
+    for s in splits:
+        km = s.get("km_marker") or s.get("km") or ""
+        pace = s.get("adjusted_pace_fmt") or s.get("pace_fmt") or s.get("pace") or "-"
+        elapsed = s.get("elapsed_fmt") or s.get("elapsed") or "-"
+        elev = s.get("elevation_delta_m") or s.get("elev_delta_m")
+        elev_str = f"{elev:+.1f} m" if elev is not None else "-"
+        factor = s.get("total_adjustment_factor") or s.get("adj_factor")
+        factor_str = f"{factor:.3f}" if factor is not None else "-"
+        table.add_row(str(km), pace, elapsed, elev_str, factor_str)
+
+    console.print(table)
+    console.print()
+
+
+def print_race_plan_compare(data: dict) -> None:
+    plan = data.get("plan") or {}
+    actual_splits = data.get("actual_splits") or []
+    sim_splits = plan.get("splits") or []
+
+    console.print()
+    console.print(f"[bold]{plan.get('name') or 'Race Plan'}[/bold]  comparison")
+    if data.get("actual_finish_fmt"):
+        console.print(f"  Actual finish    [green]{data['actual_finish_fmt']}[/green]")
+    if plan.get("target_time"):
+        console.print(f"  Simulated target [dim]{plan['target_time']}[/dim]")
+    if data.get("actual_avg_pace_fmt"):
+        console.print(f"  Actual avg pace  {data['actual_avg_pace_fmt']}")
+    console.print()
+
+    n = min(len(sim_splits), len(actual_splits))
+    if n == 0:
+        console.print("[dim]No splits available for comparison.[/dim]")
+        return
+
+    from fitops.race.course_parser import _fmt_duration
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right")
+    table.add_column("Sim Pace", justify="right", no_wrap=True)
+    table.add_column("Actual Pace", justify="right", no_wrap=True)
+    table.add_column("Δ", justify="right", no_wrap=True)
+    table.add_column("HR", justify="right", no_wrap=True)
+    table.add_column("Cadence", justify="right", no_wrap=True)
+
+    for i in range(n):
+        sim = sim_splits[i]
+        act = actual_splits[i]
+        km = sim.get("km_marker") or sim.get("km") or str(i + 1)
+        sim_pace_s = sim.get("target_pace_s") or sim.get("pace_s") or 0
+        act_pace_s = act.get("pace_s") or 0
+        sim_pace_fmt = (
+            sim.get("adjusted_pace_fmt")
+            or sim.get("pace_fmt")
+            or (_fmt_duration(sim_pace_s) if sim_pace_s else "-")
+        )
+        act_pace_fmt = _fmt_duration(act_pace_s) if act_pace_s else "-"
+
+        delta_s = act_pace_s - sim_pace_s if (act_pace_s and sim_pace_s) else None
+        if delta_s is None:
+            delta_str = "-"
+        elif delta_s > 5:
+            delta_str = f"[red]+{_fmt_duration(delta_s)}[/red]"
+        elif delta_s < -5:
+            delta_str = f"[green]{_fmt_duration(delta_s)}[/green]"
+        else:
+            delta_str = f"[dim]{_fmt_duration(abs(delta_s))}[/dim]"
+
+        hr = act.get("avg_hr")
+        hr_str = str(int(hr)) if hr else "-"
+        cad = act.get("avg_cadence")
+        cad_str = str(int(cad * 2)) if cad else "-"
+
+        table.add_row(str(km), sim_pace_fmt, act_pace_fmt, delta_str, hr_str, cad_str)
+
+    console.print(table)
+    console.print()
+
+
 def print_snapshot(data: dict) -> None:
     s = data.get("snapshot") or {}
     console.print()
