@@ -10,9 +10,15 @@ from fitops.dashboard.queries.race import (
     delete_course as _delete_course,
 )
 from fitops.dashboard.queries.race import (
+    delete_race_plan as _delete_race_plan,
+)
+from fitops.dashboard.queries.race import (
     get_all_courses,
+    get_all_race_plans,
     get_course,
+    get_race_plan,
     save_course,
+    save_race_plan,
 )
 from fitops.db.migrations import init_db
 from fitops.db.session import get_async_session
@@ -20,6 +26,9 @@ from fitops.output.formatter import make_meta
 from fitops.output.text_formatter import (
     print_course_detail,
     print_courses_list,
+    print_race_plan_compare,
+    print_race_plan_detail,
+    print_race_plans_list,
     print_race_simulate,
 )
 from fitops.race.course_parser import (
@@ -496,4 +505,348 @@ def delete(
         typer.echo(f"Deleted course {course_id}.")
     else:
         typer.echo(f"Course {course_id} not found.", err=True)
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# plan-save
+# ---------------------------------------------------------------------------
+
+
+@app.command("plan-save")
+def plan_save(
+    course_id: int = typer.Argument(..., help="Course ID to save a plan for."),
+    name: str = typer.Option(..., "--name", help="Plan name."),
+    target_time: str | None = typer.Option(
+        None, "--target-time", help="Target finish time HH:MM:SS or MM:SS."
+    ),
+    target_pace: str | None = typer.Option(
+        None, "--target-pace", help="Target pace MM:SS per km."
+    ),
+    strategy: str = typer.Option(
+        "even", "--strategy", help="Pacing strategy: even | negative | positive."
+    ),
+    pacer_pace: str | None = typer.Option(
+        None, "--pacer-pace", help="Pacer pace MM:SS per km."
+    ),
+    drop_at_km: float | None = typer.Option(
+        None, "--drop-at-km", help="Km marker to break from pacer."
+    ),
+    race_date: str | None = typer.Option(None, "--date", help="Race date YYYY-MM-DD."),
+    race_hour: int = typer.Option(
+        9, "--hour", help="Race start hour local time (0-23)."
+    ),
+    temp: float | None = typer.Option(None, "--temp", help="Temperature °C."),
+    humidity: float | None = typer.Option(
+        None, "--humidity", help="Relative humidity %."
+    ),
+    wind: float | None = typer.Option(None, "--wind", help="Wind speed m/s."),
+    wind_dir: float | None = typer.Option(
+        None, "--wind-dir", help="Wind direction degrees (0=N)."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Save a race simulation as a named plan for future comparison."""
+    init_db()
+
+    if target_time is None and target_pace is None:
+        typer.echo(
+            json.dumps({"error": "Provide --target-time or --target-pace."}, indent=2)
+        )
+        raise typer.Exit(1)
+
+    course = asyncio.run(get_course(course_id))
+    if course is None:
+        typer.echo(json.dumps({"error": f"Course {course_id} not found."}, indent=2))
+        raise typer.Exit(1)
+
+    segs = course.get_km_segments()
+    if not segs:
+        typer.echo(
+            json.dumps({"error": "Course has no segments. Re-import."}, indent=2)
+        )
+        raise typer.Exit(1)
+
+    total_dist_km = sum(s["distance_m"] for s in segs) / 1000.0
+
+    if target_time is not None:
+        target_total_s = _parse_time(target_time)
+    else:
+        pace_s = _parse_time(target_pace)  # type: ignore[arg-type]
+        target_total_s = pace_s * total_dist_km
+
+    # Resolve weather
+    weather_source = "neutral"
+    weather = dict(_NEUTRAL_WEATHER)
+
+    if temp is not None and humidity is not None:
+        weather = {
+            "temperature_c": temp,
+            "humidity_pct": humidity,
+            "wind_speed_ms": wind if wind is not None else 0.0,
+            "wind_direction_deg": wind_dir if wind_dir is not None else 0.0,
+        }
+        weather_source = "manual"
+    elif (
+        race_date is not None
+        and course.start_lat is not None
+        and course.start_lon is not None
+    ):
+        from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
+
+        try:
+            parsed_date = datetime.date.fromisoformat(race_date)
+        except ValueError:
+            typer.echo(
+                json.dumps(
+                    {"error": f"Invalid date format: {race_date!r}. Use YYYY-MM-DD."},
+                    indent=2,
+                )
+            )
+            raise typer.Exit(1)
+
+        today = datetime.date.today()
+        if parsed_date > today:
+            fetched = asyncio.run(
+                fetch_forecast_weather(
+                    course.start_lat, course.start_lon, race_date, race_hour
+                )
+            )
+            if fetched:
+                weather = {
+                    "temperature_c": fetched.get("temperature_c", 15.0),
+                    "humidity_pct": fetched.get("humidity_pct", 40.0),
+                    "wind_speed_ms": fetched.get("wind_speed_ms", 0.0),
+                    "wind_direction_deg": fetched.get("wind_direction_deg", 0.0),
+                }
+                weather_source = "forecast"
+        else:
+            race_datetime = datetime.datetime(
+                parsed_date.year,
+                parsed_date.month,
+                parsed_date.day,
+                race_hour,
+                0,
+                0,
+                tzinfo=datetime.UTC,
+            )
+            fetched = asyncio.run(
+                fetch_activity_weather(
+                    course.start_lat, course.start_lon, race_datetime
+                )
+            )
+            if fetched:
+                weather = {
+                    "temperature_c": fetched.get("temperature_c", 15.0),
+                    "humidity_pct": fetched.get("humidity_pct", 40.0),
+                    "wind_speed_ms": fetched.get("wind_speed_ms", 0.0),
+                    "wind_direction_deg": fetched.get("wind_direction_deg", 0.0),
+                }
+                weather_source = "archive"
+
+    # Run simulation
+    if pacer_pace is not None and drop_at_km is not None:
+        pacer_pace_s = _parse_time(pacer_pace)
+        try:
+            sim_result = simulate_pacer_mode(
+                segments=segs,
+                target_total_s=target_total_s,
+                pacer_pace_s=pacer_pace_s,
+                drop_at_km=drop_at_km,
+                weather=weather,
+            )
+        except ValueError as e:
+            typer.echo(json.dumps({"error": str(e)}, indent=2))
+            raise typer.Exit(1)
+        splits = sim_result.get("splits", [])
+        target_time_display = sim_result.get("projected_finish")
+    else:
+        splits = simulate_splits(
+            segments=segs,
+            target_total_s=target_total_s,
+            weather=weather,
+            strategy=strategy,
+        )
+        from fitops.race.course_parser import _fmt_duration
+
+        target_time_display = _fmt_duration(target_total_s)
+
+    plan_dict = asyncio.run(
+        save_race_plan(
+            course_id=course_id,
+            name=name,
+            race_date=race_date,
+            race_hour=race_hour,
+            target_time=target_time_display,
+            target_time_s=target_total_s,
+            strategy=strategy,
+            pacer_pace=pacer_pace,
+            drop_at_km=drop_at_km,
+            weather={
+                "temperature_c": weather.get("temperature_c"),
+                "humidity_pct": weather.get("humidity_pct"),
+                "wind_speed_ms": weather.get("wind_speed_ms"),
+                "wind_direction_deg": weather.get("wind_direction_deg"),
+            },
+            weather_source=weather_source,
+            splits=splits,
+        )
+    )
+
+    out = {"_meta": make_meta(), "plan": plan_dict}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        typer.echo(
+            f"Saved plan: {plan_dict.get('name')}  ID {plan_dict.get('id')}  target {plan_dict.get('target_time') or '—'}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# plans
+# ---------------------------------------------------------------------------
+
+
+@app.command("plans")
+def plans_list(
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """List all saved race plans."""
+    init_db()
+    result = asyncio.run(get_all_race_plans())
+    out = {"_meta": make_meta(total_count=len(result)), "plans": result}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_plans_list(out)
+
+
+# ---------------------------------------------------------------------------
+# plan
+# ---------------------------------------------------------------------------
+
+
+@app.command("plan")
+def plan_detail(
+    plan_id: int = typer.Argument(..., help="Plan ID to retrieve."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Show a saved race plan with simulated splits."""
+    init_db()
+    plan = asyncio.run(get_race_plan(plan_id))
+    if plan is None:
+        typer.echo(f"Plan {plan_id} not found.", err=True)
+        raise typer.Exit(1)
+
+    out = {"_meta": make_meta(), "plan": plan.to_detail_dict()}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_plan_detail(out)
+
+
+# ---------------------------------------------------------------------------
+# plan-compare
+# ---------------------------------------------------------------------------
+
+
+@app.command("plan-compare")
+def plan_compare(
+    plan_id: int = typer.Argument(..., help="Plan ID to compare."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Compare simulated splits vs actual activity splits for a linked plan."""
+    init_db()
+    plan = asyncio.run(get_race_plan(plan_id))
+    if plan is None:
+        typer.echo(f"Plan {plan_id} not found.", err=True)
+        raise typer.Exit(1)
+
+    if plan.activity_id is None:
+        typer.echo(f"Plan {plan_id} has no linked activity yet.", err=True)
+        raise typer.Exit(1)
+
+    from sqlalchemy import select as _select
+
+    from fitops.analytics.activity_splits import compute_km_splits
+    from fitops.db.models.activity import Activity as _Activity
+    from fitops.db.models.activity_stream import ActivityStream
+    from fitops.race.course_parser import _fmt_duration
+
+    async def _load_actual() -> tuple[list[dict], str | None, str | None]:
+        async with get_async_session() as session:
+            act_res = await session.execute(
+                _select(_Activity).where(_Activity.id == plan.activity_id)
+            )
+            act = act_res.scalar_one_or_none()
+            streams_res = await session.execute(
+                _select(ActivityStream).where(
+                    ActivityStream.activity_id == plan.activity_id
+                )
+            )
+            all_streams = {
+                row.stream_type: row.data for row in streams_res.scalars().all()
+            }
+        if not act or not all_streams:
+            return [], None, None
+        km_splits = compute_km_splits(all_streams, act.sport_type or "Run")
+        if not km_splits:
+            return [], None, None
+        act_total_s = sum(
+            s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0) for s in km_splits
+        )
+        act_total_dist = sum(s.get("distance_m", 0) for s in km_splits) / 1000.0
+        act_avg_pace_s = (act_total_s / act_total_dist) if act_total_dist > 0 else 0.0
+        avg_fmt = _fmt_duration(act_avg_pace_s) if act_avg_pace_s > 0 else None
+        finish_fmt = _fmt_duration(act_total_s)
+        return km_splits, avg_fmt, finish_fmt
+
+    actual_splits, actual_avg_pace_fmt, actual_finish_fmt = asyncio.run(_load_actual())
+
+    if not actual_splits:
+        typer.echo(
+            f"No activity streams found for activity #{plan.activity_id}. "
+            "Run: fitops sync streams",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    plan_dict = plan.to_detail_dict()
+    out = {
+        "_meta": make_meta(),
+        "plan": plan_dict,
+        "actual_splits": actual_splits,
+        "actual_avg_pace_fmt": actual_avg_pace_fmt,
+        "actual_finish_fmt": actual_finish_fmt,
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_plan_compare(out)
+
+
+# ---------------------------------------------------------------------------
+# plan-delete
+# ---------------------------------------------------------------------------
+
+
+@app.command("plan-delete")
+def plan_delete(
+    plan_id: int = typer.Argument(..., help="Plan ID to delete."),
+) -> None:
+    """Delete a saved race plan."""
+    init_db()
+    deleted = asyncio.run(_delete_race_plan(plan_id))
+    if deleted:
+        typer.echo(f"Deleted plan {plan_id}.")
+    else:
+        typer.echo(f"Plan {plan_id} not found.", err=True)
         raise typer.Exit(1)

@@ -80,6 +80,13 @@ async def _fetch_streams_for_activities(
                 row = activity_row.scalar_one_or_none()
                 if row:
                     row.streams_fetched = True
+            # Silently try to auto-associate to a race plan
+            try:
+                from fitops.analytics.race_plan import match_activity_to_plans
+
+                await match_activity_to_plans(internal_id)
+            except Exception:
+                pass
             fetched += 1
         except Exception as e:
             typer.echo(f"    error: {e}", err=True)
@@ -206,12 +213,23 @@ def run(
             new_ids = asyncio.run(_get_new_ids())
             weather_result = asyncio.run(_fetch_weather_for_strava_ids(new_ids))
 
+        # Always sweep unlinked race plans — catches plans saved after their
+        # matching activity was already synced.
+        plans_linked = 0
+        try:
+            from fitops.analytics.race_plan import sweep_unlinked_plans
+
+            plans_linked = asyncio.run(sweep_unlinked_plans())
+        except Exception:
+            pass
+
         out: dict = {
             "sync_type": sync_type,
             "activities_created": result.activities_created,
             "activities_updated": result.activities_updated,
             "pages_fetched": result.pages_fetched,
             "duration_s": round(result.duration_s, 2),
+            "plans_linked": plans_linked,
             "synced_at": datetime.now(UTC).isoformat(),
         }
         if streams_result:
