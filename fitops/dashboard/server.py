@@ -121,6 +121,24 @@ def create_app(port: int = 8888) -> FastAPI:
         return _SPORT_ICONS.get(sport, Markup(_DEFAULT))
 
     templates.env.globals["sport_icon"] = sport_icon
+
+    def _fmt_time(seconds: float | None) -> str:
+        if not seconds:
+            return "—"
+        s = int(seconds)
+        h, rem = divmod(s, 3600)
+        m, sec = divmod(rem, 60)
+        return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+
+    def _fmt_pace(s_per_km: float | None) -> str:
+        if not s_per_km or s_per_km <= 0:
+            return "—"
+        m, s = divmod(int(s_per_km), 60)
+        return f"{m}:{s:02d} /km"
+
+    templates.env.globals["_fmt_time"] = _fmt_time
+    templates.env.globals["_fmt_pace"] = _fmt_pace
+
     templates.env.filters["render_md"] = lambda text: Markup(
         md_lib.markdown(text or "", extensions=["nl2br", "fenced_code"])
     )

@@ -1760,3 +1760,239 @@ def print_snapshot(data: dict) -> None:
     if s.get("vo2max_estimate") is not None:
         console.print(f"  VO2max  {s['vo2max_estimate']:.1f} ml/kg/min")
     console.print()
+
+
+# ---------------------------------------------------------------------------
+# Race Sessions (Phase 9)
+# ---------------------------------------------------------------------------
+
+
+def _fmt_pace(s_per_km: float | None) -> str:
+    if s_per_km is None:
+        return "-"
+    mins = int(s_per_km // 60)
+    secs = int(s_per_km % 60)
+    return f"{mins}:{secs:02d}/km"
+
+
+def _fmt_time(seconds: float | None) -> str:
+    if seconds is None:
+        return "-"
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def print_race_sessions_list(data: dict) -> None:
+    sessions = data.get("sessions") or []
+    if not sessions:
+        console.print("[dim]No race sessions found.[/dim]")
+        console.print("  Create one with: fitops race session-create --activity <id> --name <name>")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("ID", justify="right", style="dim", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("Primary Activity", justify="right", no_wrap=True)
+    table.add_column("Athletes", justify="right", no_wrap=True)
+    table.add_column("Course ID", justify="right", no_wrap=True)
+    table.add_column("Created", no_wrap=True)
+
+    for s in sessions:
+        table.add_row(
+            str(s.get("id") or ""),
+            s.get("name") or "",
+            str(s.get("primary_activity_id") or "-"),
+            str(s.get("athlete_count") or "-"),
+            str(s.get("course_id") or "-"),
+            str(s.get("created_at") or "")[:10],
+        )
+
+    console.print(table)
+
+
+def print_race_session_detail(data: dict) -> None:
+    sess = data.get("session") or {}
+    athletes = data.get("athletes") or []
+    events = data.get("events") or []
+    segments = data.get("segments") or []
+
+    console.print()
+    console.print(
+        f"[bold]{sess.get('name') or 'Race Session'}[/bold]  [dim]ID {sess.get('id')}[/dim]"
+    )
+    console.print(f"  Primary activity  {sess.get('primary_activity_id') or '-'}")
+    if sess.get("course_id"):
+        console.print(f"  Course            {sess['course_id']}")
+    console.print(f"  Created           {str(sess.get('created_at') or '')[:10]}")
+    console.print()
+
+    if athletes:
+        console.print("[bold]Athletes[/bold]")
+        table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        table.add_column("Label")
+        table.add_column("Activity ID", justify="right")
+        table.add_column("Primary", justify="center")
+        table.add_column("Total Time", justify="right")
+        table.add_column("Avg Pace", justify="right")
+        table.add_column("Avg HR", justify="right")
+
+        for a in athletes:
+            m = a.get("metrics") or {}
+            total_time = _fmt_time(m.get("total_time_s"))
+            avg_pace = _fmt_pace(m.get("avg_pace_s_per_km"))
+            avg_hr = f"{int(m['avg_hr_bpm'])} bpm" if m.get("avg_hr_bpm") else "-"
+            table.add_row(
+                a.get("athlete_label") or "",
+                str(a.get("activity_id") or "-"),
+                "Y" if a.get("is_primary") else "",
+                total_time,
+                avg_pace,
+                avg_hr,
+            )
+        console.print(table)
+        console.print()
+
+    if events:
+        console.print(f"[bold]Key Events[/bold]  ({len(events)} detected)")
+        for ev in events[:5]:
+            impact = ev.get("impact_s") or 0
+            sign = "+" if impact > 0 else ""
+            console.print(
+                f"  km {ev.get('distance_km', 0):.1f}  [{ev.get('event_type')}]  "
+                f"{ev.get('athlete_label')}  {sign}{impact:.0f}s  — {ev.get('description') or ''}"
+            )
+        if len(events) > 5:
+            console.print(f"  … and {len(events) - 5} more. Use 'fitops race session {sess.get('id')} events' for full list.")
+        console.print()
+
+    if segments:
+        console.print(f"[bold]Segments[/bold]  ({len(segments)} detected)")
+        console.print("  Use 'fitops race session <id> segments' for per-athlete breakdown.")
+        console.print()
+
+
+def print_race_session_gaps(data: dict) -> None:
+    gap_data = data.get("gap_data") or []
+    if not gap_data:
+        console.print("[dim]No gap data available.[/dim]")
+        return
+
+    console.print()
+    for athlete_data in gap_data:
+        label = athlete_data.get("athlete_label") or "?"
+        series = athlete_data.get("gap_series") or []
+        if not series:
+            continue
+        console.print(f"[bold]{label}[/bold]")
+
+        table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        table.add_column("km", justify="right", no_wrap=True)
+        table.add_column("Elapsed", justify="right", no_wrap=True)
+        table.add_column("Gap to Leader", justify="right", no_wrap=True)
+        table.add_column("Gap (m)", justify="right", no_wrap=True)
+        table.add_column("Pos", justify="right", no_wrap=True)
+
+        # Sample every ~10 points to avoid wall of text
+        step = max(1, len(series) // 30)
+        for point in series[::step]:
+            gap_s = point.get("gap_to_leader_s") or 0
+            gap_str = f"+{gap_s:.0f}s" if gap_s > 0 else "leader"
+            table.add_row(
+                f"{point.get('distance_km', 0):.1f}",
+                _fmt_time(point.get("time_s")),
+                gap_str,
+                f"{point.get('gap_to_leader_m', 0):.0f}",
+                str(point.get("position") or ""),
+            )
+        console.print(table)
+        console.print()
+
+
+def print_race_session_segments(data: dict) -> None:
+    segments = data.get("segments") or []
+    athletes = data.get("athletes") or []
+    if not segments:
+        console.print("[dim]No segments detected.[/dim]")
+        return
+
+    athlete_labels = [a.get("athlete_label") for a in athletes]
+
+    console.print()
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Segment")
+    table.add_column("km", justify="right", no_wrap=True)
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Grade", justify="right", no_wrap=True)
+
+    for label in athlete_labels:
+        table.add_column(f"{label} Time", justify="right", no_wrap=True)
+        table.add_column(f"{label} Rank", justify="center", no_wrap=True)
+
+    for seg in segments:
+        metrics = seg.get("athlete_metrics") or {}
+        km_range = f"{seg.get('start_km', 0):.1f}–{seg.get('end_km', 0):.1f}"
+        grade = seg.get("avg_grade_pct")
+        grade_str = f"{grade:+.1f}%" if grade is not None else "-"
+
+        row: list[str] = [
+            seg.get("segment_label") or "",
+            km_range,
+            seg.get("gradient_type") or "-",
+            grade_str,
+        ]
+
+        for label in athlete_labels:
+            m = metrics.get(label) or {}
+            row.append(_fmt_time(m.get("time_s")))
+            rank = m.get("rank")
+            row.append(str(rank) if rank else "-")
+
+        table.add_row(*row)
+
+    console.print(table)
+    console.print()
+
+
+def print_race_session_events(data: dict) -> None:
+    events = data.get("events") or []
+    if not events:
+        console.print("[dim]No events detected.[/dim]")
+        return
+
+    console.print()
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right", no_wrap=True)
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Athlete")
+    table.add_column("Impact", justify="right", no_wrap=True)
+    table.add_column("Description")
+
+    event_colors = {
+        "surge": "green",
+        "drop": "red",
+        "bridge": "cyan",
+        "fade": "yellow",
+        "final_sprint": "magenta",
+        "separation": "red",
+    }
+
+    for ev in events:
+        impact = ev.get("impact_s") or 0
+        sign = "+" if impact > 0 else ""
+        impact_str = f"{sign}{impact:.0f}s" if impact != 0 else "—"
+        etype = ev.get("event_type") or ""
+        color = event_colors.get(etype, "white")
+        table.add_row(
+            f"{ev.get('distance_km', 0):.1f}",
+            f"[{color}]{etype}[/{color}]",
+            ev.get("athlete_label") or "",
+            impact_str,
+            ev.get("description") or "",
+        )
+
+    console.print(table)
+    console.print()

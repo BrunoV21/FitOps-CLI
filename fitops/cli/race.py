@@ -29,7 +29,40 @@ from fitops.output.text_formatter import (
     print_race_plan_compare,
     print_race_plan_detail,
     print_race_plans_list,
+    print_race_session_detail,
+    print_race_session_events,
+    print_race_session_gaps,
+    print_race_session_segments,
+    print_race_sessions_list,
     print_race_simulate,
+)
+from fitops.analytics.race_analysis import (
+    compute_athlete_metrics,
+    compute_delta_series,
+    compute_gap_series,
+    compute_segment_athlete_metrics,
+    detect_events,
+    detect_segments_from_altitude,
+    detect_segments_from_km_segments,
+    fetch_strava_comparison_streams,
+    load_primary_streams,
+    normalize_stream,
+    normalized_stream_to_dict,
+    parse_gpx_streams,
+)
+from fitops.dashboard.queries.race_session import (
+    add_session_athlete,
+    create_race_session,
+    delete_race_session,
+    get_all_race_sessions,
+    get_events,
+    get_gap_series,
+    get_segments,
+    get_session_athletes,
+    get_session_detail,
+    save_events,
+    save_gap_series,
+    save_segments,
 )
 from fitops.race.course_parser import (
     _parse_time,
@@ -849,4 +882,308 @@ def plan_delete(
         typer.echo(f"Deleted plan {plan_id}.")
     else:
         typer.echo(f"Plan {plan_id} not found.", err=True)
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# session-create
+# ---------------------------------------------------------------------------
+
+
+@app.command("session-create")
+def session_create(
+    activity: int = typer.Option(..., "--activity", "-a", help="Primary Strava activity ID."),
+    name: str = typer.Option(..., "--name", "-n", help="Session name."),
+    course: int = typer.Option(None, "--course", "-c", help="Optional course ID to link."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Create a race session from a primary activity and run the full analysis pipeline."""
+    init_db()
+
+    async def _run() -> dict:
+        # 1. Load primary athlete streams
+        raw = await load_primary_streams(activity)
+        if raw is None:
+            return {"error": f"No streams found for activity {activity}. Run: fitops sync streams"}
+
+        # 2. Normalise primary athlete stream
+        primary_ns = normalize_stream(raw, athlete_label="You", is_primary=True, activity_id=activity)
+        primary_metrics = compute_athlete_metrics(primary_ns)
+        primary_stream_dict = normalized_stream_to_dict(primary_ns)
+
+        # 3. Create session in DB
+        session_dict = await create_race_session(
+            name=name,
+            primary_activity_id=activity,
+            course_id=course,
+        )
+        session_id = session_dict["id"]
+
+        # 4. Persist primary athlete
+        await add_session_athlete(
+            session_id=session_id,
+            athlete_label="You",
+            is_primary=True,
+            activity_id=activity,
+            stream_dict=primary_stream_dict,
+            metrics_dict=primary_metrics,
+        )
+
+        # 5. Compute gap series (single athlete baseline)
+        gap_series = compute_gap_series([primary_ns])
+        delta_series = compute_delta_series(gap_series)
+        await save_gap_series(session_id, gap_series, delta_series)
+
+        # 6. Detect segments
+        if course:
+            from fitops.dashboard.queries.race import get_course as _get_course
+            course_obj = await _get_course(course)
+            if course_obj and course_obj.km_segments:
+                import json as _json
+                km_segs = _json.loads(course_obj.km_segments) if isinstance(course_obj.km_segments, str) else course_obj.km_segments
+                segments = detect_segments_from_km_segments(km_segs)
+            else:
+                segments = detect_segments_from_altitude([primary_ns])
+        else:
+            segments = detect_segments_from_altitude([primary_ns])
+
+        athlete_metrics = compute_segment_athlete_metrics([primary_ns], segments)
+        await save_segments(session_id, segments, athlete_metrics)
+
+        # 7. Detect events
+        events = detect_events([primary_ns], gap_series)
+        await save_events(session_id, events)
+
+        return await get_session_detail(session_id) or {}
+
+    result = asyncio.run(_run())
+    if "error" in result:
+        typer.echo(json.dumps({"error": result["error"]}, indent=2), err=True)
+        raise typer.Exit(1)
+
+    out = {"_meta": make_meta(), **result}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_session_detail(out)
+
+
+# ---------------------------------------------------------------------------
+# session-add-athlete
+# ---------------------------------------------------------------------------
+
+
+@app.command("session-add-athlete")
+def session_add_athlete(
+    session_id: int = typer.Argument(..., help="Session ID."),
+    label: str = typer.Option(..., "--label", "-l", help="Athlete display label."),
+    activity: int = typer.Option(None, "--activity", "-a", help="Strava activity ID (public)."),
+    gpx: str = typer.Option(None, "--gpx", "-g", help="Path to GPX file."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Add a comparison athlete to an existing race session."""
+    init_db()
+    if not activity and not gpx:
+        typer.echo("Provide --activity or --gpx.", err=True)
+        raise typer.Exit(1)
+
+    async def _run() -> dict:
+        # 1. Fetch raw streams
+        if activity:
+            raw = await fetch_strava_comparison_streams(activity)
+            if raw is None:
+                return {"error": f"Could not fetch streams for Strava activity {activity}."}
+            act_id = activity
+        else:
+            import pathlib
+            gpx_path = pathlib.Path(gpx)
+            if not gpx_path.exists():
+                return {"error": f"GPX file not found: {gpx}"}
+            raw = parse_gpx_streams(gpx_path.read_text())
+            act_id = None
+
+        # 2. Normalise
+        ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=act_id)
+        metrics = compute_athlete_metrics(ns)
+        stream_dict = normalized_stream_to_dict(ns)
+
+        # 3. Persist
+        await add_session_athlete(
+            session_id=session_id,
+            athlete_label=label,
+            is_primary=False,
+            activity_id=act_id,
+            stream_dict=stream_dict,
+            metrics_dict=metrics,
+        )
+
+        # 4. Recompute gap/delta/events with all athletes
+        all_athletes_db = await get_session_athletes(session_id)
+        from fitops.analytics.race_analysis import normalized_stream_from_dict
+        all_ns = [normalized_stream_from_dict(a.get_stream()) for a in all_athletes_db]
+
+        gap_series = compute_gap_series(all_ns)
+        delta_series = compute_delta_series(gap_series)
+        await save_gap_series(session_id, gap_series, delta_series)
+
+        # Re-detect segments using primary
+        primary_ns = next((a for a in all_ns if a.is_primary), all_ns[0])
+        segs_raw = await _get_segments_for_recompute(session_id)
+        if not segs_raw:
+            segs = detect_segments_from_altitude([primary_ns])
+        else:
+            from fitops.analytics.race_analysis import DetectedSegment
+            segs = [
+                DetectedSegment(
+                    label=s["segment_label"],
+                    start_km=s["start_km"],
+                    end_km=s["end_km"],
+                    gradient_type=s["gradient_type"],
+                    avg_grade_pct=s.get("avg_grade_pct") or 0.0,
+                )
+                for s in segs_raw
+            ]
+
+        athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
+        await save_segments(session_id, segs, athlete_metrics)
+
+        events = detect_events(all_ns, gap_series)
+        await save_events(session_id, events)
+
+        return await get_session_detail(session_id) or {}
+
+    async def _get_segments_for_recompute(sid: int):
+        return await get_segments(sid)
+
+    result = asyncio.run(_run())
+    if "error" in result:
+        typer.echo(json.dumps({"error": result["error"]}, indent=2), err=True)
+        raise typer.Exit(1)
+
+    out = {"_meta": make_meta(), **result}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_session_detail(out)
+
+
+# ---------------------------------------------------------------------------
+# sessions
+# ---------------------------------------------------------------------------
+
+
+@app.command("sessions")
+def sessions_list(
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """List all race sessions."""
+    init_db()
+    sessions = asyncio.run(get_all_race_sessions())
+    out = {"_meta": make_meta(), "sessions": sessions, "total_count": len(sessions)}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_sessions_list(out)
+
+
+# ---------------------------------------------------------------------------
+# session (detail)
+# ---------------------------------------------------------------------------
+
+
+@app.command("session")
+def session_detail(
+    session_id: int = typer.Argument(..., help="Session ID."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Show full detail for a race session."""
+    init_db()
+    detail = asyncio.run(get_session_detail(session_id))
+    if detail is None:
+        typer.echo(json.dumps({"error": f"Session {session_id} not found."}), err=True)
+        raise typer.Exit(1)
+
+    out = {"_meta": make_meta(), **detail}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_session_detail(out)
+
+
+# ---------------------------------------------------------------------------
+# session-gaps
+# ---------------------------------------------------------------------------
+
+
+@app.command("session-gaps")
+def session_gaps(
+    session_id: int = typer.Argument(..., help="Session ID."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Show gap series for a race session."""
+    init_db()
+    gaps = asyncio.run(get_gap_series(session_id))
+    out = {"_meta": make_meta(), "session_id": session_id, "gap_data": gaps}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_session_gaps(out)
+
+
+# ---------------------------------------------------------------------------
+# session-segments
+# ---------------------------------------------------------------------------
+
+
+@app.command("session-segments")
+def session_segments(
+    session_id: int = typer.Argument(..., help="Session ID."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Show segment breakdown for a race session."""
+    init_db()
+    segments = asyncio.run(get_segments(session_id))
+    out = {"_meta": make_meta(), "session_id": session_id, "segments": segments}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_session_segments(out)
+
+
+# ---------------------------------------------------------------------------
+# session-events
+# ---------------------------------------------------------------------------
+
+
+@app.command("session-events")
+def session_events(
+    session_id: int = typer.Argument(..., help="Session ID."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+) -> None:
+    """Show detected events for a race session."""
+    init_db()
+    events = asyncio.run(get_events(session_id))
+    out = {"_meta": make_meta(), "session_id": session_id, "events": events}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_race_session_events(out)
+
+
+# ---------------------------------------------------------------------------
+# session-delete
+# ---------------------------------------------------------------------------
+
+
+@app.command("session-delete")
+def session_delete(
+    session_id: int = typer.Argument(..., help="Session ID to delete."),
+) -> None:
+    """Delete a race session and all associated data."""
+    init_db()
+    deleted = asyncio.run(delete_race_session(session_id))
+    if deleted:
+        typer.echo(f"Deleted session {session_id}.")
+    else:
+        typer.echo(f"Session {session_id} not found.", err=True)
         raise typer.Exit(1)

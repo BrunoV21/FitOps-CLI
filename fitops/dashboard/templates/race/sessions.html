@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Race Analysis — FitOps{% endblock %}
+{% block page_name %}race_sessions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Race Analysis</h1>
+    <p class="page-subtitle">Multi-athlete race sessions — replay, gap analysis, and segment breakdown</p>
+  </div>
+  <a href="/race/sessions/create" class="btn btn-primary">+ New Session</a>
+</div>
+
+{% if not sessions %}
+<div class="panel" style="text-align:center; padding:3rem 1.5rem; color:#666;">
+  <p style="font-size:1.1rem; margin-bottom:0.5rem;">No race sessions yet.</p>
+  <p style="font-size:0.88rem; margin-bottom:1rem;">Create your first session to analyse a race with gap charts, route replay, and segment breakdown.</p>
+  <a href="/race/sessions/create" class="btn btn-primary">Create Session</a>
+</div>
+{% else %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">All Sessions</span>
+    <span class="panel-meta">{{ sessions | length }} session{% if sessions | length != 1 %}s{% endif %}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Primary Activity</th>
+          <th>Athletes</th>
+          <th>Course</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>
+            <a href="/race/sessions/{{ s.id }}" style="color:var(--accent); font-weight:500;">{{ s.name }}</a>
+          </td>
+          <td>
+            <a href="/activities/{{ s.primary_activity_id }}" style="color:#888; font-size:0.88rem;">#{{ s.primary_activity_id }}</a>
+          </td>
+          <td style="font-size:0.88rem;">{{ s.athlete_count or '—' }}</td>
+          <td>
+            {% if s.course_id %}
+            <a href="/race/{{ s.course_id }}" style="font-size:0.82rem; color:#888;">Course #{{ s.course_id }}</a>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-muted" style="font-size:0.8rem;">
+            {% if s.created_at %}{{ s.created_at[:10] }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="/race/sessions/{{ s.id }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.78rem;">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

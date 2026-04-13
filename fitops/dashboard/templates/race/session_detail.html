@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+{% block title %}{{ session.name }} — Race Analysis — FitOps{% endblock %}
+{% block page_name %}race_sessions{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  #replay-map { height: 380px; border-radius: 8px; background: #111; }
+  .replay-controls { display:flex; align-items:center; gap:0.75rem; margin-top:0.75rem; }
+  .replay-btn { background:#1e1e1e; border:1px solid #333; color:#ccc; padding:0.3rem 0.9rem;
+                border-radius:6px; cursor:pointer; font-size:0.82rem; transition:background 0.15s; }
+  .replay-btn:hover { background:#2a2a2a; }
+  .replay-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+  .speed-label { font-size:0.78rem; color:#666; }
+  #replay-slider { flex:1; accent-color:var(--accent); }
+  #replay-clock { font-size:0.82rem; color:#888; min-width:5rem; text-align:right; }
+  .athlete-legend { display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem; }
+  .legend-item { display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; color:#ccc; }
+  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .event-badge { display:inline-block; padding:0.1rem 0.5rem; border-radius:4px;
+                 font-size:0.74rem; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
+  .event-surge { background:#166534; color:#4ade80; }
+  .event-drop { background:#7f1d1d; color:#f87171; }
+  .event-bridge { background:#0e7490; color:#67e8f9; }
+  .event-fade { background:#713f12; color:#fbbf24; }
+  .event-final_sprint { background:#4a044e; color:#e879f9; }
+  .event-separation { background:#7f1d1d; color:#f87171; }
+  .gap-positive { color:#4ade80; }
+  .gap-negative { color:#f87171; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{{ session.name }}</h1>
+    <p class="page-subtitle">
+      Primary activity #{{ session.primary_activity_id }}
+      {% if session.course_id %} · Course #{{ session.course_id }}{% endif %}
+      · {{ athletes | length }} athlete{% if athletes | length != 1 %}s{% endif %}
+    </p>
+  </div>
+  <a href="/race/sessions" class="btn">← Sessions</a>
+</div>
+
+{# ── Row 1: Map replay + Gap chart ── #}
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.25rem;">
+
+  {# Map panel #}
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Route Replay</span>
+    </div>
+    <div id="replay-map"></div>
+    <div class="replay-controls">
+      <button class="replay-btn active" id="play-btn" onclick="togglePlay()">▶ Play</button>
+      <input type="range" id="replay-slider" min="0" max="100" value="0" oninput="seekTo(this.value)">
+      <span id="replay-clock">0:00 / 0:00</span>
+      <select id="speed-select" class="replay-btn" onchange="setSpeed(this.value)">
+        <option value="1">1×</option>
+        <option value="5">5×</option>
+        <option value="10" selected>10×</option>
+        <option value="30">30×</option>
+        <option value="60">60×</option>
+      </select>
+    </div>
+    <div class="athlete-legend" id="athlete-legend"></div>
+  </div>
+
+  {# Gap chart panel #}
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Gap to Leader</span>
+      <span class="panel-meta">seconds</span>
+    </div>
+    <canvas id="gap-chart" style="max-height:380px;"></canvas>
+  </div>
+</div>
+
+{# ── Row 2: Segments ── #}
+{% if segments %}
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <span class="panel-title">Segment Breakdown</span>
+    <span class="panel-meta">{{ segments | length }} segment{% if segments | length != 1 %}s{% endif %}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Segment</th>
+          <th>Range</th>
+          <th>Type</th>
+          <th>Grade</th>
+          {% for a in athletes %}
+          <th>{{ a.athlete_label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for seg in segments %}
+        <tr>
+          <td style="font-weight:500;">{{ seg.segment_label }}</td>
+          <td class="text-muted" style="font-size:0.82rem;">{{ "%.1f"|format(seg.start_km) }}–{{ "%.1f"|format(seg.end_km) }} km</td>
+          <td>
+            {% if seg.gradient_type == 'climb' %}
+            <span style="color:#f97316;">↑ climb</span>
+            {% elif seg.gradient_type == 'descent' %}
+            <span style="color:#60a5fa;">↓ descent</span>
+            {% else %}
+            <span style="color:#888;">— flat</span>
+            {% endif %}
+          </td>
+          <td class="text-muted" style="font-size:0.82rem;">
+            {% if seg.avg_grade_pct is not none %}{{ "%.1f"|format(seg.avg_grade_pct) }}%{% else %}—{% endif %}
+          </td>
+          {% for a in athletes %}
+          {% set m = seg.athlete_metrics.get(a.athlete_label, {}) %}
+          <td style="font-size:0.85rem;">
+            {% if m %}
+            {{ _fmt_time(m.get('time_s', 0)) }}
+            {% if m.get('rank') == 1 %}<span style="color:#fbbf24; font-size:0.72rem; margin-left:0.2rem;">★1</span>{% endif %}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── Row 3: Athletes summary ── #}
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <span class="panel-title">Athletes</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Activity</th>
+          <th>Finish Time</th>
+          <th>Avg Pace</th>
+          <th>Avg HR</th>
+          <th>Distance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in athletes %}
+        {% set m = a.metrics %}
+        <tr>
+          <td style="font-weight:500;">
+            {% if a.is_primary %}<span style="color:var(--accent);">★ </span>{% endif %}
+            {{ a.athlete_label }}
+          </td>
+          <td>
+            {% if a.activity_id %}
+            <a href="/activities/{{ a.activity_id }}" style="color:#888; font-size:0.85rem;">#{{ a.activity_id }}</a>
+            {% else %}
+            <span class="text-muted">GPX import</span>
+            {% endif %}
+          </td>
+          <td>{{ _fmt_time(m.get('total_time_s', 0)) if m else '—' }}</td>
+          <td>{{ _fmt_pace(m.get('avg_pace_s_per_km', 0)) if m else '—' }}</td>
+          <td>
+            {% if m and m.get('avg_hr') %}{{ "%.0f"|format(m.get('avg_hr')) }} bpm{% else %}—{% endif %}
+          </td>
+          <td>
+            {% if m and m.get('total_distance_km') %}{{ "%.2f"|format(m.get('total_distance_km')) }} km{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Row 4: Events timeline ── #}
+{% if events %}
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Race Events</span>
+    <span class="panel-meta">{{ events | length }} event{% if events | length != 1 %}s{% endif %}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Athlete</th>
+          <th>Distance</th>
+          <th>Elapsed</th>
+          <th>Impact</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in events %}
+        <tr>
+          <td>
+            <span class="event-badge event-{{ ev.event_type }}">{{ ev.event_type | replace('_', ' ') }}</span>
+          </td>
+          <td style="font-size:0.88rem;">{{ ev.athlete_label }}</td>
+          <td style="font-size:0.85rem; color:#888;">
+            {% if ev.distance_km is not none %}{{ "%.1f"|format(ev.distance_km) }} km{% else %}—{% endif %}
+          </td>
+          <td style="font-size:0.85rem;">
+            {% if ev.elapsed_s is not none %}{{ _fmt_time(ev.elapsed_s) }}{% else %}—{% endif %}
+          </td>
+          <td style="font-size:0.85rem;">
+            {% if ev.impact_s is not none %}
+            <span class="{{ 'gap-positive' if ev.impact_s > 0 else 'gap-negative' }}">
+              {{ '+' if ev.impact_s > 0 }}{{ "%.1f"|format(ev.impact_s) }}s
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:0.82rem; color:#aaa;">{{ ev.description or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── Row 5: Add Athlete + Delete ── #}
+{% if add_athlete_error %}
+<div class="alert alert-red" style="margin-bottom:1rem;">
+  <strong>Error:</strong> {{ add_athlete_error }}
+</div>
+{% endif %}
+
+<div style="display:grid; grid-template-columns:1fr auto; gap:1.25rem; align-items:start; margin-bottom:1.25rem;">
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Add Comparison Athlete</span>
+    </div>
+    <form method="post" action="/race/sessions/{{ session.id }}/add-athlete"
+          enctype="multipart/form-data" style="padding:1rem 1.25rem;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Label <span style="color:#ef4444;">*</span></label>
+          <input type="text" name="label" required placeholder="e.g. Kipchoge"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Strava Activity ID</label>
+          <input type="text" name="activity" placeholder="e.g. 9876543210"
+                 style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+        </div>
+      </div>
+      <div style="margin-bottom:1rem;">
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Or upload GPX file</label>
+        <input type="file" name="gpx_file" accept=".gpx"
+               style="font-size:0.85rem; color:var(--text-primary);" />
+        <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Provide either a Strava activity ID or a GPX file — not both.</p>
+      </div>
+      <button type="submit" class="btn btn-primary" style="font-size:0.85rem;">Add Athlete</button>
+    </form>
+  </div>
+
+  <div class="panel" style="padding:1rem 1.25rem;">
+    <div class="panel-header" style="margin-bottom:0.75rem;">
+      <span class="panel-title">Danger Zone</span>
+    </div>
+    <form method="post" action="/race/sessions/{{ session.id }}/delete"
+          onsubmit="return confirm('Delete this session? This cannot be undone.');">
+      <button type="submit" class="btn"
+              style="background:#7f1d1d; border-color:#991b1b; color:#fca5a5; font-size:0.85rem;">
+        Delete Session
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<script>
+// ── Data from server ──────────────────────────────────────────────────────────
+const ATHLETES_DATA = {{ athletes_streams | tojson }};
+const GAP_DATA = {{ gap_data | tojson }};
+const ATHLETE_COLORS = [
+  '#4ade80','#60a5fa','#f97316','#a78bfa','#f472b6',
+  '#facc15','#34d399','#fb7185','#38bdf8','#c084fc',
+];
+
+// ── Leaflet map replay ────────────────────────────────────────────────────────
+const map = L.map('replay-map', { zoomControl: true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+const athleteMarkers = [];
+const athleteTraces = [];
+let replayFrames = [];
+let totalFrames = 0;
+let currentFrame = 0;
+let playing = false;
+let playSpeed = 10;
+let animHandle = null;
+let lastTs = null;
+
+// Build legend
+const legendEl = document.getElementById('athlete-legend');
+ATHLETES_DATA.forEach((a, i) => {
+  const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
+  legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${a.label}</div>`;
+});
+
+// Build frames from distance-aligned streams
+// Each frame = array of {lat, lon} per athlete at a distance step
+function buildFrames() {
+  if (!ATHLETES_DATA.length) return;
+  const maxLen = Math.max(...ATHLETES_DATA.map(a => (a.latlng || []).length));
+  for (let i = 0; i < maxLen; i++) {
+    const frame = ATHLETES_DATA.map(a => {
+      const pts = a.latlng || [];
+      return pts[Math.min(i, pts.length - 1)] || null;
+    });
+    replayFrames.push(frame);
+  }
+  totalFrames = replayFrames.length;
+}
+
+// Draw full traces + initialize markers
+function initMapObjects() {
+  const allPts = [];
+  ATHLETES_DATA.forEach((a, i) => {
+    const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
+    const lls = (a.latlng || []).map(p => [p[0], p[1]]);
+    if (lls.length) {
+      L.polyline(lls, { color, weight: 2, opacity: 0.4 }).addTo(map);
+      allPts.push(...lls);
+    }
+    const startPt = lls[0] || [0, 0];
+    const marker = L.circleMarker(startPt, {
+      radius: 7, color, fillColor: color, fillOpacity: 1, weight: 2
+    }).bindTooltip(a.label, { permanent: false, direction: 'top' }).addTo(map);
+    athleteMarkers.push(marker);
+  });
+  if (allPts.length) map.fitBounds(allPts, { padding: [20, 20] });
+}
+
+function renderFrame(idx) {
+  if (!replayFrames.length) return;
+  const frame = replayFrames[Math.min(idx, totalFrames - 1)];
+  frame.forEach((pos, i) => {
+    if (pos && athleteMarkers[i]) {
+      athleteMarkers[i].setLatLng([pos[0], pos[1]]);
+    }
+  });
+  // Update clock
+  const pct = totalFrames > 1 ? idx / (totalFrames - 1) : 0;
+  document.getElementById('replay-slider').value = pct * 100;
+  // Use primary athlete elapsed time
+  const primaryData = ATHLETES_DATA.find(a => a.is_primary) || ATHLETES_DATA[0];
+  const elapsed = primaryData && primaryData.elapsed_s ? primaryData.elapsed_s : [];
+  const totalS = elapsed.length ? elapsed[elapsed.length - 1] : 0;
+  const curS = elapsed.length ? (elapsed[Math.min(idx, elapsed.length - 1)] || 0) : 0;
+  document.getElementById('replay-clock').textContent = `${fmtTime(curS)} / ${fmtTime(totalS)}`;
+}
+
+function fmtTime(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function animate(ts) {
+  if (!playing) return;
+  if (lastTs === null) lastTs = ts;
+  const dt = (ts - lastTs) / 1000;
+  lastTs = ts;
+  // Advance frames: playSpeed frames per second of real time
+  const advance = Math.max(1, Math.round(dt * playSpeed));
+  currentFrame = Math.min(currentFrame + advance, totalFrames - 1);
+  renderFrame(currentFrame);
+  if (currentFrame >= totalFrames - 1) { playing = false; updatePlayBtn(); return; }
+  animHandle = requestAnimationFrame(animate);
+}
+
+function togglePlay() {
+  playing = !playing;
+  updatePlayBtn();
+  if (playing) { lastTs = null; animHandle = requestAnimationFrame(animate); }
+  else if (animHandle) { cancelAnimationFrame(animHandle); }
+}
+
+function updatePlayBtn() {
+  const btn = document.getElementById('play-btn');
+  btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+}
+
+function seekTo(pct) {
+  currentFrame = Math.round((pct / 100) * (totalFrames - 1));
+  renderFrame(currentFrame);
+}
+
+function setSpeed(v) { playSpeed = parseInt(v, 10); }
+
+buildFrames();
+initMapObjects();
+renderFrame(0);
+
+// ── Chart.js gap chart ────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('gap-chart').getContext('2d');
+  const datasets = GAP_DATA.map((g, i) => {
+    const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
+    const pts = (g.gap_series || []).map(p => ({ x: p.distance_km, y: p.gap_to_leader_s }));
+    return {
+      label: g.athlete_label,
+      data: pts,
+      borderColor: color,
+      backgroundColor: color + '22',
+      fill: false,
+      tension: 0.3,
+      pointRadius: 0,
+      borderWidth: 2,
+    };
+  });
+
+  new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#ccc', font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: +${ctx.parsed.y.toFixed(1)}s`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Distance (km)', color: '#666' },
+          ticks: { color: '#666', maxTicksLimit: 8 },
+          grid: { color: '#222' },
+        },
+        y: {
+          title: { display: true, text: 'Gap to leader (s)', color: '#666' },
+          ticks: { color: '#666' },
+          grid: { color: '#222' },
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

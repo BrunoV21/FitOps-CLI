@@ -22,6 +22,35 @@ from fitops.dashboard.queries.race import (
     save_race_plan,
     update_race_plan,
 )
+from fitops.dashboard.queries.race_session import (
+    add_session_athlete,
+    create_race_session,
+    delete_race_session,
+    get_all_race_sessions,
+    get_session_athletes,
+    get_session_detail,
+    get_gap_series,
+    get_events,
+    get_segments,
+    save_events,
+    save_gap_series,
+    save_segments,
+)
+from fitops.analytics.race_analysis import (
+    compute_athlete_metrics,
+    compute_delta_series,
+    compute_gap_series,
+    compute_segment_athlete_metrics,
+    detect_events,
+    detect_segments_from_altitude,
+    detect_segments_from_km_segments,
+    fetch_strava_comparison_streams,
+    load_primary_streams,
+    normalize_stream,
+    normalized_stream_from_dict,
+    normalized_stream_to_dict,
+    parse_gpx_streams,
+)
 from fitops.db.migrations import create_all_tables
 from fitops.race.course_parser import (
     build_km_segments,
@@ -279,6 +308,280 @@ def register(templates: Jinja2Templates) -> APIRouter:
             request,
             "race/import.html",
             {"request": request, "error": error, "active_page": "race"},
+        )
+
+    # ── Race Plans (list) — must come before /race/{course_id} ───────────────
+
+    @router.get("/race/plans", response_class=HTMLResponse)
+    async def race_plans_list(request: Request):
+        await create_all_tables()
+        plans = await get_all_race_plans()
+        # Enrich with course names
+        course_cache: dict[int, str] = {}
+        for p in plans:
+            cid = p["course_id"]
+            if cid not in course_cache:
+                c = await get_course(cid)
+                course_cache[cid] = c.name if c else f"Course {cid}"
+            p["course_name"] = course_cache[cid]
+        return templates.TemplateResponse(
+            request,
+            "race/plans.html",
+            {"request": request, "plans": plans, "active_page": "race"},
+        )
+
+    # ── Race Sessions (list) — must come before /race/{course_id} ────────────
+
+    @router.get("/race/sessions", response_class=HTMLResponse)
+    async def race_sessions_list(request: Request):
+        await create_all_tables()
+        sessions = await get_all_race_sessions()
+        return templates.TemplateResponse(
+            request,
+            "race/sessions.html",
+            {
+                "request": request,
+                "sessions": sessions,
+                "active_page": "race_sessions",
+            },
+        )
+
+    @router.get("/race/sessions/create", response_class=HTMLResponse)
+    async def race_session_create_get(request: Request):
+        await create_all_tables()
+        courses = await get_all_courses()
+        return templates.TemplateResponse(
+            request,
+            "race/session_create.html",
+            {"request": request, "courses": courses, "error": None, "active_page": "race_sessions"},
+        )
+
+    @router.post("/race/sessions/create", response_class=HTMLResponse)
+    async def race_session_create_post(
+        request: Request,
+        name: str = Form(...),
+        activity: int = Form(...),
+        course: str = Form(""),
+    ):
+        await create_all_tables()
+        course_id = int(course) if course.strip() else None
+        error = None
+
+        async def _run():
+            raw = await load_primary_streams(activity)
+            if raw is None:
+                return None, f"No streams found for activity {activity}. Run: fitops sync streams"
+
+            primary_ns = normalize_stream(raw, athlete_label="You", is_primary=True, activity_id=activity)
+            primary_metrics = compute_athlete_metrics(primary_ns)
+            primary_stream_dict = normalized_stream_to_dict(primary_ns)
+
+            session_dict = await create_race_session(
+                name=name,
+                primary_activity_id=activity,
+                course_id=course_id,
+            )
+            session_id = session_dict["id"]
+
+            await add_session_athlete(
+                session_id=session_id,
+                athlete_label="You",
+                is_primary=True,
+                activity_id=activity,
+                stream_dict=primary_stream_dict,
+                metrics_dict=primary_metrics,
+            )
+
+            gap_series = compute_gap_series([primary_ns])
+            delta_series = compute_delta_series(gap_series)
+            await save_gap_series(session_id, gap_series, delta_series)
+
+            if course_id:
+                course_obj = await get_course(course_id)
+                if course_obj and course_obj.km_segments:
+                    km_segs = (
+                        json.loads(course_obj.km_segments)
+                        if isinstance(course_obj.km_segments, str)
+                        else course_obj.km_segments
+                    )
+                    segments = detect_segments_from_km_segments(km_segs)
+                else:
+                    segments = detect_segments_from_altitude([primary_ns])
+            else:
+                segments = detect_segments_from_altitude([primary_ns])
+
+            athlete_metrics = compute_segment_athlete_metrics([primary_ns], segments)
+            await save_segments(session_id, segments, athlete_metrics)
+
+            events = detect_events([primary_ns], gap_series)
+            await save_events(session_id, events)
+
+            return session_id, None
+
+        try:
+            session_id, error = await _run()
+        except Exception as exc:
+            error = str(exc)
+            session_id = None
+
+        if error or session_id is None:
+            courses = await get_all_courses()
+            return templates.TemplateResponse(
+                request,
+                "race/session_create.html",
+                {"request": request, "courses": courses, "error": error or "Unknown error.", "active_page": "race_sessions"},
+            )
+        return RedirectResponse(url=f"/race/sessions/{session_id}", status_code=303)
+
+    @router.post("/race/sessions/{session_id}/add-athlete", response_class=HTMLResponse)
+    async def race_session_add_athlete(
+        request: Request,
+        session_id: int,
+        label: str = Form(...),
+        activity: str = Form(""),
+        gpx_file: UploadFile = File(None),
+    ):
+        await create_all_tables()
+        error = None
+
+        async def _run():
+            if activity.strip():
+                act_id = int(activity.strip())
+                raw = await fetch_strava_comparison_streams(act_id)
+                if raw is None:
+                    return f"Could not fetch streams for Strava activity {act_id}."
+                file_act_id = act_id
+            elif gpx_file and gpx_file.filename:
+                content = (await gpx_file.read()).decode("utf-8", errors="replace")
+                raw = parse_gpx_streams(content)
+                file_act_id = None
+            else:
+                return "Provide a Strava activity ID or upload a GPX file."
+
+            ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=file_act_id)
+            metrics = compute_athlete_metrics(ns)
+            stream_dict = normalized_stream_to_dict(ns)
+
+            await add_session_athlete(
+                session_id=session_id,
+                athlete_label=label,
+                is_primary=False,
+                activity_id=file_act_id,
+                stream_dict=stream_dict,
+                metrics_dict=metrics,
+            )
+
+            # Recompute gap/events/segments with all athletes
+            all_db = await get_session_athletes(session_id)
+            all_ns = [normalized_stream_from_dict(a.get_stream()) for a in all_db]
+            gap_series = compute_gap_series(all_ns)
+            delta_series = compute_delta_series(gap_series)
+            await save_gap_series(session_id, gap_series, delta_series)
+
+            primary_ns = next((a for a in all_ns if a.is_primary), all_ns[0])
+            segs_raw = await get_segments(session_id)
+            if segs_raw:
+                from fitops.analytics.race_analysis import DetectedSegment
+                segs = [
+                    DetectedSegment(
+                        label=s["segment_label"],
+                        start_km=s["start_km"],
+                        end_km=s["end_km"],
+                        gradient_type=s["gradient_type"],
+                        avg_grade_pct=s.get("avg_grade_pct") or 0.0,
+                    )
+                    for s in segs_raw
+                ]
+            else:
+                segs = detect_segments_from_altitude([primary_ns])
+
+            athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
+            await save_segments(session_id, segs, athlete_metrics)
+            events = detect_events(all_ns, gap_series)
+            await save_events(session_id, events)
+            return None
+
+        try:
+            error = await _run()
+        except Exception as exc:
+            error = str(exc)
+
+        if error:
+            detail = await get_session_detail(session_id)
+            db_athletes = await get_session_athletes(session_id)
+            athletes_streams = []
+            for a in db_athletes:
+                stream = a.get_stream()
+                athletes_streams.append({
+                    "label": a.athlete_label,
+                    "is_primary": a.is_primary,
+                    "latlng": stream.get("latlng", []),
+                    "elapsed_s": stream.get("elapsed_s", []),
+                })
+            return templates.TemplateResponse(
+                request,
+                "race/session_detail.html",
+                {
+                    "request": request,
+                    "session": detail["session"] if detail else {},
+                    "athletes": detail.get("athletes", []) if detail else [],
+                    "athletes_streams": athletes_streams,
+                    "gap_data": detail.get("gap_data", []) if detail else [],
+                    "events": detail.get("events", []) if detail else [],
+                    "segments": detail.get("segments", []) if detail else [],
+                    "add_athlete_error": error,
+                    "active_page": "race_sessions",
+                },
+            )
+        return RedirectResponse(url=f"/race/sessions/{session_id}", status_code=303)
+
+    @router.post("/race/sessions/{session_id}/delete", response_class=HTMLResponse)
+    async def race_session_delete(request: Request, session_id: int):
+        await create_all_tables()
+        await delete_race_session(session_id)
+        return RedirectResponse(url="/race/sessions", status_code=303)
+
+    @router.get("/race/sessions/{session_id}", response_class=HTMLResponse)
+    async def race_session_detail(request: Request, session_id: int):
+        await create_all_tables()
+        detail = await get_session_detail(session_id)
+        if detail is None:
+            from fastapi.responses import Response
+            return Response(content="Session not found.", status_code=404)
+
+        athletes = detail.get("athletes", [])
+        gap_data = detail.get("gap_data", [])
+        events = detail.get("events", [])
+        segments = detail.get("segments", [])
+
+        # Build per-athlete stream data for the Leaflet replay
+        db_athletes = await get_session_athletes(session_id)
+        athletes_streams = []
+        for a in db_athletes:
+            stream = a.get_stream()
+            latlng = stream.get("latlng", [])
+            elapsed = stream.get("elapsed_s", [])
+            athletes_streams.append({
+                "label": a.athlete_label,
+                "is_primary": a.is_primary,
+                "latlng": latlng,
+                "elapsed_s": elapsed,
+            })
+
+        return templates.TemplateResponse(
+            request,
+            "race/session_detail.html",
+            {
+                "request": request,
+                "session": detail["session"],
+                "athletes": athletes,
+                "athletes_streams": athletes_streams,
+                "gap_data": gap_data,
+                "events": events,
+                "segments": segments,
+                "add_athlete_error": None,
+                "active_page": "race_sessions",
+            },
         )
 
     @router.post("/race/{course_id}/delete", response_class=HTMLResponse)
@@ -845,24 +1148,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
             pass
 
         return RedirectResponse(url=f"/race/plans/{saved_id}", status_code=303)
-
-    @router.get("/race/plans", response_class=HTMLResponse)
-    async def race_plans_list(request: Request):
-        await create_all_tables()
-        plans = await get_all_race_plans()
-        # Enrich with course names
-        course_cache: dict[int, str] = {}
-        for p in plans:
-            cid = p["course_id"]
-            if cid not in course_cache:
-                c = await get_course(cid)
-                course_cache[cid] = c.name if c else f"Course {cid}"
-            p["course_name"] = course_cache[cid]
-        return templates.TemplateResponse(
-            request,
-            "race/plans.html",
-            {"request": request, "plans": plans, "active_page": "race"},
-        )
 
     @router.get("/race/plans/{plan_id}", response_class=HTMLResponse)
     async def race_plan_detail(request: Request, plan_id: int):
