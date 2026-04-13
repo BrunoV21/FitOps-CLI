@@ -225,6 +225,123 @@ def _estimate_from_activity(activity: Activity) -> VO2MaxResult | None:
     )
 
 
+def estimate_vo2max_from_stream_dict(
+    activity: Activity,
+    stream_data: dict,
+    lthr: int | None,
+    max_hr: int | None,
+) -> VO2MaxResult | None:
+    """Estimate VO2max from in-memory stream data — no DB queries required.
+
+    ``stream_data`` is the raw dict returned by ``StravaClient.get_activity_streams``:
+    each key maps to either ``{"data": [...], ...}`` or a plain list.
+
+    Only run-type activities that qualify on effort (avg HR near threshold) are
+    estimated; all others return ``None``.
+    """
+    if activity.sport_type not in RUN_TYPES:
+        return None
+    qualifies, _ = _effort_qualifies(activity.average_heartrate, lthr, max_hr)
+    if not qualifies:
+        return None
+
+    def _get(key: str) -> list | None:
+        obj = stream_data.get(key)
+        if obj is None:
+            return None
+        return obj.get("data", []) if isinstance(obj, dict) else list(obj)
+
+    hr_data = _get("heartrate")
+    if not hr_data:
+        return None
+    speed_data = _get("grade_adjusted_speed") or _get("velocity_smooth")
+    if not speed_data:
+        return None
+    time_data = _get("time")
+    if not time_data:
+        return None
+
+    n = min(len(hr_data), len(speed_data), len(time_data))
+    hr_data = hr_data[:n]
+    speed_data = speed_data[:n]
+    time_data = time_data[:n]
+
+    if lthr is not None:
+        min_hr = lthr * _EFFORT_LTHR_RATIO
+        lt2_hr_floor = lthr * 0.97
+    elif max_hr is not None:
+        min_hr = max_hr * _EFFORT_MAXHR_RATIO
+        lt2_hr_floor = max_hr * 0.85
+    else:
+        return None
+
+    _LT_MIN_SAMPLES = 20
+    lt2_speeds = [
+        spd
+        for hr, spd in zip(hr_data, speed_data, strict=False)
+        if hr is not None
+        and spd is not None
+        and spd >= _LT2_MIN_SPEED_MS
+        and hr >= lt2_hr_floor
+    ]
+
+    def _median_pace_s(speeds: list[float]) -> float | None:
+        if len(speeds) < _LT_MIN_SAMPLES:
+            return None
+        sv = sorted(speeds)
+        return round(1000.0 / sv[len(sv) // 2], 1)
+
+    measured_lt2 = _median_pace_s(lt2_speeds)
+
+    segments = _extract_high_intensity_segments(hr_data, time_data, speed_data, min_hr)
+    if not segments:
+        return None
+
+    total_duration = sum(s.duration_s for s in segments)
+    total_distance = sum(s.distance_m for s in segments)
+    if total_distance < 1500:
+        return None
+
+    d_est = _daniels_vdot(total_distance, total_duration)
+    c_est = _cooper_vo2max(total_distance, total_duration)
+
+    if total_distance >= 5000:
+        estimates = [e for e in [d_est, c_est] if e is not None]
+        pairs: list[tuple] = [(d_est, 0.60), (c_est, 0.40)]
+    else:
+        estimates = [e for e in [d_est] if e is not None]
+        pairs = [(d_est, 1.0)]
+
+    if not estimates:
+        return None
+
+    weighted = total_w = 0.0
+    for est, w in pairs:
+        if est is not None:
+            weighted += est * w
+            total_w += w
+    if total_w == 0:
+        return None
+
+    avg_v = total_distance / total_duration
+    return VO2MaxResult(
+        estimate=round(weighted / total_w, 1),
+        confidence=round(_confidence(total_distance, estimates), 2),
+        vdot=round(d_est, 1) if d_est is not None else None,
+        cooper=round(c_est, 1) if c_est is not None else None,
+        activity_strava_id=activity.strava_id,
+        activity_name=activity.name,
+        activity_date=activity.start_date.date().isoformat()
+        if activity.start_date
+        else "unknown",
+        distance_km=round(total_distance / 1000, 2),
+        pace_per_km=_fmt_pace(avg_v),
+        best_time_s=float(total_duration),
+        estimation_method="streams",
+        measured_lt2_pace_s=measured_lt2,
+    )
+
+
 def _extract_high_intensity_segments(
     hr_data: list,
     time_data: list,

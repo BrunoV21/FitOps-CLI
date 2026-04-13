@@ -53,6 +53,7 @@ class Activity(Base):
 
     aerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     anaerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vo2max_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     calories: Mapped[int | None] = mapped_column(Integer, nullable=True)

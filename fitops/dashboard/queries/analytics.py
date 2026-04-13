@@ -13,7 +13,6 @@ from fitops.analytics.vo2max import (
     RUN_TYPES,
     _effort_qualifies,
     _estimate_from_activity,
-    _estimate_from_streams,
 )
 from fitops.db.models.activity import Activity
 from fitops.db.session import get_async_session
@@ -34,6 +33,59 @@ async def get_training_load_data(
     if not result.history:
         return None
     return result
+
+
+async def get_current_training_load(athlete_id: int) -> dict | None:
+    """Return today's CTL/ATL/TSB from the pre-computed snapshot.
+
+    Falls back to a full recompute (and persists it) when no snapshot exists
+    for today — e.g., first run before a sync has been performed.
+    """
+    from datetime import date
+
+    from sqlalchemy import text
+
+    from fitops.analytics.training_load import (
+        TrainingLoadResult,
+        persist_training_load_snapshot,
+    )
+
+    today = date.today().isoformat()
+    async with get_async_session() as session:
+        row = await session.execute(
+            text(
+                "SELECT ctl, atl, tsb FROM analytics_snapshots "
+                "WHERE athlete_id = :aid AND snapshot_date = :dt AND sport_type IS NULL"
+            ),
+            {"aid": athlete_id, "dt": today},
+        )
+        snap = row.fetchone()
+
+    if snap is not None:
+        ctl, atl, tsb = snap
+        dummy = TrainingLoadResult()
+        return {
+            "ctl": round(ctl, 1),
+            "atl": round(atl, 1),
+            "tsb": round(tsb, 1),
+            "form_label": dummy.form_label(tsb),
+        }
+
+    # No snapshot yet — compute on-the-fly and cache for next time.
+    tl = await compute_training_load(athlete_id=athlete_id, days=1)
+    if tl and tl.current:
+        try:
+            await persist_training_load_snapshot(athlete_id)
+        except Exception:
+            pass
+        c = tl.current
+        return {
+            "ctl": round(c.ctl, 1),
+            "atl": round(c.atl, 1),
+            "tsb": round(c.tsb, 1),
+            "form_label": tl.form_label(c.tsb),
+        }
+    return None
 
 
 async def get_trends_data(
@@ -76,18 +128,44 @@ async def get_vo2max_history(athlete_id: int, days: int = 365) -> list[dict]:
         )
         activities = result.scalars().all()
 
-        rows = []
-        for a in activities:
-            qualifies, effort_reason = _effort_qualifies(
-                a.average_heartrate, lthr, max_hr
+    rows = []
+    for a in activities:
+        qualifies, effort_reason = _effort_qualifies(
+            a.average_heartrate, lthr, max_hr
+        )
+        if not qualifies:
+            continue
+
+        # Fast path: use the cached estimate stored at stream-fetch time.
+        # This avoids N+1 DB queries (3-4 SELECTs per activity) on every
+        # dashboard load. The summary-based fallback (_estimate_from_activity)
+        # is used only for activities that haven't had streams fetched yet.
+        if a.vo2max_estimate is not None:
+            base_est = _estimate_from_activity(a)
+            rows.append(
+                {
+                    "date": a.start_date.date().isoformat()
+                    if a.start_date
+                    else "unknown",
+                    "name": a.name,
+                    "strava_id": a.strava_id,
+                    "distance_km": round((a.distance_m or 0) / 1000, 2),
+                    "avg_hr": a.average_heartrate,
+                    "effort_reason": effort_reason,
+                    "estimate": a.vo2max_estimate,
+                    "confidence": base_est.confidence if base_est else 0.5,
+                    "confidence_label": base_est.confidence_label
+                    if base_est
+                    else "Low",
+                    "vdot": base_est.vdot if base_est else None,
+                    "cooper": base_est.cooper if base_est else None,
+                    "estimation_method": "streams",
+                    "measured_lt2_pace_s": None,
+                }
             )
-            if not qualifies:
-                continue
-            est = None
-            if a.streams_fetched:
-                est = await _estimate_from_streams(a, session, lthr, max_hr)
-            if est is None:
-                est = _estimate_from_activity(a)
+        else:
+            # Slow path (no streams yet): summary-only estimate, no DB queries.
+            est = _estimate_from_activity(a)
             if est is None:
                 continue
             rows.append(

@@ -23,7 +23,7 @@ from fitops.dashboard.queries.activities import (
 from fitops.dashboard.queries.analytics import (
     RIDING_SPORTS,
     RUNNING_SPORTS,
-    get_training_load_data,
+    get_current_training_load,
 )
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.profile import get_activity_heatmap_data
@@ -224,8 +224,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if athlete_id
             else {}
         )
-        tl = (
-            await get_training_load_data(athlete_id, days=1)
+        current_load = (
+            await get_current_training_load(athlete_id)
             if athlete_id and period == "week"
             else None
         )
@@ -238,16 +238,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
             await _get_today_weather(athlete_id) if period == "week" else None
         )
         rolling = _compute_rolling(period, since, stats)
-
-        current_load = None
-        if tl and tl.current:
-            c = tl.current
-            current_load = {
-                "ctl": round(c.ctl, 1),
-                "atl": round(c.atl, 1),
-                "tsb": round(c.tsb, 1),
-                "form_label": tl.form_label(c.tsb),
-            }
 
         return templates.TemplateResponse(
             request,

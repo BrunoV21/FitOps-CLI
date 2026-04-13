@@ -19,6 +19,13 @@ from fitops.db.models.race_course import RaceCourse  # noqa: F401
 from fitops.db.models.race_plan import RacePlan  # noqa: F401
 from fitops.db.models.workout import Workout  # noqa: F401
 from fitops.db.models.workout_activity_link import WorkoutActivityLink  # noqa: F401
+from fitops.db.models.race_session import (  # noqa: F401
+    RaceSession,
+    RaceSessionAthlete,
+    RaceSessionEvent,
+    RaceSessionGap,
+    RaceSessionSegment,
+)
 from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
 from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
 from fitops.db.session import get_engine
@@ -45,6 +52,7 @@ _ACTIVITY_NEW_COLUMNS: list[tuple[str, str]] = [
     ("workout_type", "INTEGER"),
     ("aerobic_score", "REAL"),
     ("anaerobic_score", "REAL"),
+    ("vo2max_estimate", "REAL"),
 ]
 
 

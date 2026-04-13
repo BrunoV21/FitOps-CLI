@@ -34,12 +34,17 @@ async def _fetch_streams_for_activities(
     """Fetch and cache streams for a list of (internal_id, strava_id) pairs."""
     from sqlalchemy import delete as sa_delete
 
+    from fitops.analytics.athlete_settings import get_athlete_settings
+    from fitops.analytics.vo2max import estimate_vo2max_from_stream_dict
     from fitops.strava.client import StravaClient
 
     client = StravaClient()
     fetched = 0
     errors = 0
     total = len(activity_ids)
+    _athlete_settings = get_athlete_settings()
+    _lthr = _athlete_settings.lthr
+    _max_hr = _athlete_settings.max_hr
     for idx, (internal_id, strava_id) in enumerate(
         zip(activity_ids, strava_ids, strict=False), 1
     ):
@@ -80,6 +85,13 @@ async def _fetch_streams_for_activities(
                 row = activity_row.scalar_one_or_none()
                 if row:
                     row.streams_fetched = True
+                    # Compute and cache VO2max from in-memory streams — avoids
+                    # N+1 DB queries on every dashboard load.
+                    vo2max_est = estimate_vo2max_from_stream_dict(
+                        row, stream_data, _lthr, _max_hr
+                    )
+                    if vo2max_est is not None:
+                        row.vo2max_estimate = vo2max_est.estimate
             # Silently try to auto-associate to a race plan
             try:
                 from fitops.analytics.race_plan import match_activity_to_plans

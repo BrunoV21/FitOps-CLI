@@ -179,6 +179,71 @@ async def compute_training_load(
     return result_obj
 
 
+async def persist_training_load_snapshot(athlete_id: int) -> None:
+    """Compute today's CTL/ATL/TSB and upsert into analytics_snapshots.
+
+    Called once at the end of every sync so that dashboard page loads can
+    read a single pre-computed row instead of re-running the full 84-day
+    EWMA warmup on every request.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+
+    from fitops.db.session import get_async_session
+
+    result = await compute_training_load(athlete_id=athlete_id, days=1)
+    if not result.current:
+        return
+
+    c = result.current
+    today = c.date.isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+
+    async with get_async_session() as session:
+        # sport_type IS NULL makes standard ON CONFLICT unreliable in SQLite;
+        # use a manual SELECT + INSERT/UPDATE instead.
+        existing = await session.execute(
+            text(
+                "SELECT id FROM analytics_snapshots "
+                "WHERE athlete_id = :aid AND snapshot_date = :dt AND sport_type IS NULL"
+            ),
+            {"aid": athlete_id, "dt": today},
+        )
+        row = existing.scalar_one_or_none()
+        if row is None:
+            await session.execute(
+                text(
+                    "INSERT INTO analytics_snapshots "
+                    "(athlete_id, snapshot_date, sport_type, ctl, atl, tsb, computed_at) "
+                    "VALUES (:aid, :dt, NULL, :ctl, :atl, :tsb, :now)"
+                ),
+                {
+                    "aid": athlete_id,
+                    "dt": today,
+                    "ctl": round(c.ctl, 2),
+                    "atl": round(c.atl, 2),
+                    "tsb": round(c.tsb, 2),
+                    "now": now,
+                },
+            )
+        else:
+            await session.execute(
+                text(
+                    "UPDATE analytics_snapshots "
+                    "SET ctl = :ctl, atl = :atl, tsb = :tsb, computed_at = :now "
+                    "WHERE id = :id"
+                ),
+                {
+                    "ctl": round(c.ctl, 2),
+                    "atl": round(c.atl, 2),
+                    "tsb": round(c.tsb, 2),
+                    "now": now,
+                    "id": row,
+                },
+            )
+
+
 def _compute_overtraining_indicators(history: list) -> dict:
     """Compute ACWR, training monotony, and training strain from DailyLoad history."""
     if not history:

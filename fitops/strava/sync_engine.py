@@ -163,4 +163,13 @@ class SyncEngine:
             duration_s=result.duration_s,
         )
 
+        # Persist today's CTL/ATL/TSB snapshot so dashboard reads a cached row
+        # instead of recomputing the full 84-day EWMA warmup on every page load.
+        try:
+            from fitops.analytics.training_load import persist_training_load_snapshot
+
+            await persist_training_load_snapshot(athlete_id)
+        except Exception:
+            pass  # Never fail a sync over a snapshot write error
+
         return result
