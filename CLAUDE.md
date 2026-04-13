@@ -85,6 +85,39 @@ Follow this order — do not skip steps:
 
 ---
 
+## Performance Rule: Compute Once at Sync, Read at Display
+
+> **Expensive computations MUST be stored in the DB at sync time. Dashboard and CLI reads must never recompute what can be looked up.**
+
+This is non-negotiable. The dashboard runs on every page load — recomputing EWMA warmups or running N+1 DB loops on every request kills responsiveness.
+
+### The pattern
+
+| When | What to do |
+|------|------------|
+| **Sync time** (`sync_engine.py`, `cli/sync.py`) | Compute derived values and persist them |
+| **Read time** (dashboard route, CLI command) | SELECT the pre-computed value — no recomputation |
+
+### Concrete rules
+
+1. **CTL/ATL/TSB** — computed in `persist_training_load_snapshot()` after every sync, stored in `analytics_snapshots`. Dashboard reads that row; never calls `compute_training_load(days=1)` directly.
+
+2. **VO2max per activity** — computed in `_fetch_streams_for_activities` from in-memory Strava stream data (zero extra DB queries), stored in `Activity.vo2max_estimate`. Dashboard reads that column; never calls `_estimate_from_streams` on page load.
+
+3. **Aerobic / anaerobic scores** — same pattern: computed in `sync_engine.py`, stored on `Activity`. Do not recompute in routes.
+
+4. **Any new metric that requires looping over activities or multi-day history** — follow the same pattern. Write a `persist_<metric>` function in `fitops/analytics/`, call it from the sync engine, read the cached value in dashboard/CLI.
+
+### When adding a new computed metric
+
+- Add a column to the relevant model (or a row to `analytics_snapshots`).
+- Add the migration to `fitops/db/migrations.py`.
+- Add `persist_<metric>()` to `fitops/analytics/`.
+- Call it from `SyncEngine.run()` (or from `_fetch_streams_for_activities` if it needs stream data).
+- Have the dashboard query read the cached value, with a lazy-compute fallback only for the cold-start case.
+
+---
+
 ## Claude Code Notes
 
 - A `/fitops` skill is available at `.claude/commands/fitops.md` — use it for FitOps-specific tasks.

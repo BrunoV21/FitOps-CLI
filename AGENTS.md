@@ -97,6 +97,42 @@ A CLI command and a dashboard route covering the same metric must call the same 
 
 ---
 
+## Performance Rule: Compute Once at Sync, Read at Display
+
+> **Expensive computations MUST be stored in the DB at sync time. Page loads and CLI reads MUST never recompute what can be looked up.**
+
+The dashboard runs on every navigation event. Recomputing multi-day EWMA warmups or running per-activity DB loops on every request will make the UI unresponsive.
+
+### How it works
+
+```
+Sync time                     DB                      Read time
+─────────────────────         ──────────────────────  ────────────────────────
+SyncEngine.run()         →    activities.vo2max_est   ← dashboard / CLI SELECT
+persist_training_load()  →    analytics_snapshots     ← dashboard / CLI SELECT
+```
+
+### Pre-computed values and where they live
+
+| Metric | Stored in | Written by | Read by |
+|--------|-----------|------------|---------|
+| CTL / ATL / TSB | `analytics_snapshots` (sport_type=NULL) | `persist_training_load_snapshot()` → called from `SyncEngine.run()` | `get_current_training_load()` in `dashboard/queries/analytics.py` |
+| VO2max per activity | `activities.vo2max_estimate` | `estimate_vo2max_from_stream_dict()` → called from `_fetch_streams_for_activities()` | `get_vo2max_history()` fast path |
+| Aerobic score | `activities.aerobic_score` | `compute_aerobic_score()` → called in `SyncEngine._sync_activities_paginated()` | direct column read |
+| Anaerobic score | `activities.anaerobic_score` | `compute_anaerobic_score()` → called in `SyncEngine._sync_activities_paginated()` | direct column read |
+
+### Rules for new metrics
+
+1. Add a column to the model **or** a row to `analytics_snapshots`.
+2. Add the migration in `fitops/db/migrations.py`.
+3. Write `persist_<metric>()` in `fitops/analytics/`.
+4. Call it from `SyncEngine.run()` (or from `_fetch_streams_for_activities` if stream data is needed).
+5. Dashboard/CLI queries read the cached column — with a lazy-compute fallback only for the first run before a sync.
+
+**Never** call `compute_training_load(days=1)` or `_estimate_from_streams()` inside a route handler or CLI read path.
+
+---
+
 ## Agent Interface Contract (CLI)
 
 ### Output format
