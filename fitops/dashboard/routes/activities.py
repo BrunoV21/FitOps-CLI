@@ -92,8 +92,8 @@ def _activity_row(a) -> dict:
         efficiency_pct = round(a.moving_time_s / a.elapsed_time_s * 100)
 
     _settings = get_athlete_settings()
-    aerobic_score = compute_aerobic_score(a, _settings)
-    anaerobic_score = compute_anaerobic_score(a, _settings)
+    aerobic_score = a.aerobic_score if a.aerobic_score is not None else compute_aerobic_score(a, _settings)
+    anaerobic_score = a.anaerobic_score if a.anaerobic_score is not None else compute_anaerobic_score(a, _settings)
 
     return {
         "strava_id": a.strava_id,
@@ -585,8 +585,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 mean_tp = (
                     sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
                 )
-                m_tp, s_tp = divmod(int(round(mean_tp)), 60)
-                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                if is_run:
+                    m_tp, s_tp = divmod(int(round(mean_tp)), 60)
+                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                else:
+                    true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
             else:
                 vel_raw = streams.get("velocity_smooth", [])
                 grade_raw = streams.get("grade_smooth", [])
@@ -607,14 +610,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         )
                         / total_w
                     )
-                    gap_pace_s = 1000.0 / mean_gap_ms
                     heat_f = (
                         _pace_heat_factor(w.temperature_c, w.humidity_pct)
                         if w.temperature_c is not None and w.humidity_pct is not None
                         else 1.0
                     )
-                    m_tp, s_tp = divmod(int(round(gap_pace_s / heat_f)), 60)
-                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                    if is_run:
+                        gap_pace_s = 1000.0 / mean_gap_ms
+                        m_tp, s_tp = divmod(int(round(gap_pace_s / heat_f)), 60)
+                        true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                    else:
+                        true_pace_fmt = f"{mean_gap_ms * heat_f * 3.6:.1f} km/h"
 
             weather_panel = {
                 **ws,

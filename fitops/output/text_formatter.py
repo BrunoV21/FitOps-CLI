@@ -67,6 +67,8 @@ def print_activity_detail(activity: dict) -> None:
     training = activity.get("training_metrics") or {}
     flags = activity.get("flags") or {}
     insights = activity.get("insights") or {}
+    _sport = activity.get("sport_type") or ""
+    _is_run = _sport in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
 
     date_str = (activity.get("start_date_local") or "")[:10]
     console.print(
@@ -133,7 +135,8 @@ def print_activity_detail(activity: dict) -> None:
         if avg_gap:
             parts.append(f"GAP {avg_gap}")
         if true_pace_fmt:
-            parts.append(f"True Pace {true_pace_fmt}")
+            _tp_label = "True Pace" if _is_run else "True Speed"
+            parts.append(f"{_tp_label} {true_pace_fmt}")
         console.print(f"  Effort     {'  |  '.join(parts)}")
 
     # Weather conditions

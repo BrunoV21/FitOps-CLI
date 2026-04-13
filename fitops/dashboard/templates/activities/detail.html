@@ -147,7 +147,7 @@
     {% if weather.true_pace_fmt or weather.wap_fmt %}
     <span style="font-size:11px;color:var(--text-dim);">
       {% if weather.true_pace_fmt %}
-      True Pace
+      {% if is_run %}True Pace{% else %}True Speed{% endif %}
       <span style="color:var(--accent-primary);font-weight:700;margin-left:4px;">{{ weather.true_pace_fmt }}</span>
       {% else %}
       WAP

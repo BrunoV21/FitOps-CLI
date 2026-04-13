@@ -43,6 +43,8 @@ async def _migrate_athlete_columns(conn) -> None:
 # Columns added to `activities` after the initial schema.
 _ACTIVITY_NEW_COLUMNS: list[tuple[str, str]] = [
     ("workout_type", "INTEGER"),
+    ("aerobic_score", "REAL"),
+    ("anaerobic_score", "REAL"),
 ]
 
 

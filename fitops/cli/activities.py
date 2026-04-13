@@ -345,8 +345,8 @@ def get_activity(
         from fitops.dashboard.queries.workouts import get_workout_for_activity
 
         _settings = get_athlete_settings()
-        aerobic_score = compute_aerobic_score(row, _settings)
-        anaerobic_score = compute_anaerobic_score(row, _settings)
+        aerobic_score = row.aerobic_score if row.aerobic_score is not None else compute_aerobic_score(row, _settings)
+        anaerobic_score = row.anaerobic_score if row.anaerobic_score is not None else compute_anaerobic_score(row, _settings)
 
         formatted.setdefault("insights", {})
         formatted["insights"]["aerobic_training_score"] = aerobic_score
@@ -548,8 +548,11 @@ def get_activity(
                 mean_tp = (
                     sum(p * v for p, v in zip(paces, vels, strict=False)) / total_wt
                 )
-                m_tp, s_tp = divmod(int(round(mean_tp)), 60)
-                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                if is_run:
+                    m_tp, s_tp = divmod(int(round(mean_tp)), 60)
+                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                else:
+                    true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
 
             formatted["weather"] = {
                 **ws,

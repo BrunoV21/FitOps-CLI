@@ -51,6 +51,9 @@ class Activity(Base):
 
     training_stress_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    aerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    anaerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     calories: Mapped[int | None] = mapped_column(Integer, nullable=True)
     suffer_score: Mapped[int | None] = mapped_column(Integer, nullable=True)

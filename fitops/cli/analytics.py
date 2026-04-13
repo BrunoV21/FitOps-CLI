@@ -729,3 +729,53 @@ def snapshot(
         typer.echo(json.dumps(snap_out, indent=2, default=str))
     else:
         print_snapshot(snap_out)
+
+
+@app.command("recalculate-scores")
+def recalculate_scores(
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Recompute aerobic and anaerobic scores for all activities and persist them."""
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1)
+
+    init_db()
+
+    async def _run():
+        from sqlalchemy import select
+
+        from fitops.analytics.athlete_settings import AthleteSettings
+        from fitops.analytics.training_scores import (
+            compute_aerobic_score,
+            compute_anaerobic_score,
+        )
+        from fitops.db.models.activity import Activity
+        from fitops.db.session import get_async_session
+
+        athlete_settings = AthleteSettings()
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(Activity).where(Activity.athlete_id == settings.athlete_id)
+            )
+            activities = result.scalars().all()
+            updated = 0
+            for a in activities:
+                a.aerobic_score = compute_aerobic_score(a, athlete_settings)
+                a.anaerobic_score = compute_anaerobic_score(a, athlete_settings)
+                updated += 1
+
+        return updated
+
+    count = asyncio.run(_run())
+    out = {"_meta": make_meta(), "recalculated": count}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        typer.echo(f"Recalculated scores for {count} activities.")

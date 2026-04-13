@@ -360,14 +360,14 @@ def test_anaerobic_score_run_calibration_threshold():
 
 
 def test_anaerobic_score_ride_calibration():
-    """Anaerobic score for ride: 2.22h IF=0.812 → 1.7 (calibration point)."""
+    """Anaerobic score for ride: 2.22h IF=0.812 → 1.3 (coefficient updated to 3.65)."""
     from fitops.analytics.training_scores import compute_anaerobic_score
 
     # watts = IF * FTP = 0.812 * 250 = 203
     act = _make_ride(moving_time_s=int(2.22 * 3600), average_watts=203)
     settings = _make_settings(ftp=250)
     score = compute_anaerobic_score(act, settings)
-    assert score == 1.7, f"expected 1.7, got {score}"
+    assert score == 1.3, f"expected 1.3, got {score}"
 
 
 def test_anaerobic_score_run_higher_than_ride_same_if():
