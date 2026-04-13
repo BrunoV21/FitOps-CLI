@@ -289,6 +289,160 @@ fitops race plan-delete 1
 
 ---
 
+---
+
+## Race Analysis — Multi-Athlete Sessions
+
+Race Analysis lets you replay a race with one or more athletes side by side, computing gap trends, segment breakdowns, and automatically detected tactical events (surges, fades, bridges, etc.).
+
+### `fitops race session-create`
+
+Create a race analysis session from a primary Strava activity. Streams are fetched, normalised onto a 10 m grid, and the full analysis pipeline runs immediately (gap series, segments, event detection).
+
+```bash
+fitops race session-create --activity <strava_id> --name "Session Name" [--course <id>] [--json]
+```
+
+**Options:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--activity INT` | Yes | Primary Strava activity ID |
+| `--name TEXT` | Yes | Session display name |
+| `--course INT` | No | Optional course ID — uses course km-segments for segment detection instead of altitude-based fallback |
+| `--json` | No | Output raw JSON |
+
+**Example:**
+
+```bash
+fitops race session-create --activity 12345678901 --name "Berlin 2026" --course 1
+```
+
+**Output:** Full session detail (same as `fitops race session <id>`).
+
+> **Note:** The primary activity must have streams synced. Run `fitops sync streams` if you see a "No streams found" error.
+
+---
+
+### `fitops race session-add-athlete`
+
+Add a comparison athlete to an existing session. Accepts a Strava activity ID (public activity) **or** a GPX file. All analysis (gap series, events, segment rankings) is fully recomputed with the new athlete included.
+
+```bash
+fitops race session-add-athlete <session_id> --label "Name" [--activity <id> | --gpx <file>] [--json]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `SESSION_ID` | ID of the existing session |
+
+**Options:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--label TEXT` | Yes | Display label for this athlete |
+| `--activity INT` | No* | Strava activity ID (public activity) |
+| `--gpx PATH` | No* | Path to a GPX file |
+| `--json` | No | Output raw JSON |
+
+*One of `--activity` or `--gpx` is required.
+
+**Example:**
+
+```bash
+# Add from Strava activity
+fitops race session-add-athlete 1 --label "Alex" --activity 98765432100
+
+# Add from GPX
+fitops race session-add-athlete 1 --label "Sam" --gpx /path/to/sam.gpx
+```
+
+---
+
+### `fitops race sessions`
+
+List all race analysis sessions.
+
+```bash
+fitops race sessions [--json]
+```
+
+**Output:**
+
+```
+  ID   Name          Primary Activity  Athletes  Course  Created
+ ─────────────────────────────────────────────────────────────────
+   1   Berlin 2026   12345678901       3         1       2026-09-29
+   2   Local 10K     98765432100       2         —       2026-06-15
+```
+
+---
+
+### `fitops race session <id>`
+
+Show the full detail view for a session: summary cards, athletes, and all computed analytics.
+
+```bash
+fitops race session <id> [--json]
+```
+
+---
+
+### `fitops race session-gaps <id>`
+
+Show the gap-to-leader series — time gap (in seconds) and distance gap (in metres) per athlete at every 50 m point along the race.
+
+```bash
+fitops race session-gaps <id> [--json]
+```
+
+The leader at each point is the athlete with the minimum elapsed time. Leader gap is always 0. Positive gap = behind the leader.
+
+---
+
+### `fitops race session-segments <id>`
+
+Show the segment breakdown — course divided into climbing, flat, and descending sections with per-athlete time, pace, and rank within each segment.
+
+```bash
+fitops race session-segments <id> [--json]
+```
+
+Segments are detected from the linked course's km-segments (grade-based merging) if a course is linked, or from the primary athlete's altitude stream using a rolling-window fallback.
+
+---
+
+### `fitops race session-events <id>`
+
+Show automatically detected tactical events. Events are classified into six types:
+
+| Type | Detection rule |
+|------|---------------|
+| `surge` | Velocity >15% above 60 s rolling baseline, sustained for ≥20 s |
+| `fade` | Second-half average velocity <90% of first-half average |
+| `final_sprint` | Last 400 m average velocity >10% above race average |
+| `drop` | Gap to leader grows by >10 s over any 500 m window |
+| `bridge` | Gap to leader shrinks by >10 s over any 500 m window |
+| `separation` | Total field spread exceeds 30 s for a sustained distance |
+
+```bash
+fitops race session-events <id> [--json]
+```
+
+---
+
+### `fitops race session-delete <id>`
+
+Delete a race session and all associated data (athletes, gap series, segments, events).
+
+```bash
+fitops race session-delete <id>
+```
+
+---
+
 ## Activity Auto-Matching
 
 When `fitops sync` fetches activity streams, it automatically checks all unlinked plans whose `race_date` is within ±1 day of the activity's start date. If the activity's GPS start point is within 500 m of the course start coordinates, the plan's `activity_id` is set automatically.
@@ -310,6 +464,7 @@ Manual `--temp` + `--humidity` always override auto-fetched weather. If weather 
 
 - [Concepts → Weather & Pace](../concepts/weather-pace.md) — WAP and GAP adjustment models
 - [Dashboard → Race Plans](../dashboard/race-plans.md) — visual split comparison and plan management
+- [Dashboard → Race Analysis](../dashboard/race-analysis.md) — multi-athlete replay, gap chart, segment rankings, event timeline
 - [`fitops workouts simulate`](./workouts.md) — simulate a structured workout on a course
 - [`fitops weather forecast`](./weather.md) — standalone race-day forecast
 

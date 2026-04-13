@@ -87,6 +87,7 @@ export default defineConfig({
           { text: 'Workouts', link: '/dashboard/workouts' },
           { text: 'Race Planner', link: '/dashboard/race' },
           { text: 'Race Plans', link: '/dashboard/race-plans' },
+          { text: 'Race Analysis', link: '/dashboard/race-analysis' },
           { text: 'Notes', link: '/dashboard/notes' },
           { text: 'Weather', link: '/dashboard/weather' },
           { text: 'Profile', link: '/dashboard/profile' },
