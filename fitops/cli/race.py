@@ -938,14 +938,13 @@ def session_create(
         if course:
             from fitops.dashboard.queries.race import get_course as _get_course
             course_obj = await _get_course(course)
-            if course_obj and course_obj.km_segments:
-                import json as _json
-                km_segs = _json.loads(course_obj.km_segments) if isinstance(course_obj.km_segments, str) else course_obj.km_segments
+            km_segs = course_obj.get_km_segments() if course_obj else []
+            if km_segs:
                 segments = detect_segments_from_km_segments(km_segs)
             else:
-                segments = detect_segments_from_altitude([primary_ns])
+                segments = detect_segments_from_altitude(primary_ns)
         else:
-            segments = detect_segments_from_altitude([primary_ns])
+            segments = detect_segments_from_altitude(primary_ns)
 
         athlete_metrics = compute_segment_athlete_metrics([primary_ns], segments)
         await save_segments(session_id, segments, athlete_metrics)
@@ -987,8 +986,8 @@ def session_add_athlete(
         typer.echo("Provide --activity or --gpx.", err=True)
         raise typer.Exit(1)
 
-    async def _run() -> dict:
-        # 1. Fetch raw streams
+    async def _save_athlete() -> dict:
+        """Phase 1: fetch + normalise + persist athlete. Returns error dict or {}."""
         if activity:
             raw = await fetch_strava_comparison_streams(activity)
             if raw is None:
@@ -1002,12 +1001,9 @@ def session_add_athlete(
             raw = parse_gpx_streams(gpx_path.read_text())
             act_id = None
 
-        # 2. Normalise
         ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=act_id)
         metrics = compute_athlete_metrics(ns)
         stream_dict = normalized_stream_to_dict(ns)
-
-        # 3. Persist
         await add_session_athlete(
             session_id=session_id,
             athlete_label=label,
@@ -1016,8 +1012,10 @@ def session_add_athlete(
             stream_dict=stream_dict,
             metrics_dict=metrics,
         )
+        return {}
 
-        # 4. Recompute gap/delta/events with all athletes
+    async def _recompute() -> None:
+        """Phase 2: recompute gap/segment/event data. Best-effort; never raises."""
         all_athletes_db = await get_session_athletes(session_id)
         from fitops.analytics.race_analysis import normalized_stream_from_dict
         all_ns = [normalized_stream_from_dict(a.get_stream()) for a in all_athletes_db]
@@ -1026,11 +1024,10 @@ def session_add_athlete(
         delta_series = compute_delta_series(gap_series)
         await save_gap_series(session_id, gap_series, delta_series)
 
-        # Re-detect segments using primary
         primary_ns = next((a for a in all_ns if a.is_primary), all_ns[0])
-        segs_raw = await _get_segments_for_recompute(session_id)
+        segs_raw = await get_segments(session_id)
         if not segs_raw:
-            segs = detect_segments_from_altitude([primary_ns])
+            segs = detect_segments_from_altitude(primary_ns)
         else:
             from fitops.analytics.race_analysis import DetectedSegment
             segs = [
@@ -1046,14 +1043,18 @@ def session_add_athlete(
 
         athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
         await save_segments(session_id, segs, athlete_metrics)
-
         events = detect_events(all_ns, gap_series)
         await save_events(session_id, events)
 
+    async def _run() -> dict:
+        result = await _save_athlete()
+        if "error" in result:
+            return result
+        try:
+            await _recompute()
+        except Exception:
+            pass  # derived data stale but athlete is persisted
         return await get_session_detail(session_id) or {}
-
-    async def _get_segments_for_recompute(sid: int):
-        return await get_segments(sid)
 
     result = asyncio.run(_run())
     if "error" in result:

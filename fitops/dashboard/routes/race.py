@@ -398,17 +398,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             if course_id:
                 course_obj = await get_course(course_id)
-                if course_obj and course_obj.km_segments:
-                    km_segs = (
-                        json.loads(course_obj.km_segments)
-                        if isinstance(course_obj.km_segments, str)
-                        else course_obj.km_segments
-                    )
+                km_segs = course_obj.get_km_segments() if course_obj else []
+                if km_segs:
                     segments = detect_segments_from_km_segments(km_segs)
                 else:
-                    segments = detect_segments_from_altitude([primary_ns])
+                    segments = detect_segments_from_altitude(primary_ns)
             else:
-                segments = detect_segments_from_altitude([primary_ns])
+                segments = detect_segments_from_altitude(primary_ns)
 
             athlete_metrics = compute_segment_athlete_metrics([primary_ns], segments)
             await save_segments(session_id, segments, athlete_metrics)
@@ -444,12 +440,25 @@ def register(templates: Jinja2Templates) -> APIRouter:
         await create_all_tables()
         error = None
 
-        async def _run():
+        # ── Phase 1: fetch + normalise + persist athlete (errors are fatal) ──
+        async def _save_athlete() -> str | None:
+            """Fetch streams and save the athlete. Returns error string or None."""
             if activity.strip():
-                act_id = int(activity.strip())
+                raw_val = activity.strip()
+                if raw_val.startswith("http"):
+                    import re as _re
+                    m = _re.search(r"/activities/(\d+)", raw_val)
+                    if not m:
+                        return "Could not parse a Strava activity ID from that URL."
+                    act_id = int(m.group(1))
+                else:
+                    try:
+                        act_id = int(raw_val)
+                    except ValueError:
+                        return f"'{raw_val}' is not a valid Strava activity ID."
                 raw = await fetch_strava_comparison_streams(act_id)
                 if raw is None:
-                    return f"Could not fetch streams for Strava activity {act_id}."
+                    return f"Could not fetch streams for activity {act_id}. The activity may be private or the streams unavailable."
                 file_act_id = act_id
             elif gpx_file and gpx_file.filename:
                 content = (await gpx_file.read()).decode("utf-8", errors="replace")
@@ -461,7 +470,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
             ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=file_act_id)
             metrics = compute_athlete_metrics(ns)
             stream_dict = normalized_stream_to_dict(ns)
-
             await add_session_athlete(
                 session_id=session_id,
                 athlete_label=label,
@@ -470,8 +478,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 stream_dict=stream_dict,
                 metrics_dict=metrics,
             )
+            return None
 
-            # Recompute gap/events/segments with all athletes
+        # ── Phase 2: recompute derived data (errors are non-fatal) ──────────
+        async def _recompute():
+            """Recompute gap/segment/event data for all athletes."""
             all_db = await get_session_athletes(session_id)
             all_ns = [normalized_stream_from_dict(a.get_stream()) for a in all_db]
             gap_series = compute_gap_series(all_ns)
@@ -493,18 +504,24 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     for s in segs_raw
                 ]
             else:
-                segs = detect_segments_from_altitude([primary_ns])
+                segs = detect_segments_from_altitude(primary_ns)
 
             athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
             await save_segments(session_id, segs, athlete_metrics)
             events = detect_events(all_ns, gap_series)
             await save_events(session_id, events)
-            return None
 
         try:
-            error = await _run()
+            error = await _save_athlete()
         except Exception as exc:
             error = str(exc)
+
+        if not error:
+            # Athlete saved — recompute best-effort; failure doesn't block the redirect
+            try:
+                await _recompute()
+            except Exception:
+                pass  # derived data is stale but athlete is persisted
 
         if error:
             detail = await get_session_detail(session_id)
@@ -512,11 +529,19 @@ def register(templates: Jinja2Templates) -> APIRouter:
             athletes_streams = []
             for a in db_athletes:
                 stream = a.get_stream()
+                dist_grid = stream.get("distance_grid", [])
+                velocity = stream.get("velocity", [])
+                heartrate = stream.get("heartrate", [])
+                step = 5
                 athletes_streams.append({
                     "label": a.athlete_label,
                     "is_primary": a.is_primary,
                     "latlng": stream.get("latlng", []),
                     "elapsed_s": stream.get("elapsed_s", []),
+                    "distance_km": [round(d / 1000, 3) for d in dist_grid[::step]] if dist_grid else [],
+                    "velocity": [round(v, 3) if v else None for v in velocity[::step]] if velocity else [],
+                    "heartrate": [round(h, 1) if h else None for h in heartrate[::step]] if heartrate else [],
+                    "strava_url": f"https://www.strava.com/activities/{a.activity_id}" if a.activity_id else None,
                 })
             return templates.TemplateResponse(
                 request,
@@ -554,18 +579,27 @@ def register(templates: Jinja2Templates) -> APIRouter:
         events = detail.get("events", [])
         segments = detail.get("segments", [])
 
-        # Build per-athlete stream data for the Leaflet replay
+        # Build per-athlete stream data for the Leaflet replay + pace chart
         db_athletes = await get_session_athletes(session_id)
         athletes_streams = []
         for a in db_athletes:
             stream = a.get_stream()
             latlng = stream.get("latlng", [])
             elapsed = stream.get("elapsed_s", [])
+            dist_grid = stream.get("distance_grid", [])
+            velocity = stream.get("velocity", [])
+            heartrate = stream.get("heartrate", [])
+            # Subsample to every 5th point (~50 m resolution) for the pace chart
+            step = 5
             athletes_streams.append({
                 "label": a.athlete_label,
                 "is_primary": a.is_primary,
                 "latlng": latlng,
                 "elapsed_s": elapsed,
+                "distance_km": [round(d / 1000, 3) for d in dist_grid[::step]] if dist_grid else [],
+                "velocity": [round(v, 3) if v else None for v in velocity[::step]] if velocity else [],
+                "heartrate": [round(h, 1) if h else None for h in heartrate[::step]] if heartrate else [],
+                "strava_url": f"https://www.strava.com/activities/{a.activity_id}" if a.activity_id else None,
             })
 
         return templates.TemplateResponse(
