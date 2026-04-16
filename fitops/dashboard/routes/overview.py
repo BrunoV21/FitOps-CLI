@@ -197,7 +197,7 @@ def _period_since(period: str) -> datetime | None:
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
-    async def overview(request: Request, period: str = "week", view: str = "run"):
+    async def overview(request: Request, period: str = "week", view: str = "total"):
         settings = get_settings()
         if not settings.is_authenticated:
             return RedirectResponse("/setup")
@@ -205,7 +205,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if period not in _PERIOD_LABELS:
             period = "week"
         if view not in _VIEW_SPORT_TYPES:
-            view = "run"
+            view = "total"
         since = _period_since(period)
         sport_types = _VIEW_SPORT_TYPES[view]
 

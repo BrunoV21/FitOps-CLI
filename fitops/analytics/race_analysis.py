@@ -709,7 +709,10 @@ def _detect_surges(ns: NormalizedStream, events: list[RaceEvent]) -> None:
         v = vel[i]
         if v is None:
             continue
-        baseline = _rolling_mean(vel, i, window_60s_pts)
+        # Use backward-only window so the baseline doesn't include the surge itself
+        lo = max(0, i - window_60s_pts)
+        baseline_vals = [u for u in vel[lo:i] if u is not None]
+        baseline = statistics.mean(baseline_vals) if baseline_vals else None
         if baseline is None or baseline <= 0:
             continue
         is_fast = v > baseline * 1.15

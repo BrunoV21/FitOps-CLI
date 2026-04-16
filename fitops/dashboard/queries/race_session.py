@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from fitops.db.models.race_session import (
     RaceSession,
@@ -53,12 +53,29 @@ async def get_race_session(session_id: int) -> RaceSession | None:
 
 
 async def get_all_race_sessions() -> list[dict]:
-    """Return summary dicts for all sessions, newest first."""
+    """Return summary dicts for all sessions with athlete count, newest first."""
     async with get_async_session() as session:
-        result = await session.execute(
-            select(RaceSession).order_by(RaceSession.created_at.desc())
+        # Count athletes per session in a single query
+        count_q = (
+            select(
+                RaceSessionAthlete.session_id,
+                func.count(RaceSessionAthlete.id).label("athlete_count"),
+            )
+            .group_by(RaceSessionAthlete.session_id)
+            .subquery()
         )
-        return [s.to_summary_dict() for s in result.scalars().all()]
+        result = await session.execute(
+            select(RaceSession, count_q.c.athlete_count)
+            .outerjoin(count_q, RaceSession.id == count_q.c.session_id)
+            .order_by(RaceSession.created_at.desc())
+        )
+        rows = result.all()
+    out = []
+    for rs, athlete_count in rows:
+        d = rs.to_summary_dict()
+        d["athlete_count"] = athlete_count or 0
+        out.append(d)
+    return out
 
 
 async def delete_race_session(session_id: int) -> bool:

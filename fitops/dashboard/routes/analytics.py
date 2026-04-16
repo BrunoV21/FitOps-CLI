@@ -36,9 +36,9 @@ router = APIRouter()
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/analytics/training-load", response_class=HTMLResponse)
-    async def training_load(request: Request, days: int = 90, view: str = "run"):
+    async def training_load(request: Request, days: int = 90, view: str = "total"):
         if view not in _VIEW_SPORT_TYPES:
-            view = "run"
+            view = "total"
         sport_types = _VIEW_SPORT_TYPES[view]
 
         settings = get_settings()

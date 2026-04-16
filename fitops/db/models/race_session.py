@@ -65,6 +65,7 @@ class RaceSessionAthlete(Base):
             "id": self.id,
             "session_id": self.session_id,
             "activity_id": self.activity_id,
+            "strava_url": f"https://www.strava.com/activities/{self.activity_id}" if self.activity_id else None,
             "athlete_label": self.athlete_label,
             "is_primary": self.is_primary,
             "metrics": self.get_metrics(),
