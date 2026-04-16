@@ -6,15 +6,17 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
 <style>
   #replay-map { height: 380px; border-radius: 8px; background: #111; }
-  .replay-controls { display:flex; align-items:center; gap:0.75rem; margin-top:0.75rem; }
+  .replay-controls { display:flex; align-items:center; gap:0.5rem; margin-top:0.75rem; flex-wrap:wrap; }
   .replay-btn { background:#1e1e1e; border:1px solid #333; color:#ccc; padding:0.3rem 0.9rem;
                 border-radius:6px; cursor:pointer; font-size:0.82rem; transition:background 0.15s; }
   .replay-btn:hover { background:#2a2a2a; }
   .replay-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+  .replay-btn:disabled { opacity:0.45; cursor:not-allowed; }
   .speed-label { font-size:0.78rem; color:#666; }
-  #replay-slider { flex:1; accent-color:var(--accent); }
+  #replay-slider { flex:1; min-width:80px; accent-color:var(--accent); }
   #replay-clock { font-size:0.82rem; color:#888; min-width:5rem; text-align:right; }
   .athlete-legend { display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem; }
   .legend-item { display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; color:#ccc; }
@@ -29,6 +31,31 @@
   .event-separation { background:#7f1d1d; color:#f87171; }
   .gap-positive { color:#4ade80; }
   .gap-negative { color:#f87171; }
+  #gif-progress { display:none; margin-top:0.5rem; }
+  #gif-progress-bar-wrap { background:#222; border-radius:4px; height:6px; overflow:hidden; margin-top:0.3rem; }
+  #gif-progress-bar { background:var(--accent); height:100%; width:0; transition:width 0.1s; }
+  #gif-progress-label { font-size:0.75rem; color:#888; }
+  #gif-canvas { display:none; }
+  /* F1 live leaderboard */
+  #map-wrap { position:relative; }
+  #f1-board { position:absolute; top:10px; left:10px; z-index:1000; min-width:210px;
+              background:rgba(0,0,0,0.82); border:1px solid #2a2a2a; border-radius:6px;
+              overflow:hidden; pointer-events:none; backdrop-filter:blur(6px);
+              font-family:'Segoe UI',system-ui,sans-serif; }
+  #f1-board-header { background:#e10600; color:#fff; font-size:0.68rem; font-weight:700;
+                     letter-spacing:0.07em; text-transform:uppercase;
+                     display:flex; justify-content:space-between; padding:0.22rem 0.5rem; }
+  .f1-row { display:grid; grid-template-columns:14px 10px 1fr auto auto auto;
+            align-items:center; gap:0 0.35rem; padding:0.22rem 0.5rem;
+            border-top:1px solid #1a1a1a; font-size:0.72rem; }
+  .f1-pos { font-weight:700; color:#777; font-size:0.68rem; text-align:center; }
+  .f1-pos.p1 { color:#fbbf24; }
+  .f1-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .f1-name { color:#eee; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .f1-gap { color:#f87171; font-size:0.68rem; text-align:right; white-space:nowrap; }
+  .f1-gap.lead { color:#4ade80; font-weight:700; }
+  .f1-pace { color:#60a5fa; font-size:0.68rem; text-align:right; white-space:nowrap; }
+  .f1-hr   { color:#f472b6; font-size:0.68rem; text-align:right; white-space:nowrap; }
 </style>
 {% endblock %}
 
@@ -53,19 +80,36 @@
     <div class="panel-header">
       <span class="panel-title">Route Replay</span>
     </div>
-    <div id="replay-map"></div>
+    <div id="map-wrap">
+      <div id="replay-map"></div>
+      <div id="f1-board">
+        <div id="f1-board-header">
+          <span>Live Standings</span>
+          <span id="f1-clock">0:00</span>
+        </div>
+        <div id="f1-rows"></div>
+      </div>
+    </div>
     <div class="replay-controls">
       <button class="replay-btn active" id="play-btn" onclick="togglePlay()">▶ Play</button>
+      <button class="replay-btn" id="replay-from-start-btn" onclick="replayFromStart()" title="Play / Pause">⟳ Resume</button>
       <input type="range" id="replay-slider" min="0" max="100" value="0" oninput="seekTo(this.value)">
       <span id="replay-clock">0:00 / 0:00</span>
       <select id="speed-select" class="replay-btn" onchange="setSpeed(this.value)">
-        <option value="1">1×</option>
-        <option value="5">5×</option>
-        <option value="10" selected>10×</option>
-        <option value="30">30×</option>
-        <option value="60">60×</option>
+        <option value="60" selected>1×</option>
+        <option value="90">1.5×</option>
+        <option value="180">3×</option>
+        <option value="300">5×</option>
+        <option value="600">10×</option>
       </select>
+      <button class="replay-btn active" id="follow-btn" onclick="toggleFollow()" title="Auto-follow athletes">⊙ Follow</button>
+      <button class="replay-btn" id="gif-btn" onclick="exportGif()" title="Export full animation as GIF">⬇ GIF</button>
     </div>
+    <div id="gif-progress">
+      <div id="gif-progress-bar-wrap"><div id="gif-progress-bar"></div></div>
+      <span id="gif-progress-label">Rendering…</span>
+    </div>
+    <canvas id="gif-canvas"></canvas>
     <div class="athlete-legend" id="athlete-legend"></div>
   </div>
 
@@ -73,11 +117,28 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">Gap to Leader</span>
-      <span class="panel-meta">seconds</span>
+      <span class="panel-meta">leader shown at 0 s — others show seconds behind</span>
     </div>
     <canvas id="gap-chart" style="max-height:380px;"></canvas>
   </div>
 </div>
+
+{# ── Row 1b: Pace / HR comparison ── #}
+{% set has_pace = athletes_streams and athletes_streams[0].velocity %}
+{% if has_pace %}
+<div class="panel" style="margin-bottom:1.25rem;">
+  <div class="panel-header">
+    <span class="panel-title">Comparison</span>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+      <button class="replay-btn active" id="toggle-pace" onclick="showChart('pace')">Pace</button>
+      <button class="replay-btn" id="toggle-hr" onclick="showChart('hr')" style="display:none;">Heart Rate</button>
+      <span class="panel-meta" id="chart-meta" style="margin-left:0.5rem;">min/km — lower is faster</span>
+    </div>
+  </div>
+  <div id="pace-chart-wrap"><canvas id="pace-chart" style="max-height:320px;"></canvas></div>
+  <div id="hr-chart-wrap" style="display:none;"><canvas id="hr-chart" style="max-height:320px;"></canvas></div>
+</div>
+{% endif %}
 
 {# ── Row 2: Segments ── #}
 {% if segments %}
@@ -162,7 +223,8 @@
           </td>
           <td>
             {% if a.activity_id %}
-            <a href="/activities/{{ a.activity_id }}" style="color:#888; font-size:0.85rem;">#{{ a.activity_id }}</a>
+            <a href="https://www.strava.com/activities/{{ a.activity_id }}" target="_blank" rel="noopener"
+               style="color:#fc4c02; font-size:0.85rem;" title="Open on Strava">#{{ a.activity_id }} ↗</a>
             {% else %}
             <span class="text-muted">GPX import</span>
             {% endif %}
@@ -252,8 +314,8 @@
                  style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
         </div>
         <div>
-          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Strava Activity ID</label>
-          <input type="text" name="activity" placeholder="e.g. 9876543210"
+          <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Strava Activity ID or URL</label>
+          <input type="text" name="activity" placeholder="e.g. 9876543210 or strava.com/activities/…"
                  style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
         </div>
       </div>
@@ -263,7 +325,13 @@
                style="font-size:0.85rem; color:var(--text-primary);" />
         <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Provide either a Strava activity ID or a GPX file — not both.</p>
       </div>
-      <button type="submit" class="btn btn-primary" style="font-size:0.85rem;">Add Athlete</button>
+      <div style="display:flex; gap:0.75rem; align-items:center;">
+        <button type="submit" class="btn btn-primary" id="addAthleteBtn" style="font-size:0.85rem;"
+                onclick="this.disabled=true; document.getElementById('addAthleteSpinner').style.display='inline'; this.form.submit();">
+          Add Athlete
+        </button>
+        <span id="addAthleteSpinner" style="display:none; font-size:0.8rem; color:#888;">Fetching streams from Strava…</span>
+      </div>
     </form>
   </div>
 
@@ -304,9 +372,10 @@ let replayFrames = [];
 let totalFrames = 0;
 let currentFrame = 0;
 let playing = false;
-let playSpeed = 10;
+let playSpeed = 60; // race-seconds per real-second (1× = 60 race-s/real-s)
 let animHandle = null;
 let lastTs = null;
+let frameAccum = 0; // sub-frame accumulator for slow speeds
 
 // Build legend
 const legendEl = document.getElementById('athlete-legend');
@@ -315,29 +384,57 @@ ATHLETES_DATA.forEach((a, i) => {
   legendEl.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${a.label}</div>`;
 });
 
-// Build frames from distance-aligned streams
-// Each frame = array of {lat, lon} per athlete at a distance step
+// ── Time-based replay ─────────────────────────────────────────────────────────
+// Race time (seconds) between frames.  Each frame = snapshot of all athletes
+// at that moment in the actual race — faster athletes are further along the
+// route, slower athletes are behind, matching reality.
+const TIME_STEP_S = 5;
+let autoFollow = true;
+
+// Interpolate an athlete's [lat, lon] at race-time t using their elapsed_s/latlng arrays.
+function interpAtTime(a, t) {
+  const elapsed = a.elapsed_s || [];
+  const latlng  = a.latlng   || [];
+  if (!elapsed.length || !latlng.length) return null;
+  if (t <= elapsed[0])                   return latlng[0] || null;
+  if (t >= elapsed[elapsed.length - 1])  return latlng[latlng.length - 1] || null;
+  // Binary search for surrounding interval
+  let lo = 0, hi = elapsed.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (elapsed[mid] <= t) lo = mid; else hi = mid;
+  }
+  const p0 = latlng[lo], p1 = latlng[hi];
+  if (!p0 || !p1) return p0 || p1 || null;
+  const frac = (elapsed[hi] === elapsed[lo])
+    ? 0
+    : (t - elapsed[lo]) / (elapsed[hi] - elapsed[lo]);
+  return [p0[0] + frac * (p1[0] - p0[0]), p0[1] + frac * (p1[1] - p0[1])];
+}
+
+// Build one frame per TIME_STEP_S of race time
 function buildFrames() {
   if (!ATHLETES_DATA.length) return;
-  const maxLen = Math.max(...ATHLETES_DATA.map(a => (a.latlng || []).length));
-  for (let i = 0; i < maxLen; i++) {
-    const frame = ATHLETES_DATA.map(a => {
-      const pts = a.latlng || [];
-      return pts[Math.min(i, pts.length - 1)] || null;
-    });
-    replayFrames.push(frame);
+  const maxTime = Math.max(...ATHLETES_DATA.map(a => {
+    const el = a.elapsed_s || [];
+    return el.length ? el[el.length - 1] : 0;
+  }));
+  if (!maxTime) return;
+  const numFrames = Math.ceil(maxTime / TIME_STEP_S) + 1;
+  for (let f = 0; f < numFrames; f++) {
+    replayFrames.push(ATHLETES_DATA.map(a => interpAtTime(a, f * TIME_STEP_S)));
   }
   totalFrames = replayFrames.length;
 }
 
-// Draw full traces + initialize markers
+// Draw ghost traces + initialise circle markers
 function initMapObjects() {
   const allPts = [];
   ATHLETES_DATA.forEach((a, i) => {
     const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
-    const lls = (a.latlng || []).map(p => [p[0], p[1]]);
+    const lls = (a.latlng || []).map(p => p ? [p[0], p[1]] : null).filter(Boolean);
     if (lls.length) {
-      L.polyline(lls, { color, weight: 2, opacity: 0.4 }).addTo(map);
+      L.polyline(lls, { color, weight: 2, opacity: 0.35 }).addTo(map);
       allPts.push(...lls);
     }
     const startPt = lls[0] || [0, 0];
@@ -346,26 +443,53 @@ function initMapObjects() {
     }).bindTooltip(a.label, { permanent: false, direction: 'top' }).addTo(map);
     athleteMarkers.push(marker);
   });
-  if (allPts.length) map.fitBounds(allPts, { padding: [20, 20] });
+  if (allPts.length) {
+    // First fit bounds so we know the appropriate zoom for the whole course
+    map.fitBounds(allPts, { padding: [20, 20] });
+    // Then zoom in 3 extra levels (street-level detail) and centre on the
+    // primary athlete's starting position so the replay opens right at the start line
+    const startZoom = Math.min(map.getZoom() + 3, 17);
+    const primary = ATHLETES_DATA.find(a => a.is_primary) || ATHLETES_DATA[0];
+    const startPt  = primary?.latlng?.find(p => p);
+    if (startPt) {
+      map.setView([startPt[0], startPt[1]], startZoom, { animate: false });
+    } else {
+      map.setZoom(startZoom);
+    }
+  }
+
+  // Disable auto-follow when the user manually drags the map
+  map.on('dragstart', () => { autoFollow = false; updateFollowBtn(); });
 }
 
 function renderFrame(idx) {
   if (!replayFrames.length) return;
   const frame = replayFrames[Math.min(idx, totalFrames - 1)];
+  let followPos = null;
   frame.forEach((pos, i) => {
-    if (pos && athleteMarkers[i]) {
-      athleteMarkers[i].setLatLng([pos[0], pos[1]]);
-    }
+    if (!pos || !athleteMarkers[i]) return;
+    athleteMarkers[i].setLatLng([pos[0], pos[1]]);
+    // Follow primary athlete; fall back to first valid position
+    if (ATHLETES_DATA[i] && ATHLETES_DATA[i].is_primary) followPos = pos;
+    else if (!followPos) followPos = pos;
   });
-  // Update clock
-  const pct = totalFrames > 1 ? idx / (totalFrames - 1) : 0;
-  document.getElementById('replay-slider').value = pct * 100;
-  // Use primary athlete elapsed time
-  const primaryData = ATHLETES_DATA.find(a => a.is_primary) || ATHLETES_DATA[0];
-  const elapsed = primaryData && primaryData.elapsed_s ? primaryData.elapsed_s : [];
-  const totalS = elapsed.length ? elapsed[elapsed.length - 1] : 0;
-  const curS = elapsed.length ? (elapsed[Math.min(idx, elapsed.length - 1)] || 0) : 0;
-  document.getElementById('replay-clock').textContent = `${fmtTime(curS)} / ${fmtTime(totalS)}`;
+
+  // Auto-follow: always instant (slowest speed is 60×, smooth tweening would lag behind)
+  if (autoFollow && followPos) {
+    map.panTo([followPos[0], followPos[1]], { animate: false });
+  }
+
+  // Update slider + clock
+  document.getElementById('replay-slider').value =
+    totalFrames > 1 ? (idx / (totalFrames - 1)) * 100 : 0;
+  const curT  = idx * TIME_STEP_S;
+  const maxT  = (totalFrames - 1) * TIME_STEP_S;
+  document.getElementById('replay-clock').textContent = `${fmtTime(curT)} / ${fmtTime(maxT)}`;
+
+  // F1 leaderboard — throttle DOM writes proportionally to speed
+  // 60× → every 1 frame, 180× → every 2, 300× → every 3, 600× → every 4
+  const lbEvery = Math.min(4, Math.max(1, Math.floor(playSpeed / 90)));
+  if (idx % lbEvery === 0) updateLeaderboard(idx);
 }
 
 function fmtTime(s) {
@@ -378,35 +502,416 @@ function fmtTime(s) {
 
 function animate(ts) {
   if (!playing) return;
-  if (lastTs === null) lastTs = ts;
-  const dt = (ts - lastTs) / 1000;
+  if (lastTs === null) { lastTs = ts; animHandle = requestAnimationFrame(animate); return; }
+  const dt = Math.min((ts - lastTs) / 1000, 0.1); // cap at 100 ms to avoid big jumps after tab switch
   lastTs = ts;
-  // Advance frames: playSpeed frames per second of real time
-  const advance = Math.max(1, Math.round(dt * playSpeed));
-  currentFrame = Math.min(currentFrame + advance, totalFrames - 1);
-  renderFrame(currentFrame);
-  if (currentFrame >= totalFrames - 1) { playing = false; updatePlayBtn(); return; }
+  // playSpeed = race-seconds per real-second; TIME_STEP_S = race-seconds per frame
+  frameAccum += dt * playSpeed / TIME_STEP_S;
+  if (frameAccum >= 1) {
+    const advance = Math.floor(frameAccum);
+    frameAccum -= advance;
+    currentFrame = Math.min(currentFrame + advance, totalFrames - 1);
+    renderFrame(currentFrame);
+    if (currentFrame >= totalFrames - 1) { playing = false; updatePlayBtn(); return; }
+  }
+  animHandle = requestAnimationFrame(animate);
+}
+
+function _stopAnimation() {
+  playing = false;
+  if (animHandle) { cancelAnimationFrame(animHandle); animHandle = null; }
+}
+
+function _startAnimation() {
+  playing = true;
+  updatePlayBtn();
+  lastTs = null;
   animHandle = requestAnimationFrame(animate);
 }
 
 function togglePlay() {
-  playing = !playing;
-  updatePlayBtn();
-  if (playing) { lastTs = null; animHandle = requestAnimationFrame(animate); }
-  else if (animHandle) { cancelAnimationFrame(animHandle); }
+  if (playing) {
+    _stopAnimation();
+    updatePlayBtn();
+  } else {
+    // If we're at the end, restart from beginning
+    if (currentFrame >= totalFrames - 1) {
+      frameAccum = 0;
+      currentFrame = 0;
+      renderFrame(0);
+    }
+    _startAnimation();
+  }
 }
 
 function updatePlayBtn() {
-  const btn = document.getElementById('play-btn');
-  btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  document.getElementById('play-btn').textContent = playing ? '⏸ Pause' : '▶ Play';
+  // Keep replay button in sync
+  const rb = document.getElementById('replay-from-start-btn');
+  if (rb) rb.textContent = playing ? '⏸ Pause' : '⟳ Resume';
+}
+
+function toggleFollow() {
+  autoFollow = !autoFollow;
+  updateFollowBtn();
+}
+
+function updateFollowBtn() {
+  const btn = document.getElementById('follow-btn');
+  if (!btn) return;
+  btn.classList.toggle('active', autoFollow);
+  btn.textContent = autoFollow ? '⊙ Follow' : '◎ Follow';
 }
 
 function seekTo(pct) {
+  frameAccum = 0;
   currentFrame = Math.round((pct / 100) * (totalFrames - 1));
   renderFrame(currentFrame);
 }
 
 function setSpeed(v) { playSpeed = parseInt(v, 10); }
+
+// ── F1 Leaderboard ────────────────────────────────────────────────────────────
+
+// Returns {entries, t} sorted fastest-first with rank, gap_s, vel, hr
+function computeLeaderboard(frameIdx) {
+  const t = frameIdx * TIME_STEP_S;
+
+  const entries = ATHLETES_DATA.map((a, i) => {
+    const elapsed = a.elapsed_s || [];
+    const n = elapsed.length;
+    let dist_m = 0;
+
+    if (n > 0) {
+      if (t >= elapsed[n - 1]) {
+        dist_m = (n - 1) * 10;
+      } else if (t > elapsed[0]) {
+        let lo = 0, hi = n - 1;
+        while (lo + 1 < hi) {
+          const mid = (lo + hi) >> 1;
+          if (elapsed[mid] <= t) lo = mid; else hi = mid;
+        }
+        const frac = elapsed[hi] === elapsed[lo] ? 0
+          : (t - elapsed[lo]) / (elapsed[hi] - elapsed[lo]);
+        dist_m = (lo + frac) * 10; // metres (grid is 10 m/step)
+      }
+    }
+
+    // Subsampled arrays are at 50 m resolution (step=5 × 10 m)
+    const velArr = a.velocity  || [];
+    const hrArr  = a.heartrate || [];
+    const j = Math.min(Math.max(0, Math.floor(dist_m / 50)), Math.max(0, velArr.length - 1));
+    const vel = velArr[j] != null && velArr[j] > 0.3 ? velArr[j] : null;
+    const hr  = hrArr[j]  != null ? Math.round(hrArr[j]) : null;
+
+    return { idx: i, label: a.label,
+             color: ATHLETE_COLORS[i % ATHLETE_COLORS.length],
+             dist_m, vel, hr, elapsed };
+  });
+
+  // Rank by distance (furthest = P1)
+  entries.sort((a, b) => b.dist_m - a.dist_m);
+  const leader = entries[0];
+
+  entries.forEach((e, rank) => {
+    e.rank = rank + 1;
+    if (rank === 0) {
+      e.gap_s = 0;
+    } else {
+      // Time gap = current race time T minus the moment the leader
+      // was at the same distance as this athlete (exact time-based gap)
+      const leaderEl = leader.elapsed || [];
+      const distIdx  = Math.min(Math.floor(e.dist_m / 10), leaderEl.length - 1);
+      e.gap_s = distIdx >= 0 && leaderEl[distIdx] != null
+        ? Math.max(0, t - leaderEl[distIdx])
+        : (leader.vel ? (leader.dist_m - e.dist_m) / leader.vel : 0);
+    }
+  });
+
+  return { entries, t };
+}
+
+function fmtPace(vel_ms) {
+  if (!vel_ms || vel_ms < 0.5 || vel_ms > 12) return '—';
+  const p = 1000 / vel_ms / 60;
+  return `${Math.floor(p)}:${String(Math.round((p % 1) * 60)).padStart(2, '0')}`;
+}
+
+function updateLeaderboard(frameIdx) {
+  const rowsEl  = document.getElementById('f1-rows');
+  const clockEl = document.getElementById('f1-clock');
+  if (!rowsEl) return;
+
+  const { entries, t } = computeLeaderboard(frameIdx);
+  if (clockEl) clockEl.textContent = fmtTime(t);
+
+  const hasHr   = entries.some(e => e.hr   != null);
+  const hasPace = entries.some(e => e.vel  != null);
+
+  rowsEl.innerHTML = entries.map(e => {
+    const gapStr  = e.rank === 1 ? 'LEAD' : `+${e.gap_s.toFixed(1)}s`;
+    const paceStr = hasPace ? (e.vel ? fmtPace(e.vel) + '/km' : '—') : '';
+    const hrStr   = hasHr   ? (e.hr  ? `${e.hr} ♥`  : '—')   : '';
+    return `<div class="f1-row">
+      <span class="f1-pos${e.rank === 1 ? ' p1' : ''}">${e.rank}</span>
+      <span class="f1-dot" style="background:${e.color}"></span>
+      <span class="f1-name">${e.label}</span>
+      <span class="f1-gap${e.rank === 1 ? ' lead' : ''}">${gapStr}</span>
+      ${hasPace ? `<span class="f1-pace">${paceStr}</span>` : '<span></span>'}
+      ${hasHr   ? `<span class="f1-hr">${hrStr}</span>`     : '<span></span>'}
+    </div>`;
+  }).join('');
+}
+
+// Draw the leaderboard onto an off-screen canvas context (for GIF export)
+function drawLeaderboardOnCanvas(ctx, entries, t) {
+  const hasHr   = entries.some(e => e.hr  != null);
+  const hasPace = entries.some(e => e.vel != null);
+  const cols    = 1 + (hasPace ? 1 : 0) + (hasHr ? 1 : 0);
+  const boardW  = 100 + cols * 48;
+  const rowH    = 16, hdrH = 20, pad = 4;
+  const boardH  = hdrH + entries.length * rowH + pad;
+  const x0 = 8, y0 = 8;
+
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.84)';
+  ctx.fillRect(x0, y0, boardW, boardH);
+
+  // Red header bar
+  ctx.fillStyle = '#e10600';
+  ctx.fillRect(x0, y0, boardW, hdrH);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('LIVE', x0 + 5, y0 + 14);
+  ctx.textAlign = 'right';
+  ctx.fillText(fmtTime(t), x0 + boardW - 5, y0 + 14);
+
+  entries.forEach((e, i) => {
+    const ry = y0 + hdrH + i * rowH;
+    const name = e.label.length > 9 ? e.label.slice(0, 9) + '…' : e.label;
+
+    // Rank
+    ctx.textAlign = 'left';
+    ctx.fillStyle = e.rank === 1 ? '#fbbf24' : '#888';
+    ctx.font = 'bold 9px monospace';
+    ctx.fillText(String(e.rank), x0 + 4, ry + rowH - 4);
+
+    // Color bar
+    ctx.fillStyle = e.color;
+    ctx.fillRect(x0 + 14, ry + 3, 3, rowH - 6);
+
+    // Name
+    ctx.fillStyle = '#eee';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(name, x0 + 20, ry + rowH - 4);
+
+    // Gap
+    const gapStr = e.rank === 1 ? 'LEAD' : `+${e.gap_s.toFixed(1)}s`;
+    ctx.fillStyle = e.rank === 1 ? '#4ade80' : '#f87171';
+    ctx.textAlign = 'right';
+    let cx = x0 + boardW - 5;
+    if (hasHr)   { ctx.fillStyle = '#f472b6'; ctx.fillText(e.hr  ? `${e.hr}♥` : '—', cx, ry + rowH - 4); cx -= 42; }
+    if (hasPace) { ctx.fillStyle = '#60a5fa'; ctx.fillText(e.vel ? fmtPace(e.vel) : '—', cx, ry + rowH - 4); cx -= 42; }
+    ctx.fillStyle = e.rank === 1 ? '#4ade80' : '#f87171';
+    ctx.fillText(gapStr, cx, ry + rowH - 4);
+  });
+  ctx.textAlign = 'left';
+}
+
+// ── Replay button ─────────────────────────────────────────────────────────────
+// Toggle play/pause from the current position.
+// If already at the end, restart from the beginning.
+function replayFromStart() {
+  togglePlay(); // updatePlayBtn() inside togglePlay keeps both buttons in sync
+}
+
+// ── GIF export ────────────────────────────────────────────────────────────────
+// Renders the replay onto an off-screen canvas using a Mercator projection
+// (no Leaflet dependency) and encodes it with gif.js.
+
+function _mercY(lat) {
+  const s = Math.sin(lat * Math.PI / 180);
+  return Math.log((1 + s) / (1 - s)) / 2;
+}
+
+function exportGif() {
+  if (!totalFrames) { alert('No replay data available.'); return; }
+  if (typeof GIF === 'undefined') { alert('gif.js library not loaded yet — try again in a moment.'); return; }
+
+  // ── bounding box ──
+  const allLL = ATHLETES_DATA.flatMap(a => (a.latlng || []).filter(p => p));
+  if (!allLL.length) { alert('No GPS data to export.'); return; }
+
+  const minLat = Math.min(...allLL.map(p => p[0]));
+  const maxLat = Math.max(...allLL.map(p => p[0]));
+  const minLon = Math.min(...allLL.map(p => p[1]));
+  const maxLon = Math.max(...allLL.map(p => p[1]));
+
+  const W = 540, H = 540, PAD = 36;
+  const canvas = document.getElementById('gif-canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const minMY = _mercY(minLat), maxMY = _mercY(maxLat);
+  const lonSpan = maxLon - minLon || 1e-6;
+
+  function project(lat, lon) {
+    const mx = (lon - minLon) / lonSpan;
+    const my = 1 - (_mercY(lat) - minMY) / (maxMY - minMY || 1e-6);
+    return { x: PAD + mx * (W - 2 * PAD), y: PAD + my * (H - 2 * PAD) };
+  }
+
+  // Pre-project ghost routes
+  const routes = ATHLETES_DATA.map(a =>
+    (a.latlng || []).filter(p => p).map(p => project(p[0], p[1]))
+  );
+
+  // ── gif.js setup ──
+  const gif = new GIF({
+    workers: 2,
+    quality: 8,
+    width: W,
+    height: H,
+    workerScript: 'https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js',
+  });
+
+  // Subsample to ≤ 150 frames so the file stays manageable
+  const MAX_FRAMES = 150;
+  const step = Math.max(1, Math.floor(totalFrames / MAX_FRAMES));
+  const frameIdxs = [];
+  for (let f = 0; f < totalFrames; f += step) frameIdxs.push(f);
+  if (frameIdxs[frameIdxs.length - 1] !== totalFrames - 1)
+    frameIdxs.push(totalFrames - 1);
+
+  const frameDelay = Math.round((frameIdxs.length > 1
+    ? ((totalFrames - 1) * TIME_STEP_S * 1000) / (frameIdxs.length - 1) / playSpeed
+    : 100));
+  const clampedDelay = Math.max(40, Math.min(frameDelay, 200));
+
+  // ── UI: show progress ──
+  const btn = document.getElementById('gif-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Capturing…';
+  const progWrap = document.getElementById('gif-progress');
+  progWrap.style.display = 'block';
+  const progBar = document.getElementById('gif-progress-bar');
+  const progLabel = document.getElementById('gif-progress-label');
+  progBar.style.width = '0';
+
+  // Two-phase progress:
+  //   Phase 1 — frame capture: 0 % → 50 %
+  //   Phase 2 — gif.js worker encoding: 50 % → 100 %
+  function setProgress(pct, label) {
+    progBar.style.width = pct + '%';
+    progLabel.textContent = label;
+  }
+
+  let ci = 0;
+
+  function drawGifFrame(fidx) {
+    const frame = replayFrames[Math.min(fidx, totalFrames - 1)];
+    const t = fidx * TIME_STEP_S;
+
+    // ── draw background ──
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+
+    // ── ghost routes ──
+    ATHLETES_DATA.forEach((a, i) => {
+      const pts = routes[i];
+      if (!pts.length) return;
+      ctx.beginPath();
+      ctx.strokeStyle = ATHLETE_COLORS[i % ATHLETE_COLORS.length] + '55';
+      ctx.lineWidth = 1.5;
+      pts.forEach((p, j) => j === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    });
+
+    // ── athlete markers + labels ──
+    ATHLETES_DATA.forEach((a, i) => {
+      const pos = frame[i];
+      if (!pos) return;
+      const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
+      const pt = project(pos[0], pos[1]);
+
+      // Outer glow
+      ctx.beginPath();
+      ctx.fillStyle = color + '55';
+      ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Solid dot
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label with dark shadow
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillText(a.label, pt.x + 10, pt.y + 5);
+      ctx.fillStyle = color;
+      ctx.fillText(a.label, pt.x + 9, pt.y + 4);
+    });
+
+    // ── F1 leaderboard ──
+    const { entries } = computeLeaderboard(fidx);
+    drawLeaderboardOnCanvas(ctx, entries, t);
+
+    // ── race clock (bottom-right) ──
+    const clockStr = fmtTime(t) + ' / ' + fmtTime((totalFrames - 1) * TIME_STEP_S);
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(W - 118, H - 26, 113, 20);
+    ctx.fillStyle = '#bbb';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(clockStr, W - 6, H - 10);
+    ctx.textAlign = 'left';
+
+    gif.addFrame(canvas, { copy: true, delay: clampedDelay });
+  }
+
+  // Use requestAnimationFrame between captures so the browser can repaint the
+  // progress bar and remain responsive during the (potentially slow) canvas draws.
+  function captureNext() {
+    if (ci >= frameIdxs.length) {
+      // Phase 1 done — hand off to gif.js workers
+      setProgress(50, `Encoding GIF… 0%`);
+      btn.textContent = '⏳ Encoding…';
+      gif.render();
+      return;
+    }
+
+    drawGifFrame(frameIdxs[ci]);
+    ci++;
+
+    // Phase 1: 0 % → 50 %
+    const pct = Math.round((ci / frameIdxs.length) * 50);
+    setProgress(pct, `Capturing frame ${ci} / ${frameIdxs.length}…`);
+
+    requestAnimationFrame(captureNext);
+  }
+
+  // Phase 2: gif.js worker reports 0→1 → map to 50→100 %
+  gif.on('progress', p => {
+    const pct = 50 + Math.round(p * 50);
+    setProgress(pct, `Encoding GIF… ${Math.round(p * 100)}%`);
+  });
+
+  gif.on('finished', blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'race-replay.gif'; a.click();
+    URL.revokeObjectURL(url);
+    btn.disabled = false;
+    btn.textContent = '⬇ GIF';
+    progWrap.style.display = 'none';
+    progBar.style.width = '0';
+  });
+
+  requestAnimationFrame(captureNext);
+}
 
 buildFrames();
 initMapObjects();
@@ -461,5 +966,116 @@ renderFrame(0);
     }
   });
 })();
+
+// ── Pace / HR comparison charts ───────────────────────────────────────────────
+(function() {
+  const paceCtx = document.getElementById('pace-chart');
+  const hrCtx = document.getElementById('hr-chart');
+  if (!paceCtx) return;
+
+  // Rolling average smoother (window = k points each side)
+  function smooth(arr, k) {
+    return arr.map((v, i) => {
+      if (v == null) return null;
+      const lo = Math.max(0, i - k), hi = Math.min(arr.length, i + k + 1);
+      const vals = arr.slice(lo, hi).filter(x => x != null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    });
+  }
+
+  // ── Pace chart ──
+  const paceDatasets = ATHLETES_DATA.map((a, i) => {
+    const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
+    const distKm = a.distance_km || [];
+    const vel = a.velocity || [];
+    const rawPace = vel.map(v => (v && v > 0.5 && v < 8) ? (1000 / v / 60) : null);
+    const smoothed = smooth(rawPace, 4);
+    const pts = distKm.map((d, j) => smoothed[j] != null ? { x: d, y: +smoothed[j].toFixed(2) } : null).filter(Boolean);
+    return { label: a.label, data: pts, borderColor: color, backgroundColor: color + '22',
+             fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2 };
+  }).filter(ds => ds.data.length > 0);
+
+  if (paceDatasets.length) {
+    new Chart(paceCtx.getContext('2d'), {
+      type: 'line',
+      data: { datasets: paceDatasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: '#ccc', font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => {
+            const m = Math.floor(ctx.parsed.y);
+            const s = Math.round((ctx.parsed.y - m) * 60);
+            return `${ctx.dataset.label}: ${m}:${String(s).padStart(2,'0')} /km`;
+          }}}
+        },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Distance (km)', color: '#666' },
+               ticks: { color: '#666', maxTicksLimit: 8 }, grid: { color: '#222' } },
+          y: { reverse: true, title: { display: true, text: 'Pace (min/km)', color: '#666' },
+               ticks: { color: '#666', callback: v => { const m = Math.floor(v); const s = Math.round((v-m)*60); return `${m}:${String(s).padStart(2,'0')}`; } },
+               grid: { color: '#222' } }
+        }
+      }
+    });
+  }
+
+  // ── HR chart (only if at least one athlete has HR data) ──
+  if (!hrCtx) return;
+  const hrDatasets = ATHLETES_DATA.map((a, i) => {
+    const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
+    const distKm = a.distance_km || [];
+    const hr = a.heartrate || [];
+    if (!hr.some(v => v != null)) return null;
+    const smoothed = smooth(hr, 3);
+    const pts = distKm.map((d, j) => smoothed[j] != null ? { x: d, y: +smoothed[j].toFixed(1) } : null).filter(Boolean);
+    return { label: a.label, data: pts, borderColor: color, backgroundColor: color + '22',
+             fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2 };
+  }).filter(Boolean);
+
+  if (hrDatasets.length) {
+    // Show the HR toggle button
+    const hrBtn = document.getElementById('toggle-hr');
+    if (hrBtn) hrBtn.style.display = '';
+
+    new Chart(hrCtx.getContext('2d'), {
+      type: 'line',
+      data: { datasets: hrDatasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: '#ccc', font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)} bpm` } }
+        },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Distance (km)', color: '#666' },
+               ticks: { color: '#666', maxTicksLimit: 8 }, grid: { color: '#222' } },
+          y: { title: { display: true, text: 'Heart Rate (bpm)', color: '#666' },
+               ticks: { color: '#666' }, grid: { color: '#222' } }
+        }
+      }
+    });
+  }
+})();
+
+// ── Chart toggle ──────────────────────────────────────────────────────────────
+function showChart(mode) {
+  const paceWrap = document.getElementById('pace-chart-wrap');
+  const hrWrap = document.getElementById('hr-chart-wrap');
+  const meta = document.getElementById('chart-meta');
+  const btnPace = document.getElementById('toggle-pace');
+  const btnHr = document.getElementById('toggle-hr');
+  if (mode === 'pace') {
+    paceWrap.style.display = ''; hrWrap.style.display = 'none';
+    btnPace.classList.add('active'); btnHr.classList.remove('active');
+    if (meta) meta.textContent = 'min/km — lower is faster';
+  } else {
+    paceWrap.style.display = 'none'; hrWrap.style.display = '';
+    btnHr.classList.add('active'); btnPace.classList.remove('active');
+    if (meta) meta.textContent = 'bpm — heart rate over distance';
+  }
+}
 </script>
 {% endblock %}
