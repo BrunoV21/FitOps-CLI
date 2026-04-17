@@ -1062,6 +1062,36 @@ async def load_primary_streams(activity_id: int) -> dict[str, list] | None:
     return {row.stream_type: row.data for row in stream_rows}
 
 
+async def fetch_activity_companions(activity_id: int) -> list[dict]:
+    """Return athletes who ran together in a Strava group activity.
+
+    Parses the ``with_entries`` field from the full activity detail — only
+    present for group runs where the companions follow/are followed by the
+    authenticated athlete.  Returns [] on any failure or when the field is
+    absent.
+
+    Each entry: ``{"label": str, "activity_id": int}``
+    """
+    from fitops.strava.client import StravaClient
+
+    try:
+        client = StravaClient()
+        detail = await client.get_activity(activity_id)
+        with_entries = detail.get("with_entries") or []
+        companions = []
+        for entry in with_entries:
+            athlete = entry.get("athlete") or {}
+            firstname = athlete.get("firstname", "")
+            lastname = athlete.get("lastname", "")
+            label = f"{firstname} {lastname}".strip() or f"Athlete {athlete.get('id', '?')}"
+            act_id = entry.get("id")
+            if act_id:
+                companions.append({"label": label, "activity_id": int(act_id)})
+        return companions
+    except Exception:
+        return []
+
+
 async def fetch_strava_comparison_streams(activity_id: int) -> dict[str, list] | None:
     """Fetch public activity streams via Strava API using primary athlete's token.
 

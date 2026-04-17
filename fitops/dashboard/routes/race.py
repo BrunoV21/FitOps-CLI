@@ -6,7 +6,7 @@ import os
 import tempfile
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.weather_pace import headwind_ms
@@ -44,6 +44,7 @@ from fitops.analytics.race_analysis import (
     detect_events,
     detect_segments_from_altitude,
     detect_segments_from_km_segments,
+    fetch_activity_companions,
     fetch_strava_comparison_streams,
     load_primary_streams,
     normalize_stream,
@@ -559,6 +560,105 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 },
             )
         return RedirectResponse(url=f"/race/sessions/{session_id}", status_code=303)
+
+    @router.get("/race/sessions/{session_id}/companions", response_class=JSONResponse)
+    async def race_session_companions(request: Request, session_id: int):
+        """Return Strava group-run companions for this session's primary activity."""
+        await create_all_tables()
+        detail = await get_session_detail(session_id)
+        if detail is None:
+            return JSONResponse({"companions": [], "error": "Session not found"}, status_code=404)
+
+        primary_activity_id = detail["session"]["primary_activity_id"]
+        existing = await get_session_athletes(session_id)
+        existing_ids = {a.activity_id for a in existing if a.activity_id}
+
+        companions = await fetch_activity_companions(primary_activity_id)
+        for c in companions:
+            c["already_added"] = c["activity_id"] in existing_ids
+
+        return JSONResponse({"companions": companions})
+
+    @router.post("/race/sessions/{session_id}/add-athletes-bulk", response_class=JSONResponse)
+    async def race_session_add_athletes_bulk(request: Request, session_id: int):
+        """Add multiple athletes from a JSON body ``[{label, activity_id}, ...]``.
+
+        Processes Phase 1 (fetch + persist) for each athlete, then runs one
+        Phase 2 recompute.  Returns ``{results: [{label, ok, error}]}``.
+        """
+        await create_all_tables()
+        body = await request.json()
+        athletes_to_add = body if isinstance(body, list) else []
+
+        results = []
+        any_ok = False
+
+        for item in athletes_to_add:
+            label = str(item.get("label", "")).strip()
+            act_id_raw = item.get("activity_id")
+            if not label or not act_id_raw:
+                results.append({"label": label or "?", "ok": False, "error": "Missing label or activity_id"})
+                continue
+            try:
+                act_id = int(act_id_raw)
+            except (TypeError, ValueError):
+                results.append({"label": label, "ok": False, "error": "Invalid activity_id"})
+                continue
+
+            raw = await fetch_strava_comparison_streams(act_id)
+            if raw is None:
+                results.append({"label": label, "ok": False, "error": f"Could not fetch streams for activity {act_id}"})
+                continue
+
+            try:
+                ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=act_id)
+                metrics = compute_athlete_metrics(ns)
+                stream_dict = normalized_stream_to_dict(ns)
+                await add_session_athlete(
+                    session_id=session_id,
+                    athlete_label=label,
+                    is_primary=False,
+                    activity_id=act_id,
+                    stream_dict=stream_dict,
+                    metrics_dict=metrics,
+                )
+                results.append({"label": label, "ok": True, "error": None})
+                any_ok = True
+            except Exception as exc:
+                results.append({"label": label, "ok": False, "error": str(exc)})
+
+        if any_ok:
+            try:
+                all_db = await get_session_athletes(session_id)
+                all_ns = [normalized_stream_from_dict(a.get_stream()) for a in all_db]
+                gap_series = compute_gap_series(all_ns)
+                delta_series = compute_delta_series(gap_series)
+                await save_gap_series(session_id, gap_series, delta_series)
+
+                primary_ns = next((a for a in all_ns if a.is_primary), all_ns[0])
+                segs_raw = await get_segments(session_id)
+                if segs_raw:
+                    from fitops.analytics.race_analysis import DetectedSegment
+                    segs = [
+                        DetectedSegment(
+                            label=s["segment_label"],
+                            start_km=s["start_km"],
+                            end_km=s["end_km"],
+                            gradient_type=s["gradient_type"],
+                            avg_grade_pct=s.get("avg_grade_pct") or 0.0,
+                        )
+                        for s in segs_raw
+                    ]
+                else:
+                    segs = detect_segments_from_altitude(primary_ns)
+                athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
+                await save_segments(session_id, segs, athlete_metrics)
+                events = detect_events(all_ns, gap_series)
+                await save_events(session_id, events)
+            except Exception:
+                pass
+
+        return JSONResponse({"results": results})
 
     @router.post("/race/sessions/{session_id}/delete", response_class=HTMLResponse)
     async def race_session_delete(request: Request, session_id: int):
