@@ -13,10 +13,10 @@
   .replay-btn { background:#1e1e1e; border:1px solid #333; color:#ccc; padding:0.3rem 0.9rem;
                 border-radius:6px; cursor:pointer; font-size:0.82rem; transition:background 0.15s; }
   .replay-btn:hover { background:#2a2a2a; }
-  .replay-btn.active { background:var(--accent); color:#000; border-color:var(--accent); }
+  .replay-btn.active { background:var(--accent-primary); color:#000; border-color:var(--accent-primary); }
   .replay-btn:disabled { opacity:0.45; cursor:not-allowed; }
   .speed-label { font-size:0.78rem; color:#666; }
-  #replay-slider { flex:1; min-width:80px; accent-color:var(--accent); }
+  #replay-slider { flex:1; min-width:80px; accent-color:var(--accent-primary); }
   #replay-clock { font-size:0.82rem; color:#888; min-width:5rem; text-align:right; }
   .athlete-legend { display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem; }
   .legend-item { display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; color:#ccc; }
@@ -33,9 +33,27 @@
   .gap-negative { color:#f87171; }
   #gif-progress { display:none; margin-top:0.5rem; }
   #gif-progress-bar-wrap { background:#222; border-radius:4px; height:6px; overflow:hidden; margin-top:0.3rem; }
-  #gif-progress-bar { background:var(--accent); height:100%; width:0; transition:width 0.1s; }
+  #gif-progress-bar { background:var(--accent-primary); height:100%; width:0; transition:width 0.1s; }
   #gif-progress-label { font-size:0.75rem; color:#888; }
   #gif-canvas { display:none; }
+  #companions-panel { margin-bottom:1.25rem; }
+  .companion-row { display:flex; align-items:center; gap:0.75rem; padding:0.45rem 0;
+                   border-bottom:1px solid #1e1e1e; font-size:0.88rem; }
+  .companion-row:last-child { border-bottom:none; }
+  .companion-check { accent-color:var(--accent-primary); width:15px; height:15px; cursor:pointer; flex-shrink:0; }
+  .companion-label { flex:1; color:var(--text-primary); }
+  .companion-activity { font-size:0.75rem; color:#666; }
+  .companion-badge-added { font-size:0.72rem; color:#4ade80; background:#14532d33;
+                           border:1px solid #166534; border-radius:4px; padding:0.1rem 0.45rem; }
+  #gif-options { display:none; margin-top:0.5rem; align-items:center; gap:0.6rem;
+                 background:#1a1a1a; border:1px solid #333; border-radius:6px;
+                 padding:0.45rem 0.75rem; flex-wrap:wrap; }
+  .gif-options-label { font-size:0.75rem; color:#888; white-space:nowrap; }
+  .gif-options-btns { display:flex; gap:0.35rem; }
+  .gif-ratio-btn { background:#222; border:1px solid #444; color:#ccc; border-radius:4px;
+                   padding:0.2rem 0.65rem; font-size:0.75rem; cursor:pointer; }
+  .gif-ratio-btn:hover { background:#2d2d2d; border-color:var(--accent-primary); color:#fff; }
+  .gif-ratio-btn.active { background:#2a2a2a; border-color:var(--accent-primary); color:#fff; }
   /* F1 live leaderboard */
   #map-wrap { position:relative; }
   #f1-board { position:absolute; top:10px; left:10px; z-index:1000; min-width:210px;
@@ -104,6 +122,20 @@
       </select>
       <button class="replay-btn active" id="follow-btn" onclick="toggleFollow()" title="Auto-follow athletes">⊙ Follow</button>
       <button class="replay-btn" id="gif-btn" onclick="exportGif()" title="Export full animation as GIF">⬇ GIF</button>
+    </div>
+    <div id="gif-options">
+      <span class="gif-options-label">Aspect ratio:</span>
+      <div class="gif-options-btns">
+        <button class="gif-ratio-btn active" data-ratio="1:1"  onclick="selectGifRatio(this)">■ 1:1</button>
+        <button class="gif-ratio-btn"        data-ratio="16:9" onclick="selectGifRatio(this)">▬ 16:9</button>
+        <button class="gif-ratio-btn"        data-ratio="4:3"  onclick="selectGifRatio(this)">▭ 4:3</button>
+        <button class="gif-ratio-btn"        data-ratio="4:5"  onclick="selectGifRatio(this)">▮ 4:5 Portrait</button>
+        <button class="gif-ratio-btn"        data-ratio="9:16" onclick="selectGifRatio(this)">▮ 9:16 Story</button>
+      </div>
+      <button class="gif-ratio-btn" id="gif-export-confirm" onclick="startExportGif(_gifRatio)"
+              style="margin-left:0.5rem; background:var(--accent-primary); color:#000; border-color:var(--accent-primary);">
+        Export
+      </button>
     </div>
     <div id="gif-progress">
       <div id="gif-progress-bar-wrap"><div id="gif-progress-bar"></div></div>
@@ -218,7 +250,7 @@
         {% set m = a.metrics %}
         <tr>
           <td style="font-weight:500;">
-            {% if a.is_primary %}<span style="color:var(--accent);">★ </span>{% endif %}
+            {% if a.is_primary %}<span style="color:var(--accent-primary);">★ </span>{% endif %}
             {{ a.athlete_label }}
           </td>
           <td>
@@ -299,6 +331,30 @@
 </div>
 {% endif %}
 
+{# ── Companions from Strava group run ── #}
+<div id="companions-panel" style="display:none;">
+  <div class="panel" style="margin-bottom:1.25rem;">
+    <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between;">
+      <span class="panel-title">Athletes from this run</span>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <button id="companions-select-all" class="btn" style="font-size:0.78rem; padding:0.25rem 0.7rem;">Select all</button>
+        <button id="companions-add-btn" class="btn btn-primary" style="font-size:0.78rem; padding:0.25rem 0.7rem;" disabled>
+          Add selected
+        </button>
+        <span id="companions-spinner" style="display:none; font-size:0.78rem; color:#888;">Adding athletes…</span>
+      </div>
+    </div>
+    <div id="companions-list" style="padding:0.5rem 1.25rem 0.75rem;"></div>
+    <div id="companions-errors" style="display:none; padding:0 1.25rem 0.75rem; font-size:0.8rem; color:#f87171;"></div>
+    <div style="padding:0 1.25rem 0.9rem; font-size:0.75rem; color:#555; border-top:1px solid #1e1e1e; padding-top:0.65rem; margin-top:0.1rem; line-height:1.55;">
+      <strong style="color:#666;">Only seeing some athletes?</strong>
+      Strava's API only returns group-run companions who are in your follow graph (people you follow or who follow you).
+      Anyone you ran with outside that graph — strangers at a race, new training partners — won't appear here even if Strava shows a higher "X athletes" count on the activity.
+      To add them, grab their Strava activity URL and paste it in the <em>Add Comparison Athlete</em> form below.
+    </div>
+  </div>
+</div>
+
 <div style="display:grid; grid-template-columns:1fr auto; gap:1.25rem; align-items:start; margin-bottom:1.25rem;">
 
   <div class="panel">
@@ -323,7 +379,11 @@
         <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Or upload GPX file</label>
         <input type="file" name="gpx_file" accept=".gpx"
                style="font-size:0.85rem; color:var(--text-primary);" />
-        <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Provide either a Strava activity ID or a GPX file — not both.</p>
+        <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">
+          Provide either a Strava activity ID or a GPX file — not both.
+          This works for <em>any</em> public Strava activity, regardless of whether you follow the athlete —
+          useful for race results, club-mates, or anyone who shares their activity link with you.
+        </p>
       </div>
       <div style="display:flex; gap:0.75rem; align-items:center;">
         <button type="submit" class="btn btn-primary" id="addAthleteBtn" style="font-size:0.85rem;"
@@ -717,6 +777,7 @@ function drawLeaderboardOnCanvas(ctx, entries, t) {
     ctx.fillText(gapStr, cx, ry + rowH - 4);
   });
   ctx.textAlign = 'left';
+  return { x0, y0, boardW, boardH };
 }
 
 // ── Replay button ─────────────────────────────────────────────────────────────
@@ -727,85 +788,154 @@ function replayFromStart() {
 }
 
 // ── GIF export ────────────────────────────────────────────────────────────────
-// Renders the replay onto an off-screen canvas using a Mercator projection
-// (no Leaflet dependency) and encodes it with gif.js.
 
-function _mercY(lat) {
-  const s = Math.sin(lat * Math.PI / 180);
-  return Math.log((1 + s) / (1 - s)) / 2;
+// Web Mercator: lat/lon → world pixel at the given zoom level (256 px/tile)
+function _latLonToWorldPx(lat, lon, zoom) {
+  const n = Math.pow(2, zoom) * 256;
+  const x = (lon + 180) / 360 * n;
+  const sinLat = Math.sin(lat * Math.PI / 180);
+  const y = (1 - Math.log((1 + sinLat) / (1 - sinLat)) / (2 * Math.PI)) / 2 * n;
+  return { px: x, py: y };
 }
 
+let _gifRatio = '1:1';
+function selectGifRatio(btn) {
+  document.querySelectorAll('#gif-options .gif-ratio-btn[data-ratio]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _gifRatio = btn.dataset.ratio;
+}
+
+// Toggle the aspect-ratio picker panel
 function exportGif() {
   if (!totalFrames) { alert('No replay data available.'); return; }
+  const opts = document.getElementById('gif-options');
+  opts.style.display = opts.style.display === 'flex' ? 'none' : 'flex';
+}
+
+async function startExportGif(ratio) {
   if (typeof GIF === 'undefined') { alert('gif.js library not loaded yet — try again in a moment.'); return; }
 
-  // ── bounding box ──
+  document.getElementById('gif-options').style.display = 'none';
+
   const allLL = ATHLETES_DATA.flatMap(a => (a.latlng || []).filter(p => p));
   if (!allLL.length) { alert('No GPS data to export.'); return; }
+
+  // Canvas dimensions from chosen ratio
+  const [rw, rh] = ratio.split(':').map(Number);
+  const LONG_SIDE = 600;
+  const W = rw >= rh ? LONG_SIDE : Math.round(LONG_SIDE * rw / rh);
+  const H = rh >= rw ? LONG_SIDE : Math.round(LONG_SIDE * rh / rw);
 
   const minLat = Math.min(...allLL.map(p => p[0]));
   const maxLat = Math.max(...allLL.map(p => p[0]));
   const minLon = Math.min(...allLL.map(p => p[1]));
   const maxLon = Math.max(...allLL.map(p => p[1]));
 
-  const W = 540, H = 540, PAD = 36;
-  const canvas = document.getElementById('gif-canvas');
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext('2d');
+  // Match the zoom level currently shown in the live Leaflet map
+  const zoom = map.getZoom();
+  const scale = 1; // 1 canvas px per world px → same visual density as Leaflet
 
-  const minMY = _mercY(minLat), maxMY = _mercY(maxLat);
-  const lonSpan = maxLon - minLon || 1e-6;
+  // World-pixel bounding box — used only as fallback center when no athletes are live
+  const wpTL = _latLonToWorldPx(maxLat, minLon, zoom);
+  const wpBR = _latLonToWorldPx(minLat, maxLon, zoom);
 
-  function project(lat, lon) {
-    const mx = (lon - minLon) / lonSpan;
-    const my = 1 - (_mercY(lat) - minMY) / (maxMY - minMY || 1e-6);
-    return { x: PAD + mx * (W - 2 * PAD), y: PAD + my * (H - 2 * PAD) };
-  }
-
-  // Pre-project ghost routes
-  const routes = ATHLETES_DATA.map(a =>
-    (a.latlng || []).filter(p => p).map(p => project(p[0], p[1]))
+  // Pre-project ghost routes into world-pixel space
+  const routesWP = ATHLETES_DATA.map(a =>
+    (a.latlng || []).filter(p => p).map(p => _latLonToWorldPx(p[0], p[1], zoom))
   );
 
-  // ── gif.js setup ──
-  const gif = new GIF({
-    workers: 2,
-    quality: 8,
-    width: W,
-    height: H,
-    workerScript: 'https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js',
-  });
+  // Per-frame tracking center: mean world-pixel position of live athletes
+  function getFrameCenter(frame) {
+    const live = frame.filter(Boolean);
+    if (!live.length) return { px: (wpTL.px + wpBR.px) / 2, py: (wpTL.py + wpBR.py) / 2 };
+    const meanLat = live.reduce((s, p) => s + p[0], 0) / live.length;
+    const meanLon = live.reduce((s, p) => s + p[1], 0) / live.length;
+    return _latLonToWorldPx(meanLat, meanLon, zoom);
+  }
 
-  // Subsample to ≤ 150 frames so the file stays manageable
-  const MAX_FRAMES = 150;
-  const step = Math.max(1, Math.floor(totalFrames / MAX_FRAMES));
-  const frameIdxs = [];
-  for (let f = 0; f < totalFrames; f += step) frameIdxs.push(f);
-  if (frameIdxs[frameIdxs.length - 1] !== totalFrames - 1)
-    frameIdxs.push(totalFrames - 1);
+  // Project lat/lon to canvas coordinates relative to a per-frame center
+  function projectFollow(lat, lon, cX, cY) {
+    const wp = _latLonToWorldPx(lat, lon, zoom);
+    return { x: W / 2 + (wp.px - cX) * scale, y: H / 2 + (wp.py - cY) * scale };
+  }
 
-  const frameDelay = Math.round((frameIdxs.length > 1
-    ? ((totalFrames - 1) * TIME_STEP_S * 1000) / (frameIdxs.length - 1) / playSpeed
-    : 100));
-  const clampedDelay = Math.max(40, Math.min(frameDelay, 200));
+  // ── Load CartoDB dark tiles ──
+  // Collect the unique tiles visible in any frame's viewport, then load them all
+  const maxTileIdx = Math.pow(2, zoom) - 1;
+  const subs = ['a', 'b', 'c', 'd'];
+  const tileImgs = {};
+  const tileSet = new Set();
+  for (let fi = 0; fi < totalFrames; fi++) {
+    const { px: cX, py: cY } = getFrameCenter(replayFrames[fi]);
+    for (let tx = Math.max(0, Math.floor((cX - W / 2) / 256)); tx <= Math.min(maxTileIdx, Math.ceil((cX + W / 2) / 256)); tx++)
+      for (let ty = Math.max(0, Math.floor((cY - H / 2) / 256)); ty <= Math.min(maxTileIdx, Math.ceil((cY + H / 2) / 256)); ty++)
+        tileSet.add(`${tx},${ty}`);
+  }
+  const tilePromises = [];
+  for (const key of tileSet) {
+    const [tx, ty] = key.split(',').map(Number);
+    const s = subs[(tx + ty) % 4];
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    tilePromises.push(new Promise(res => { img.onload = res; img.onerror = res; }));
+    img.src = `https://${s}.basemaps.cartocdn.com/dark_all/${zoom}/${tx}/${ty}.png`;
+    tileImgs[key] = img;
+  }
 
-  // ── UI: show progress ──
+  // Pre-load the FitOps favicon for the branding strip
+  const faviconImg = new Image();
+  faviconImg.crossOrigin = 'anonymous';
+  tilePromises.push(new Promise(res => { faviconImg.onload = res; faviconImg.onerror = res; }));
+  faviconImg.src = '/static/favicon.ico';
+
+  // UI: loading tiles
   const btn = document.getElementById('gif-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Capturing…';
   const progWrap = document.getElementById('gif-progress');
-  progWrap.style.display = 'block';
   const progBar = document.getElementById('gif-progress-bar');
   const progLabel = document.getElementById('gif-progress-label');
+  btn.disabled = true;
+  btn.textContent = '⏳ Loading map…';
+  progWrap.style.display = 'block';
   progBar.style.width = '0';
+  progLabel.textContent = 'Loading map tiles…';
 
-  // Two-phase progress:
-  //   Phase 1 — frame capture: 0 % → 50 %
-  //   Phase 2 — gif.js worker encoding: 50 % → 100 %
-  function setProgress(pct, label) {
-    progBar.style.width = pct + '%';
-    progLabel.textContent = label;
+  await Promise.all(tilePromises);
+
+  // Tiles drawn relative to a per-frame center (follow mode)
+  function drawTiles(ctx, cX, cY) {
+    for (const key of tileSet) {
+      const img = tileImgs[key];
+      if (!img || !img.complete || img.naturalWidth === 0) continue;
+      const [tx, ty] = key.split(',').map(Number);
+      ctx.drawImage(img,
+        W / 2 + (tx * 256 - cX) * scale,
+        H / 2 + (ty * 256 - cY) * scale,
+        256 * scale, 256 * scale
+      );
+    }
   }
+
+  // Canvas setup
+  const canvas = document.getElementById('gif-canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  // gif.js setup
+  const gif = new GIF({ workers: 2, quality: 8, width: W, height: H, workerScript: '/static/js/gif.worker.js' });
+
+  // Frame selection (same logic: match live playback speed, cap at 150 frames)
+  const GIF_MIN_DELAY_MS = 20, MAX_FRAMES = 150;
+  const idealDelayMs = TIME_STEP_S * 1000 / playSpeed;
+  const step = Math.max(
+    Math.max(1, Math.floor(totalFrames / MAX_FRAMES)),
+    Math.max(1, Math.ceil(GIF_MIN_DELAY_MS / idealDelayMs))
+  );
+  const frameIdxs = [];
+  for (let f = 0; f < totalFrames; f += step) frameIdxs.push(f);
+  if (frameIdxs[frameIdxs.length - 1] !== totalFrames - 1) frameIdxs.push(totalFrames - 1);
+  const clampedDelay = Math.round(step * idealDelayMs);
+
+  function setProgress(pct, label) { progBar.style.width = pct + '%'; progLabel.textContent = label; }
 
   let ci = 0;
 
@@ -813,103 +943,90 @@ function exportGif() {
     const frame = replayFrames[Math.min(fidx, totalFrames - 1)];
     const t = fidx * TIME_STEP_S;
 
-    // ── draw background ──
+    // Per-frame tracking center (athletes stay centred as they move)
+    const { px: cX, py: cY } = getFrameCenter(frame);
+
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, W, H);
+    drawTiles(ctx, cX, cY);
 
-    // ── ghost routes ──
+    // Ghost routes (world-pixel coords → canvas via current center)
     ATHLETES_DATA.forEach((a, i) => {
-      const pts = routes[i];
+      const pts = routesWP[i];
       if (!pts.length) return;
       ctx.beginPath();
-      ctx.strokeStyle = ATHLETE_COLORS[i % ATHLETE_COLORS.length] + '55';
-      ctx.lineWidth = 1.5;
-      pts.forEach((p, j) => j === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.strokeStyle = ATHLETE_COLORS[i % ATHLETE_COLORS.length] + '77';
+      ctx.lineWidth = 2;
+      pts.forEach((wp, j) => {
+        const cx2 = W / 2 + (wp.px - cX) * scale;
+        const cy2 = H / 2 + (wp.py - cY) * scale;
+        j === 0 ? ctx.moveTo(cx2, cy2) : ctx.lineTo(cx2, cy2);
+      });
       ctx.stroke();
     });
 
-    // ── athlete markers + labels ──
+    // Athlete markers + labels
     ATHLETES_DATA.forEach((a, i) => {
       const pos = frame[i];
       if (!pos) return;
       const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
-      const pt = project(pos[0], pos[1]);
-
-      // Outer glow
-      ctx.beginPath();
-      ctx.fillStyle = color + '55';
-      ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Solid dot
-      ctx.beginPath();
-      ctx.fillStyle = color;
-      ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Label with dark shadow
+      const pt = projectFollow(pos[0], pos[1], cX, cY);
+      ctx.beginPath(); ctx.fillStyle = color + '55'; ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.fillStyle = color; ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2); ctx.fill();
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillText(a.label, pt.x + 10, pt.y + 5);
-      ctx.fillStyle = color;
-      ctx.fillText(a.label, pt.x + 9, pt.y + 4);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillText(a.label, pt.x + 10, pt.y + 5);
+      ctx.fillStyle = color; ctx.fillText(a.label, pt.x + 9, pt.y + 4);
     });
 
-    // ── F1 leaderboard ──
+    // F1 leaderboard + race clock
     const { entries } = computeLeaderboard(fidx);
-    drawLeaderboardOnCanvas(ctx, entries, t);
+    const lb = drawLeaderboardOnCanvas(ctx, entries, t);
 
-    // ── race clock (bottom-right) ──
+    // Branding strip — same width as leaderboard, clipped exactly
+    const brandH = 14, brandY = lb.y0 + lb.boardH + 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(lb.x0, brandY, lb.boardW, brandH);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(lb.x0, brandY, lb.boardW, brandH); ctx.clip();
+    const iconOk = faviconImg.complete && faviconImg.naturalWidth > 0;
+    if (iconOk) ctx.drawImage(faviconImg, lb.x0 + 3, brandY + 2, 10, 10);
+    ctx.font = '8px sans-serif'; ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
+    ctx.fillText('Rendered by FitOps · github.com/BrunoV21/FitOps-CLI', lb.x0 + (iconOk ? 16 : 4), brandY + 10);
+    ctx.restore();
+
     const clockStr = fmtTime(t) + ' / ' + fmtTime((totalFrames - 1) * TIME_STEP_S);
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(W - 118, H - 26, 113, 20);
-    ctx.fillStyle = '#bbb';
-    ctx.font = '11px monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(clockStr, W - 6, H - 10);
-    ctx.textAlign = 'left';
+    ctx.fillStyle = '#bbb'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(clockStr, W - 6, H - 10); ctx.textAlign = 'left';
 
     gif.addFrame(canvas, { copy: true, delay: clampedDelay });
   }
 
-  // Use requestAnimationFrame between captures so the browser can repaint the
-  // progress bar and remain responsive during the (potentially slow) canvas draws.
   function captureNext() {
     if (ci >= frameIdxs.length) {
-      // Phase 1 done — hand off to gif.js workers
-      setProgress(50, `Encoding GIF… 0%`);
+      setProgress(50, 'Encoding GIF… 0%');
       btn.textContent = '⏳ Encoding…';
       gif.render();
       return;
     }
-
-    drawGifFrame(frameIdxs[ci]);
-    ci++;
-
-    // Phase 1: 0 % → 50 %
-    const pct = Math.round((ci / frameIdxs.length) * 50);
-    setProgress(pct, `Capturing frame ${ci} / ${frameIdxs.length}…`);
-
+    drawGifFrame(frameIdxs[ci++]);
+    setProgress(Math.round((ci / frameIdxs.length) * 50), `Capturing frame ${ci} / ${frameIdxs.length}…`);
     requestAnimationFrame(captureNext);
   }
 
-  // Phase 2: gif.js worker reports 0→1 → map to 50→100 %
-  gif.on('progress', p => {
-    const pct = 50 + Math.round(p * 50);
-    setProgress(pct, `Encoding GIF… ${Math.round(p * 100)}%`);
-  });
+  gif.on('progress', p => setProgress(50 + Math.round(p * 50), `Encoding GIF… ${Math.round(p * 100)}%`));
 
   gif.on('finished', blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'race-replay.gif'; a.click();
+    a.href = url; a.download = `race-replay-${ratio.replace(':', 'x')}.gif`; a.click();
     URL.revokeObjectURL(url);
-    btn.disabled = false;
-    btn.textContent = '⬇ GIF';
-    progWrap.style.display = 'none';
-    progBar.style.width = '0';
+    btn.disabled = false; btn.textContent = '⬇ GIF';
+    progWrap.style.display = 'none'; progBar.style.width = '0';
   });
 
+  btn.textContent = '⏳ Capturing…';
   requestAnimationFrame(captureNext);
 }
 
@@ -1077,5 +1194,92 @@ function showChart(mode) {
     if (meta) meta.textContent = 'bpm — heart rate over distance';
   }
 }
+
+// ── Companion athletes from Strava group run ──────────────────────────────────
+(async function loadCompanions() {
+  const sessionId = {{ session.id }};
+  let companions = [];
+
+  try {
+    const resp = await fetch(`/race/sessions/${sessionId}/companions`);
+    const data = await resp.json();
+    companions = (data.companions || []).filter(c => !c.already_added);
+  } catch (_) {
+    return; // silently skip — group run data unavailable
+  }
+
+  if (!companions.length) return;
+
+  const panel = document.getElementById('companions-panel');
+  const list  = document.getElementById('companions-list');
+  const addBtn = document.getElementById('companions-add-btn');
+  const selectAllBtn = document.getElementById('companions-select-all');
+  const spinner = document.getElementById('companions-spinner');
+  const errorsDiv = document.getElementById('companions-errors');
+
+  companions.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'companion-row';
+    row.innerHTML = `
+      <input type="checkbox" class="companion-check" id="comp-${i}" checked data-label="${c.label}" data-actid="${c.activity_id}" />
+      <label for="comp-${i}" class="companion-label">${c.label}</label>
+      <span class="companion-activity">Activity ${c.activity_id}</span>
+    `;
+    list.appendChild(row);
+  });
+
+  // keep Add Selected enabled/disabled based on checked state
+  function updateAddBtn() {
+    const anyChecked = list.querySelectorAll('.companion-check:checked').length > 0;
+    addBtn.disabled = !anyChecked;
+  }
+  list.addEventListener('change', updateAddBtn);
+  updateAddBtn();
+
+  let allSelected = true;
+  selectAllBtn.addEventListener('click', () => {
+    allSelected = !allSelected;
+    list.querySelectorAll('.companion-check').forEach(cb => { cb.checked = allSelected; });
+    selectAllBtn.textContent = allSelected ? 'Select all' : 'Deselect all';
+    updateAddBtn();
+  });
+
+  addBtn.addEventListener('click', async () => {
+    const selected = [...list.querySelectorAll('.companion-check:checked')].map(cb => ({
+      label: cb.dataset.label,
+      activity_id: parseInt(cb.dataset.actid, 10),
+    }));
+    if (!selected.length) return;
+
+    addBtn.disabled = true;
+    spinner.style.display = 'inline';
+    errorsDiv.style.display = 'none';
+
+    try {
+      const resp = await fetch(`/race/sessions/${sessionId}/add-athletes-bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(selected),
+      });
+      const data = await resp.json();
+      const failed = (data.results || []).filter(r => !r.ok);
+      if (failed.length) {
+        errorsDiv.textContent = 'Failed: ' + failed.map(r => `${r.label} (${r.error})`).join(', ');
+        errorsDiv.style.display = 'block';
+        addBtn.disabled = false;
+        spinner.style.display = 'none';
+      } else {
+        window.location.reload();
+      }
+    } catch (err) {
+      errorsDiv.textContent = 'Network error — please try again.';
+      errorsDiv.style.display = 'block';
+      addBtn.disabled = false;
+      spinner.style.display = 'none';
+    }
+  });
+
+  panel.style.display = 'block';
+})();
 </script>
 {% endblock %}
