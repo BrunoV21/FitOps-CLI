@@ -643,14 +643,30 @@ function initMetricToggles(chart, containerId, available, sportType) {
     };
 
     btn.addEventListener('click', () => {
-      const c = chart || window._activeStreamChart;
-      if (!c) return;
+      // Always read the global at click time so late-set chart references work.
+      const c = window._activeStreamChart || chart;
+      console.log('[FitOps] click', key, '| global:', !!window._activeStreamChart, '| closure chart:', !!chart, '| c:', !!c);
+      if (!c) {
+        // Toggle visual state optimistically even if chart isn't ready yet.
+        const nowActive = btn.dataset.active !== '1';
+        setActive(nowActive);
+        console.warn('[FitOps] metric toggle: no chart available for key', key);
+        return;
+      }
       const dsIndex = c.data.datasets.findIndex(ds => ds._metricKey === key);
-      if (dsIndex === -1) return;
+      if (dsIndex === -1) {
+        setActive(btn.dataset.active !== '1');
+        console.warn('[FitOps] metric toggle: dataset not found for key', key, 'datasets:', c.data.datasets.map(d => d._metricKey));
+        return;
+      }
       const nowVisible = !c.isDatasetVisible(dsIndex);
-      c.setDatasetVisibility(dsIndex, nowVisible);
-      c.update('none');
+      if (nowVisible) {
+        c.show(dsIndex);
+      } else {
+        c.hide(dsIndex);
+      }
       setActive(nowVisible);
+      console.log('[FitOps] metric toggle:', key, '→', nowVisible ? 'shown' : 'hidden', 'dsIndex:', dsIndex);
     });
 
     container.appendChild(btn);
@@ -663,6 +679,14 @@ function initMetricToggles(chart, containerId, available, sportType) {
  * @param {'distance'|'time'} mode
  */
 function setXAxis(mode) {
+  // Always update button visual state first — regardless of chart availability.
+  const btnDist = document.getElementById('xaxis-distance');
+  const btnTime = document.getElementById('xaxis-time');
+  if (btnDist && btnTime) {
+    btnDist.classList.toggle('active', mode === 'distance');
+    btnTime.classList.toggle('active', mode === 'time');
+  }
+
   const chart = window._activeStreamChart;
   if (!chart) return;
 
@@ -682,13 +706,6 @@ function setXAxis(mode) {
   }
 
   chart.update();
-
-  const btnDist = document.getElementById('xaxis-distance');
-  const btnTime = document.getElementById('xaxis-time');
-  if (btnDist && btnTime) {
-    btnDist.classList.toggle('active', mode === 'distance');
-    btnTime.classList.toggle('active', mode === 'time');
-  }
 }
 
 /**
