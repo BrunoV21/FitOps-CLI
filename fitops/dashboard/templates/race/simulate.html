@@ -354,6 +354,7 @@
 <script>
 (function() {
   const labels = {{ chart_labels_json | safe }};
+  const barLabels = labels.map(km => km - 1);
   const paces = {{ chart_paces_json | safe }};
   const avgPace = {{ avg_pace_s }};
   {% if pacer_pace_s %}
@@ -405,7 +406,7 @@
   new Chart(document.getElementById('windChart'), {
     type: 'bar',
     data: {
-      labels: labels,
+      labels: barLabels,
       datasets: [{
         label: 'Headwind (km/h)',
         data: windValues,
@@ -428,6 +429,7 @@
         legend: { display: false },
         tooltip: {
           callbacks: {
+            title: ctx => `km ${parseInt(ctx[0].label) + 1}`,
             label: ctx => {
               const v = ctx.raw;
               const dir = v > 1.8 ? 'Headwind' : v < -1.8 ? 'Tailwind' : 'Crosswind';
@@ -508,8 +510,6 @@
       order: 0,
     });
   }
-
-  const barLabels = labels.map(km => km - 1);
 
   new Chart(document.getElementById('paceChart'), {
     type: 'bar',

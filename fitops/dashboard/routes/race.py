@@ -34,12 +34,14 @@ from fitops.dashboard.queries.race_session import (
     get_segments,
     save_events,
     save_gap_series,
+    save_replay_frames,
     save_segments,
 )
 from fitops.analytics.race_analysis import (
     compute_athlete_metrics,
     compute_delta_series,
     compute_gap_series,
+    compute_replay_frames,
     compute_segment_athlete_metrics,
     detect_events,
     detect_segments_from_altitude,
@@ -52,6 +54,8 @@ from fitops.analytics.race_analysis import (
     normalized_stream_to_dict,
     parse_gpx_streams,
 )
+
+REPLAY_TIME_STEP_S = 5.0
 from fitops.db.migrations import create_all_tables
 from fitops.race.course_parser import (
     build_km_segments,
@@ -397,6 +401,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             delta_series = compute_delta_series(gap_series)
             await save_gap_series(session_id, gap_series, delta_series)
 
+            frames = compute_replay_frames([primary_ns], time_step_s=REPLAY_TIME_STEP_S)
+            await save_replay_frames(session_id, frames, REPLAY_TIME_STEP_S)
+
             if course_id:
                 course_obj = await get_course(course_id)
                 km_segs = course_obj.get_km_segments() if course_obj else []
@@ -490,6 +497,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             delta_series = compute_delta_series(gap_series)
             await save_gap_series(session_id, gap_series, delta_series)
 
+            frames = compute_replay_frames(all_ns, time_step_s=REPLAY_TIME_STEP_S)
+            await save_replay_frames(session_id, frames, REPLAY_TIME_STEP_S)
+
             primary_ns = next((a for a in all_ns if a.is_primary), all_ns[0])
             segs_raw = await get_segments(session_id)
             if segs_raw:
@@ -555,6 +565,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "gap_data": detail.get("gap_data", []) if detail else [],
                     "events": detail.get("events", []) if detail else [],
                     "segments": detail.get("segments", []) if detail else [],
+                    "replay_frames": detail.get("replay_frames", []) if detail else [],
+                    "replay_time_step_s": detail.get("replay_time_step_s", REPLAY_TIME_STEP_S) if detail else REPLAY_TIME_STEP_S,
                     "add_athlete_error": error,
                     "active_page": "race_sessions",
                 },
@@ -635,6 +647,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 delta_series = compute_delta_series(gap_series)
                 await save_gap_series(session_id, gap_series, delta_series)
 
+                frames = compute_replay_frames(all_ns, time_step_s=REPLAY_TIME_STEP_S)
+                await save_replay_frames(session_id, frames, REPLAY_TIME_STEP_S)
+
                 primary_ns = next((a for a in all_ns if a.is_primary), all_ns[0])
                 segs_raw = await get_segments(session_id)
                 if segs_raw:
@@ -713,6 +728,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "gap_data": gap_data,
                 "events": events,
                 "segments": segments,
+                "replay_frames": detail.get("replay_frames", []),
+                "replay_time_step_s": detail.get("replay_time_step_s", REPLAY_TIME_STEP_S),
                 "add_athlete_error": None,
                 "active_page": "race_sessions",
             },

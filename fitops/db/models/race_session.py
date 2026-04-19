@@ -16,9 +16,20 @@ class RaceSession(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     primary_activity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     course_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Pre-computed replay timeline — JSON: list of
+    # {t_s, athletes: [{lat, lon, dist_m, vel, hr, rank, gap_m}, ...]}
+    # Athletes array preserves the order returned by get_session_athletes().
+    replay_frames_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replay_time_step_s: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
+
+    def get_replay_frames(self) -> list[dict]:
+        """Deserialise replay_frames_json -> list[dict]."""
+        if not self.replay_frames_json:
+            return []
+        return json.loads(self.replay_frames_json)
 
     def to_summary_dict(self) -> dict:
         return {

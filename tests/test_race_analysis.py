@@ -18,9 +18,11 @@ from fitops.analytics.race_analysis import (
     NormalizedStream,
     RaceEvent,
     DetectedSegment,
+    _clean_elapsed_spikes,
     build_common_grid,
     compute_delta_series,
     compute_gap_series,
+    compute_replay_frames,
     compute_segment_athlete_metrics,
     detect_events,
     detect_segments_from_altitude,
@@ -129,6 +131,50 @@ def test_normalize_stream_roundtrip():
     assert len(ns2.distance_grid) == len(ns.distance_grid)
     assert ns2.elapsed_s[0] == pytest.approx(ns.elapsed_s[0], abs=0.1)
     assert ns2.elapsed_s[-1] == pytest.approx(ns.elapsed_s[-1], abs=0.1)
+
+
+def test_clean_elapsed_spikes_no_spike():
+    """Clean array with no spikes should be unchanged."""
+    vals = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0]
+    result = _clean_elapsed_spikes(vals)
+    assert result == pytest.approx(vals, abs=0.01)
+
+
+def test_clean_elapsed_spikes_single_spike():
+    """Single GPS spike should be removed and all subsequent values corrected."""
+    # Simulate Correia's pattern: spike at index 2 inflates by ~32s
+    vals = [0.0, 2.0, 34.0, 36.0, 38.0, 40.0]
+    # Median step ≈ 2.0, spike step = 32 → excess ≈ 30
+    result = _clean_elapsed_spikes(vals)
+    assert result[0] == pytest.approx(0.0, abs=0.1)
+    assert result[1] == pytest.approx(2.0, abs=0.1)
+    assert result[2] == pytest.approx(4.0, abs=0.5)   # spike corrected
+    assert result[3] == pytest.approx(6.0, abs=0.5)   # propagation fixed
+    assert result[-1] == pytest.approx(10.0, abs=0.5) # end value restored
+
+
+def test_clean_elapsed_spikes_monotonic_after_clean():
+    """Result must remain monotonically increasing."""
+    vals = [0.0, 5.89, 39.70, 41.71, 43.82, 45.93]
+    result = _clean_elapsed_spikes(vals)
+    for i in range(1, len(result)):
+        assert result[i] >= result[i - 1]
+
+
+def test_normalize_stream_spike_in_time():
+    """GPS timing spike in raw time stream should be cleaned by normalize_stream."""
+    n = 50
+    dist_raw = [i * 10.0 for i in range(n)]  # 0..490m
+    time_raw = [i * 2.0 for i in range(n)]   # clean: 2s/10m
+    # Inject spike at index 5: 10s → 50s (excess 38s propagates)
+    for i in range(5, n):
+        time_raw[i] += 38.0
+
+    ns = normalize_stream(
+        {"distance": dist_raw, "time": time_raw}, "Spike", is_primary=False
+    )
+    # With spike cleaned, final elapsed should be near 98s (49 * 2s), not 136s
+    assert ns.elapsed_s[-1] == pytest.approx(98.0, abs=3.0)
 
 
 # ---------------------------------------------------------------------------
@@ -941,3 +987,198 @@ def test_dashboard_race_session_detail(client, monkeypatch):
     resp = client.get("/race/sessions/1")
     assert resp.status_code == 200
     assert "Test Race Session" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# compute_replay_frames — server-driven replay timeline
+# ---------------------------------------------------------------------------
+
+
+def _make_ns_with_latlng(
+    label: str,
+    total_dist_m: float,
+    total_time_s: float,
+    start_lat: float = 40.0,
+    start_lon: float = -8.0,
+    velocity: float | None = None,
+    is_primary: bool = False,
+) -> NormalizedStream:
+    """Make a NormalizedStream with straight-line lat/lon along x-axis."""
+    n_pts = 50
+    distances = [i * total_dist_m / (n_pts - 1) for i in range(n_pts)]
+    times = [i * total_time_s / (n_pts - 1) for i in range(n_pts)]
+    # 1 degree lon ≈ 85km at lat 40 — doesn't matter for tests, just needs to vary
+    latlng = [
+        [start_lat, start_lon + (distances[i] / total_dist_m) * 0.001]
+        for i in range(n_pts)
+    ]
+    raw = {"distance": distances, "time": times, "latlng": latlng}
+    if velocity is not None:
+        raw["velocity_smooth"] = [velocity] * n_pts
+    return normalize_stream(raw, label, is_primary)
+
+
+def test_replay_frames_count_matches_time_step():
+    """Frame count should span max race time at the given step."""
+    ns = _make_ns_with_latlng("A", 1000.0, 300.0, is_primary=True)
+    frames = compute_replay_frames([ns], time_step_s=10.0)
+    # 300s / 10s = 30 steps → 31 frames inclusive of 0 and 300
+    assert len(frames) == 31
+    assert frames[0]["t_s"] == 0.0
+    assert frames[-1]["t_s"] == pytest.approx(300.0, abs=0.01)
+
+
+def test_replay_frames_default_step():
+    """Default time_step_s is 5s."""
+    ns = _make_ns_with_latlng("A", 1000.0, 100.0, is_primary=True)
+    frames = compute_replay_frames([ns])
+    # 100s / 5s = 20 steps → 21 frames
+    assert len(frames) == 21
+
+
+def test_replay_frames_rank_by_distance():
+    """Faster athlete leads; leader rank is 1 with gap 0."""
+    fast = _make_ns_with_latlng("Fast", 1000.0, 200.0, is_primary=True)
+    slow = _make_ns_with_latlng("Slow", 1000.0, 400.0, is_primary=False)
+    frames = compute_replay_frames([fast, slow], time_step_s=10.0)
+    # Pick a mid-race frame — fast athlete should be further
+    mid = frames[10]
+    fast_entry = mid["athletes"][0]
+    slow_entry = mid["athletes"][1]
+    assert fast_entry["dist_m"] > slow_entry["dist_m"]
+    assert fast_entry["rank"] == 1
+    assert slow_entry["rank"] == 2
+    assert fast_entry["gap_m"] == 0.0
+    assert slow_entry["gap_m"] > 0.0
+
+
+def test_replay_frames_gap_non_negative():
+    """gap_m must be non-negative for all athletes in all frames."""
+    a = _make_ns_with_latlng("A", 1000.0, 200.0, is_primary=True)
+    b = _make_ns_with_latlng("B", 1000.0, 260.0)
+    c = _make_ns_with_latlng("C", 1000.0, 330.0)
+    frames = compute_replay_frames([a, b, c], time_step_s=5.0)
+    for f in frames:
+        for entry in f["athletes"]:
+            assert entry["gap_m"] >= 0.0
+
+
+def test_replay_frames_empty_input():
+    """Empty athlete list returns empty frames."""
+    assert compute_replay_frames([], time_step_s=5.0) == []
+
+
+def test_replay_frames_single_athlete():
+    """Single athlete is always rank 1 with gap 0."""
+    ns = _make_ns_with_latlng("Solo", 500.0, 150.0, is_primary=True)
+    frames = compute_replay_frames([ns], time_step_s=15.0)
+    assert len(frames) >= 2
+    for f in frames:
+        assert len(f["athletes"]) == 1
+        assert f["athletes"][0]["rank"] == 1
+        assert f["athletes"][0]["gap_m"] == 0.0
+
+
+def test_replay_frames_preserves_input_order():
+    """frame.athletes[i] corresponds to the input athletes[i]."""
+    a = _make_ns_with_latlng("A", 1000.0, 400.0, is_primary=True)
+    b = _make_ns_with_latlng("B", 1000.0, 200.0, is_primary=False)
+    frames = compute_replay_frames([a, b], time_step_s=10.0)
+    mid = frames[10]
+    # B is faster → rank 1, but index 0 is still A
+    assert mid["athletes"][0]["rank"] == 2
+    assert mid["athletes"][1]["rank"] == 1
+
+
+def test_replay_frames_invalid_time_step():
+    """Non-positive time_step_s returns empty."""
+    ns = _make_ns_with_latlng("A", 500.0, 200.0, is_primary=True)
+    assert compute_replay_frames([ns], time_step_s=0) == []
+    assert compute_replay_frames([ns], time_step_s=-5) == []
+
+
+def test_replay_frames_frame_shape():
+    """Each frame has t_s and athletes[] with the documented keys."""
+    ns = _make_ns_with_latlng("A", 500.0, 100.0, is_primary=True, velocity=5.0)
+    frames = compute_replay_frames([ns], time_step_s=20.0)
+    f = frames[2]
+    assert "t_s" in f
+    assert "athletes" in f
+    entry = f["athletes"][0]
+    for key in ("lat", "lon", "dist_m", "vel", "hr", "rank", "gap_m"):
+        assert key in entry
+
+
+def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch):
+    """GET /race/sessions/1 should pass pre-built replay frames to the template."""
+    async def _fake_create_all():
+        pass
+
+    frames = [
+        {
+            "t_s": 0.0,
+            "athletes": [
+                {"lat": 40.0, "lon": -8.0, "dist_m": 0.0, "vel": 3.0,
+                 "hr": 150.0, "rank": 1, "gap_m": 0.0}
+            ],
+        },
+        {
+            "t_s": 5.0,
+            "athletes": [
+                {"lat": 40.0, "lon": -7.9999, "dist_m": 15.0, "vel": 3.0,
+                 "hr": 151.0, "rank": 1, "gap_m": 0.0}
+            ],
+        },
+    ]
+
+    async def _fake_get_detail(session_id):
+        return {
+            "session": {
+                "id": 1,
+                "name": "Frames Session",
+                "primary_activity_id": 2001,
+                "athlete_count": 1,
+                "course_id": None,
+                "created_at": "2026-04-13",
+            },
+            "athletes": [
+                {
+                    "athlete_label": "Me",
+                    "is_primary": True,
+                    "activity_id": 2001,
+                    "finish_time_s": 300.0,
+                    "avg_pace_s_per_km": 300.0,
+                    "avg_hr_bpm": 150.0,
+                    "total_dist_km": 1.0,
+                }
+            ],
+            "gap_data": [],
+            "events": [],
+            "segments": [],
+            "replay_frames": frames,
+            "replay_time_step_s": 5.0,
+        }
+
+    fake_athlete = MagicMock()
+    fake_athlete.athlete_label = "Me"
+    fake_athlete.is_primary = True
+    fake_athlete.get_stream.return_value = {"latlng": [], "elapsed_s": []}
+
+    async def _fake_get_athletes(session_id):
+        return [fake_athlete]
+
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.race.create_all_tables", _fake_create_all
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.race.get_session_detail", _fake_get_detail
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.race.get_session_athletes", _fake_get_athletes
+    )
+
+    resp = client.get("/race/sessions/1")
+    assert resp.status_code == 200
+    # Frames render into the REPLAY_FRAMES JSON literal in the template
+    assert "REPLAY_FRAMES" in resp.text
+    assert '"t_s": 5.0' in resp.text or '"t_s":5.0' in resp.text

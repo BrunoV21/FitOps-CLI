@@ -80,6 +80,26 @@ Automatically detected tactical events displayed in chronological order:
 | **Bridge** | An athlete closed the gap to the leader by >10 s over a 500 m window |
 | **Separation** | The total field spread (fastest to slowest) exceeded 30 s |
 
+### Replay
+
+The session detail page animates each athlete along the course on a map alongside a live leaderboard and pace/HR charts.
+
+**Architecture: server-driven.** When a session is created or an athlete is added, the backend pre-computes a canonical replay timeline and persists it on the `race_sessions` row (`replay_frames_json`, `replay_time_step_s`). The frontend is a pure renderer — it reads the frames out of a JSON literal embedded in the template and indexes into them during animation, GIF export, and leaderboard updates. No interpolation happens in the browser, which guarantees that the map position, leaderboard rank, and gap always agree.
+
+Frame shape (one entry per `time_step_s`, default 5 s):
+
+```json
+{
+  "t_s": 15.0,
+  "athletes": [
+    {"lat": 40.0, "lon": -8.01, "dist_m": 52.4, "vel": 3.5, "hr": 158, "rank": 1, "gap_m": 0.0},
+    {"lat": 40.0, "lon": -8.009, "dist_m": 47.1, "vel": 3.3, "hr": 162, "rank": 2, "gap_m": 5.3}
+  ]
+}
+```
+
+`frame.athletes[i]` corresponds positionally to the athlete at index `i` returned by the server — athletes are ordered with the primary first, then by insertion time. Rank is assigned by `dist_m` descending (leader = rank 1, `gap_m = 0`).
+
 ---
 
 ## CLI Equivalents

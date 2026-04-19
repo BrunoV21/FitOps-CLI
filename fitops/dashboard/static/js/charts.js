@@ -643,30 +643,19 @@ function initMetricToggles(chart, containerId, available, sportType) {
     };
 
     btn.addEventListener('click', () => {
-      // Always read the global at click time so late-set chart references work.
       const c = window._activeStreamChart || chart;
-      console.log('[FitOps] click', key, '| global:', !!window._activeStreamChart, '| closure chart:', !!chart, '| c:', !!c);
       if (!c) {
-        // Toggle visual state optimistically even if chart isn't ready yet.
-        const nowActive = btn.dataset.active !== '1';
-        setActive(nowActive);
-        console.warn('[FitOps] metric toggle: no chart available for key', key);
+        setActive(btn.dataset.active !== '1');
         return;
       }
       const dsIndex = c.data.datasets.findIndex(ds => ds._metricKey === key);
       if (dsIndex === -1) {
         setActive(btn.dataset.active !== '1');
-        console.warn('[FitOps] metric toggle: dataset not found for key', key, 'datasets:', c.data.datasets.map(d => d._metricKey));
         return;
       }
       const nowVisible = !c.isDatasetVisible(dsIndex);
-      if (nowVisible) {
-        c.show(dsIndex);
-      } else {
-        c.hide(dsIndex);
-      }
+      if (nowVisible) { c.show(dsIndex); } else { c.hide(dsIndex); }
       setActive(nowVisible);
-      console.log('[FitOps] metric toggle:', key, '→', nowVisible ? 'shown' : 'hidden', 'dsIndex:', dsIndex);
     });
 
     container.appendChild(btn);

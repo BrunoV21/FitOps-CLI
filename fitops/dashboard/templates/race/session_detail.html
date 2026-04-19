@@ -149,7 +149,7 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">Gap to Leader</span>
-      <span class="panel-meta">leader shown at 0 s — others show seconds behind</span>
+      <span class="panel-meta">leader at 0 m — others show metres behind</span>
     </div>
     <canvas id="gap-chart" style="max-height:380px;"></canvas>
   </div>
@@ -412,8 +412,12 @@
 
 <script>
 // ── Data from server ──────────────────────────────────────────────────────────
+// Server is the single source of truth: REPLAY_FRAMES is a pre-computed timeline
+// [{t_s, athletes: [{lat, lon, dist_m, vel, hr, rank, gap_m}, ...]}] where the
+// inner array order matches ATHLETES_DATA. The frontend is a pure renderer.
 const ATHLETES_DATA = {{ athletes_streams | tojson }};
 const GAP_DATA = {{ gap_data | tojson }};
+const REPLAY_FRAMES = {{ replay_frames | tojson }};
 const ATHLETE_COLORS = [
   '#4ade80','#60a5fa','#f97316','#a78bfa','#f472b6',
   '#facc15','#34d399','#fb7185','#38bdf8','#c084fc',
@@ -428,8 +432,8 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 
 const athleteMarkers = [];
 const athleteTraces = [];
-let replayFrames = [];
-let totalFrames = 0;
+const replayFrames = REPLAY_FRAMES;
+const totalFrames = replayFrames.length;
 let currentFrame = 0;
 let playing = false;
 let playSpeed = 60; // race-seconds per real-second (1× = 60 race-s/real-s)
@@ -445,47 +449,9 @@ ATHLETES_DATA.forEach((a, i) => {
 });
 
 // ── Time-based replay ─────────────────────────────────────────────────────────
-// Race time (seconds) between frames.  Each frame = snapshot of all athletes
-// at that moment in the actual race — faster athletes are further along the
-// route, slower athletes are behind, matching reality.
-const TIME_STEP_S = 5;
+// TIME_STEP_S is the race-second spacing between pre-computed frames.
+const TIME_STEP_S = {{ replay_time_step_s }};
 let autoFollow = true;
-
-// Interpolate an athlete's [lat, lon] at race-time t using their elapsed_s/latlng arrays.
-function interpAtTime(a, t) {
-  const elapsed = a.elapsed_s || [];
-  const latlng  = a.latlng   || [];
-  if (!elapsed.length || !latlng.length) return null;
-  if (t <= elapsed[0])                   return latlng[0] || null;
-  if (t >= elapsed[elapsed.length - 1])  return latlng[latlng.length - 1] || null;
-  // Binary search for surrounding interval
-  let lo = 0, hi = elapsed.length - 1;
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >> 1;
-    if (elapsed[mid] <= t) lo = mid; else hi = mid;
-  }
-  const p0 = latlng[lo], p1 = latlng[hi];
-  if (!p0 || !p1) return p0 || p1 || null;
-  const frac = (elapsed[hi] === elapsed[lo])
-    ? 0
-    : (t - elapsed[lo]) / (elapsed[hi] - elapsed[lo]);
-  return [p0[0] + frac * (p1[0] - p0[0]), p0[1] + frac * (p1[1] - p0[1])];
-}
-
-// Build one frame per TIME_STEP_S of race time
-function buildFrames() {
-  if (!ATHLETES_DATA.length) return;
-  const maxTime = Math.max(...ATHLETES_DATA.map(a => {
-    const el = a.elapsed_s || [];
-    return el.length ? el[el.length - 1] : 0;
-  }));
-  if (!maxTime) return;
-  const numFrames = Math.ceil(maxTime / TIME_STEP_S) + 1;
-  for (let f = 0; f < numFrames; f++) {
-    replayFrames.push(ATHLETES_DATA.map(a => interpAtTime(a, f * TIME_STEP_S)));
-  }
-  totalFrames = replayFrames.length;
-}
 
 // Draw ghost traces + initialise circle markers
 function initMapObjects() {
@@ -525,10 +491,12 @@ function initMapObjects() {
 function renderFrame(idx) {
   if (!replayFrames.length) return;
   const frame = replayFrames[Math.min(idx, totalFrames - 1)];
+  const entries = frame.athletes || [];
   let followPos = null;
-  frame.forEach((pos, i) => {
-    if (!pos || !athleteMarkers[i]) return;
-    athleteMarkers[i].setLatLng([pos[0], pos[1]]);
+  entries.forEach((entry, i) => {
+    if (entry.lat == null || entry.lon == null || !athleteMarkers[i]) return;
+    const pos = [entry.lat, entry.lon];
+    athleteMarkers[i].setLatLng(pos);
     // Follow primary athlete; fall back to first valid position
     if (ATHLETES_DATA[i] && ATHLETES_DATA[i].is_primary) followPos = pos;
     else if (!followPos) followPos = pos;
@@ -536,20 +504,17 @@ function renderFrame(idx) {
 
   // Auto-follow: always instant (slowest speed is 60×, smooth tweening would lag behind)
   if (autoFollow && followPos) {
-    map.panTo([followPos[0], followPos[1]], { animate: false });
+    map.panTo(followPos, { animate: false });
   }
 
   // Update slider + clock
   document.getElementById('replay-slider').value =
     totalFrames > 1 ? (idx / (totalFrames - 1)) * 100 : 0;
-  const curT  = idx * TIME_STEP_S;
-  const maxT  = (totalFrames - 1) * TIME_STEP_S;
+  const curT  = frame.t_s ?? (idx * TIME_STEP_S);
+  const maxT  = (replayFrames[totalFrames - 1]?.t_s) ?? ((totalFrames - 1) * TIME_STEP_S);
   document.getElementById('replay-clock').textContent = `${fmtTime(curT)} / ${fmtTime(maxT)}`;
 
-  // F1 leaderboard — throttle DOM writes proportionally to speed
-  // 60× → every 1 frame, 180× → every 2, 300× → every 3, 600× → every 4
-  const lbEvery = Math.min(4, Math.max(1, Math.floor(playSpeed / 90)));
-  if (idx % lbEvery === 0) updateLeaderboard(idx);
+  updateLeaderboard(idx);
 }
 
 function fmtTime(s) {
@@ -633,61 +598,30 @@ function setSpeed(v) { playSpeed = parseInt(v, 10); }
 
 // ── F1 Leaderboard ────────────────────────────────────────────────────────────
 
-// Returns {entries, t} sorted fastest-first with rank, gap_s, vel, hr
+// Returns {entries, t} sorted by rank (P1 first). rank/gap_m/vel/hr/dist_m all
+// come straight from the server-computed frame — no interpolation or ranking
+// happens here. Guarantees the leaderboard is always in lock-step with the map.
 function computeLeaderboard(frameIdx) {
-  const t = frameIdx * TIME_STEP_S;
+  const frame = replayFrames[Math.min(frameIdx, totalFrames - 1)];
+  if (!frame) return { entries: [], t: 0 };
+  const t = frame.t_s ?? (frameIdx * TIME_STEP_S);
 
-  const entries = ATHLETES_DATA.map((a, i) => {
-    const elapsed = a.elapsed_s || [];
-    const n = elapsed.length;
-    let dist_m = 0;
-
-    if (n > 0) {
-      if (t >= elapsed[n - 1]) {
-        dist_m = (n - 1) * 10;
-      } else if (t > elapsed[0]) {
-        let lo = 0, hi = n - 1;
-        while (lo + 1 < hi) {
-          const mid = (lo + hi) >> 1;
-          if (elapsed[mid] <= t) lo = mid; else hi = mid;
-        }
-        const frac = elapsed[hi] === elapsed[lo] ? 0
-          : (t - elapsed[lo]) / (elapsed[hi] - elapsed[lo]);
-        dist_m = (lo + frac) * 10; // metres (grid is 10 m/step)
-      }
-    }
-
-    // Subsampled arrays are at 50 m resolution (step=5 × 10 m)
-    const velArr = a.velocity  || [];
-    const hrArr  = a.heartrate || [];
-    const j = Math.min(Math.max(0, Math.floor(dist_m / 50)), Math.max(0, velArr.length - 1));
-    const vel = velArr[j] != null && velArr[j] > 0.3 ? velArr[j] : null;
-    const hr  = hrArr[j]  != null ? Math.round(hrArr[j]) : null;
-
-    return { idx: i, label: a.label,
-             color: ATHLETE_COLORS[i % ATHLETE_COLORS.length],
-             dist_m, vel, hr, elapsed };
+  const entries = (frame.athletes || []).map((entry, i) => {
+    const a = ATHLETES_DATA[i] || {};
+    const vel = entry.vel != null && entry.vel > 0.3 ? entry.vel : null;
+    const hr  = entry.hr  != null ? Math.round(entry.hr) : null;
+    return {
+      idx: i,
+      label: a.label ?? '',
+      color: ATHLETE_COLORS[i % ATHLETE_COLORS.length],
+      dist_m: entry.dist_m ?? 0,
+      gap_m: entry.gap_m ?? 0,
+      rank: entry.rank ?? (i + 1),
+      vel, hr,
+    };
   });
 
-  // Rank by distance (furthest = P1)
-  entries.sort((a, b) => b.dist_m - a.dist_m);
-  const leader = entries[0];
-
-  entries.forEach((e, rank) => {
-    e.rank = rank + 1;
-    if (rank === 0) {
-      e.gap_s = 0;
-    } else {
-      // Time gap = current race time T minus the moment the leader
-      // was at the same distance as this athlete (exact time-based gap)
-      const leaderEl = leader.elapsed || [];
-      const distIdx  = Math.min(Math.floor(e.dist_m / 10), leaderEl.length - 1);
-      e.gap_s = distIdx >= 0 && leaderEl[distIdx] != null
-        ? Math.max(0, t - leaderEl[distIdx])
-        : (leader.vel ? (leader.dist_m - e.dist_m) / leader.vel : 0);
-    }
-  });
-
+  entries.sort((a, b) => a.rank - b.rank);
   return { entries, t };
 }
 
@@ -695,6 +629,11 @@ function fmtPace(vel_ms) {
   if (!vel_ms || vel_ms < 0.5 || vel_ms > 12) return '—';
   const p = 1000 / vel_ms / 60;
   return `${Math.floor(p)}:${String(Math.round((p % 1) * 60)).padStart(2, '0')}`;
+}
+
+function fmtGap(gap_m) {
+  if (gap_m < 1000) return `+${gap_m.toFixed(0)}m`;
+  return `+${(gap_m / 1000).toFixed(2)}km`;
 }
 
 function updateLeaderboard(frameIdx) {
@@ -709,7 +648,7 @@ function updateLeaderboard(frameIdx) {
   const hasPace = entries.some(e => e.vel  != null);
 
   rowsEl.innerHTML = entries.map(e => {
-    const gapStr  = e.rank === 1 ? 'LEAD' : `+${e.gap_s.toFixed(1)}s`;
+    const gapStr  = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_m);
     const paceStr = hasPace ? (e.vel ? fmtPace(e.vel) + '/km' : '—') : '';
     const hrStr   = hasHr   ? (e.hr  ? `${e.hr} ♥`  : '—')   : '';
     return `<div class="f1-row">
@@ -767,7 +706,7 @@ function drawLeaderboardOnCanvas(ctx, entries, t) {
     ctx.fillText(name, x0 + 20, ry + rowH - 4);
 
     // Gap
-    const gapStr = e.rank === 1 ? 'LEAD' : `+${e.gap_s.toFixed(1)}s`;
+    const gapStr = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_m);
     ctx.fillStyle = e.rank === 1 ? '#4ade80' : '#f87171';
     ctx.textAlign = 'right';
     let cx = x0 + boardW - 5;
@@ -846,10 +785,10 @@ async function startExportGif(ratio) {
 
   // Per-frame tracking center: mean world-pixel position of live athletes
   function getFrameCenter(frame) {
-    const live = frame.filter(Boolean);
+    const live = (frame.athletes || []).filter(e => e && e.lat != null && e.lon != null);
     if (!live.length) return { px: (wpTL.px + wpBR.px) / 2, py: (wpTL.py + wpBR.py) / 2 };
-    const meanLat = live.reduce((s, p) => s + p[0], 0) / live.length;
-    const meanLon = live.reduce((s, p) => s + p[1], 0) / live.length;
+    const meanLat = live.reduce((s, e) => s + e.lat, 0) / live.length;
+    const meanLon = live.reduce((s, e) => s + e.lon, 0) / live.length;
     return _latLonToWorldPx(meanLat, meanLon, zoom);
   }
 
@@ -966,11 +905,12 @@ async function startExportGif(ratio) {
     });
 
     // Athlete markers + labels
+    const frameEntries = frame.athletes || [];
     ATHLETES_DATA.forEach((a, i) => {
-      const pos = frame[i];
-      if (!pos) return;
+      const entry = frameEntries[i];
+      if (!entry || entry.lat == null || entry.lon == null) return;
       const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
-      const pt = projectFollow(pos[0], pos[1], cX, cY);
+      const pt = projectFollow(entry.lat, entry.lon, cX, cY);
       ctx.beginPath(); ctx.fillStyle = color + '55'; ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.fillStyle = color; ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2); ctx.fill();
       ctx.font = 'bold 11px sans-serif';
@@ -1030,7 +970,6 @@ async function startExportGif(ratio) {
   requestAnimationFrame(captureNext);
 }
 
-buildFrames();
 initMapObjects();
 renderFrame(0);
 
@@ -1039,7 +978,7 @@ renderFrame(0);
   const ctx = document.getElementById('gap-chart').getContext('2d');
   const datasets = GAP_DATA.map((g, i) => {
     const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
-    const pts = (g.gap_series || []).map(p => ({ x: p.distance_km, y: p.gap_to_leader_s }));
+    const pts = (g.gap_series || []).map(p => ({ x: p.distance_km, y: p.gap_to_leader_m }));
     return {
       label: g.athlete_label,
       data: pts,
@@ -1063,7 +1002,7 @@ renderFrame(0);
         legend: { labels: { color: '#ccc', font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.dataset.label}: +${ctx.parsed.y.toFixed(1)}s`,
+            label: ctx => `${ctx.dataset.label}: +${ctx.parsed.y.toFixed(0)}m`,
           }
         }
       },
@@ -1075,7 +1014,7 @@ renderFrame(0);
           grid: { color: '#222' },
         },
         y: {
-          title: { display: true, text: 'Gap to leader (s)', color: '#666' },
+          title: { display: true, text: 'Gap to leader (m)', color: '#666' },
           ticks: { color: '#666' },
           grid: { color: '#222' },
         }

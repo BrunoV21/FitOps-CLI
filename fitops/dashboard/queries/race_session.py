@@ -279,6 +279,28 @@ async def get_segments(session_id: int) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Replay frames
+# ---------------------------------------------------------------------------
+
+
+async def save_replay_frames(
+    session_id: int,
+    frames: list[dict],
+    time_step_s: float,
+) -> None:
+    """Persist the authoritative replay timeline for a session."""
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(RaceSession).where(RaceSession.id == session_id)
+        )
+        sess = result.scalar_one_or_none()
+        if sess is None:
+            return
+        sess.replay_frames_json = json.dumps(frames)
+        sess.replay_time_step_s = time_step_s
+
+
+# ---------------------------------------------------------------------------
 # Full session detail
 # ---------------------------------------------------------------------------
 
@@ -300,4 +322,6 @@ async def get_session_detail(session_id: int) -> dict | None:
         "gap_data": gap_data,
         "events": events,
         "segments": segments,
+        "replay_frames": sess.get_replay_frames(),
+        "replay_time_step_s": sess.replay_time_step_s or 5.0,
     }

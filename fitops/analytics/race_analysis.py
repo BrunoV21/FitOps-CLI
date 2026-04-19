@@ -34,6 +34,9 @@ class NormalizedStream:
     heartrate: list[float] | None = None
     cadence: list[float] | None = None
     velocity: list[float] | None = None  # m/s
+    # Wall-clock start as UTC epoch seconds — lets the replay align athletes
+    # that started at different times onto a shared race clock.
+    start_date_utc_s: float | None = None
 
 
 @dataclass
@@ -130,6 +133,29 @@ def _interp_latlng(
     ]
 
 
+def _clean_elapsed_spikes(elapsed: list[float | None]) -> list[float]:
+    """Remove GPS timing spikes from a cumulative elapsed_s array.
+
+    A spike is a step > 5× the median inter-point step.  Because elapsed_s is
+    cumulative, the excess propagates to every subsequent value — subtract it
+    from all following points to restore true pace.
+    """
+    vals = [float(v) if v is not None else 0.0 for v in elapsed]
+    if len(vals) < 3:
+        return vals
+    steps = [vals[i] - vals[i - 1] for i in range(1, len(vals))]
+    median_step = statistics.median(steps)
+    threshold = max(median_step * 5, 5.0)
+    for i, step in enumerate(steps):
+        if step > threshold:
+            excess = step - median_step
+            for j in range(i + 1, len(vals)):
+                vals[j] -= excess
+            for j in range(i, len(steps)):
+                steps[j] = vals[j + 1] - vals[j]
+    return vals
+
+
 def normalize_stream(
     raw_streams: dict[str, list],
     athlete_label: str,
@@ -168,7 +194,7 @@ def normalize_stream(
         if i * grid_spacing_m <= total_dist
     ]
 
-    elapsed_interp = _interp_array(dist_raw, time_raw, grid)
+    elapsed_interp = _clean_elapsed_spikes(_interp_array(dist_raw, time_raw, grid))
 
     latlng_raw = raw_streams.get("latlng")
     if latlng_raw:
@@ -196,7 +222,7 @@ def normalize_stream(
         is_primary=is_primary,
         activity_id=activity_id,
         distance_grid=[float(g) for g in grid],
-        elapsed_s=[float(v) if v is not None else 0.0 for v in elapsed_interp],
+        elapsed_s=elapsed_interp,
         latlng=latlng_interp,
         altitude=altitude_interp,
         heartrate=hr_interp,
@@ -344,6 +370,147 @@ def _speed_at_distance(ns: NormalizedStream, target_m: float, step_m: float) -> 
     dt = t_next - t_prev
     dx = next_m - prev_m
     return dx / dt
+
+
+# ---------------------------------------------------------------------------
+# Replay frames — authoritative timeline computed server-side
+# ---------------------------------------------------------------------------
+
+
+def _interp_by_elapsed(
+    elapsed_s: list[float],
+    distance_grid: list[float],
+    t: float,
+) -> tuple[int, int, float, float]:
+    """Binary-search elapsed_s for time t; return (lo, hi, frac, dist_m).
+
+    dist_m is interpolated along distance_grid using the same fractional index.
+    """
+    n = len(elapsed_s)
+    if n == 0:
+        return (0, 0, 0.0, 0.0)
+    if t <= elapsed_s[0]:
+        return (0, 0, 0.0, distance_grid[0] if distance_grid else 0.0)
+    if t >= elapsed_s[-1]:
+        last = n - 1
+        return (last, last, 0.0, distance_grid[last] if distance_grid else 0.0)
+    lo, hi = 0, n - 1
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if elapsed_s[mid] <= t:
+            lo = mid
+        else:
+            hi = mid
+    span = elapsed_s[hi] - elapsed_s[lo]
+    frac = (t - elapsed_s[lo]) / span if span > 0 else 0.0
+    if distance_grid:
+        dist_m = distance_grid[lo] + frac * (distance_grid[hi] - distance_grid[lo])
+    else:
+        dist_m = 0.0
+    return (lo, hi, frac, dist_m)
+
+
+def compute_replay_frames(
+    athletes: list[NormalizedStream],
+    time_step_s: float = 5.0,
+) -> list[dict]:
+    """Build a time-indexed replay timeline from normalised streams.
+
+    Each frame carries a time-aligned snapshot for every athlete (preserving
+    input order) with server-computed rank and distance gap. The frontend
+    simply renders what it receives — no interpolation or ranking client-side.
+
+    Frame shape:
+        {
+          "t_s": float,
+          "athletes": [
+            {"lat", "lon", "dist_m", "vel", "hr", "rank", "gap_m"}, ...
+          ]
+        }
+    """
+    if not athletes or time_step_s <= 0:
+        return []
+
+    max_time = 0.0
+    for ns in athletes:
+        if ns.elapsed_s:
+            max_time = max(max_time, ns.elapsed_s[-1])
+    if max_time <= 0:
+        return []
+
+    frames: list[dict] = []
+    t = 0.0
+    # Guard against runaway loops on absurdly long races
+    while t <= max_time + 1e-6:
+        per_athlete: list[dict] = []
+        for ns in athletes:
+            if not ns.elapsed_s or not ns.distance_grid:
+                per_athlete.append(
+                    {
+                        "lat": None,
+                        "lon": None,
+                        "dist_m": 0.0,
+                        "vel": None,
+                        "hr": None,
+                        "rank": None,
+                        "gap_m": 0.0,
+                    }
+                )
+                continue
+
+            lo, hi, frac, dist_m = _interp_by_elapsed(ns.elapsed_s, ns.distance_grid, t)
+
+            lat = lon = None
+            if ns.latlng and ns.latlng[lo] is not None:
+                if hi != lo and ns.latlng[hi] is not None:
+                    a = ns.latlng[lo]
+                    b = ns.latlng[hi]
+                    lat = a[0] + frac * (b[0] - a[0])
+                    lon = a[1] + frac * (b[1] - a[1])
+                else:
+                    lat, lon = ns.latlng[lo]
+
+            # velocity & heartrate: prefer linear interp; fall back to nearest
+            def _sample(arr: list[float | None] | None) -> float | None:
+                if not arr:
+                    return None
+                v_lo = arr[lo] if lo < len(arr) else None
+                v_hi = arr[hi] if hi < len(arr) else None
+                if v_lo is None and v_hi is None:
+                    return None
+                if v_hi is None:
+                    return v_lo
+                if v_lo is None:
+                    return v_hi
+                return v_lo + frac * (v_hi - v_lo)
+
+            vel = _sample(ns.velocity)
+            hr = _sample(ns.heartrate)
+
+            per_athlete.append(
+                {
+                    "lat": round(lat, 6) if lat is not None else None,
+                    "lon": round(lon, 6) if lon is not None else None,
+                    "dist_m": round(dist_m, 1),
+                    "vel": round(vel, 3) if vel is not None else None,
+                    "hr": round(hr, 1) if hr is not None else None,
+                    "rank": None,
+                    "gap_m": 0.0,
+                }
+            )
+
+        # Rank by dist_m descending; leader = rank 1
+        order = sorted(range(len(per_athlete)), key=lambda i: -per_athlete[i]["dist_m"])
+        leader_dist = per_athlete[order[0]]["dist_m"] if order else 0.0
+        for pos, idx in enumerate(order):
+            per_athlete[idx]["rank"] = pos + 1
+            gap = leader_dist - per_athlete[idx]["dist_m"]
+            per_athlete[idx]["gap_m"] = round(max(0.0, gap), 1)
+
+        frames.append({"t_s": round(t, 2), "athletes": per_athlete})
+        t += time_step_s
+
+    return frames
 
 
 def compute_delta_series(

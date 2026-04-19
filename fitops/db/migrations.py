@@ -115,6 +115,24 @@ async def _migrate_workout_segment_columns(conn) -> None:
             )
 
 
+# Columns added to `race_sessions` after the initial schema.
+_RACE_SESSION_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("replay_frames_json", "TEXT"),
+    ("replay_time_step_s", "REAL"),
+]
+
+
+async def _migrate_race_session_columns(conn) -> None:
+    """Add new columns to the race_sessions table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(race_sessions)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _RACE_SESSION_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE race_sessions ADD COLUMN {col_name} {col_type}")
+            )
+
+
 async def _migrate_race_plans(conn) -> None:
     """Create race_plans table if it doesn't exist yet."""
     await conn.execute(
@@ -207,6 +225,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_workout_segment_columns(conn)
         await _migrate_workout_activity_links(conn)
         await _migrate_race_plans(conn)
+        await _migrate_race_session_columns(conn)
 
 
 def init_db() -> None:
