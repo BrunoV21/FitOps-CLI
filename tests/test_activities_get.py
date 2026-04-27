@@ -495,3 +495,151 @@ def test_weather_row_to_dict_null_wbgt_defaults_green():
     w = _make_weather_obj(wbgt_c=None)
     d = weather_row_to_dict(w)
     assert d["wbgt_flag"] == "green"
+
+
+# ---------------------------------------------------------------------------
+# format_activity_row — running power fields
+# ---------------------------------------------------------------------------
+
+_POWER_RUN_ROW = {
+    **_BASE_ROW,
+    "est_power_avg_w": 245.7,
+    "est_power_max_w": 410.2,
+    "est_power_np_w": 251.3,
+    "est_kcal_model": 820,
+    "est_power_source": "true_pace",
+}
+
+
+def test_formatter_run_power_present():
+    from fitops.output.formatter import format_activity_row
+
+    out = format_activity_row(_POWER_RUN_ROW)
+    p = out["power"]
+    assert p is not None
+    assert p["avg_w"] == 246
+    assert p["max_w"] == 410
+    assert p["np_w"] == 251
+    assert p["est_kcal"] == 820
+    assert p["source"] == "true_pace"
+
+
+def test_formatter_run_power_absent_returns_none():
+    from fitops.output.formatter import format_activity_row
+
+    row = {**_BASE_ROW, "est_power_avg_w": None}
+    out = format_activity_row(row)
+    assert out["power"] is None
+
+
+def test_formatter_ride_power_unchanged():
+    from fitops.output.formatter import format_activity_row
+
+    ride_row = {
+        **_BASE_ROW,
+        "sport_type": "Ride",
+        "average_watts": 200.0,
+        "max_watts": 450,
+        "weighted_average_watts": 210.0,
+        "est_power_avg_w": None,
+    }
+    out = format_activity_row(ride_row)
+    p = out["power"]
+    assert p is not None
+    assert p["average_watts"] == 200.0
+    assert "avg_w" not in p
+
+
+def test_formatter_run_power_partial_nulls():
+    from fitops.output.formatter import format_activity_row
+
+    row = {
+        **_BASE_ROW,
+        "est_power_avg_w": 230.0,
+        "est_power_max_w": None,
+        "est_power_np_w": None,
+        "est_kcal_model": None,
+        "est_power_source": "velocity_smooth",
+    }
+    out = format_activity_row(row)
+    p = out["power"]
+    assert p["avg_w"] == 230
+    assert p["max_w"] is None
+    assert p["np_w"] is None
+    assert p["est_kcal"] is None
+    assert p["source"] == "velocity_smooth"
+
+
+# ---------------------------------------------------------------------------
+# dashboard _activity_row — running power fields in template context
+# ---------------------------------------------------------------------------
+
+
+def _make_activity_ns(**kwargs):
+    defaults = {
+        "strava_id": 123,
+        "name": "Test Run",
+        "sport_type": "Run",
+        "start_date_local": None,
+        "distance_m": 10000.0,
+        "moving_time_s": 3600,
+        "elapsed_time_s": 3800,
+        "average_speed_ms": 2.778,
+        "average_heartrate": None,
+        "max_heartrate": None,
+        "average_watts": None,
+        "weighted_average_watts": None,
+        "max_watts": None,
+        "training_stress_score": None,
+        "total_elevation_gain_m": 50.0,
+        "is_race": False,
+        "trainer": False,
+        "commute": False,
+        "average_cadence": None,
+        "calories": None,
+        "suffer_score": None,
+        "description": None,
+        "device_name": None,
+        "gear_id": None,
+        "aerobic_score": None,
+        "anaerobic_score": None,
+        "est_power_avg_w": None,
+        "est_power_max_w": None,
+        "est_power_np_w": None,
+        "est_kcal_model": None,
+        "est_power_source": None,
+    }
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
+
+
+def _patch_scores(monkeypatch):
+    monkeypatch.setattr("fitops.dashboard.routes.activities.compute_aerobic_score", lambda *a, **k: 3.0)
+    monkeypatch.setattr("fitops.dashboard.routes.activities.compute_anaerobic_score", lambda *a, **k: 2.0)
+    monkeypatch.setattr("fitops.dashboard.routes.activities.get_athlete_settings", lambda: SimpleNamespace())
+
+
+def test_activity_row_power_present(monkeypatch):
+    from fitops.dashboard.routes.activities import _activity_row
+
+    _patch_scores(monkeypatch)
+    a = _make_activity_ns(est_power_avg_w=243.7, est_power_max_w=410.0, est_power_np_w=250.1, est_kcal_model=850, est_power_source="true_pace")
+    row = _activity_row(a)
+    assert row["est_power_avg_w"] == 244
+    assert row["est_power_max_w"] == 410
+    assert row["est_power_np_w"] == 250
+    assert row["est_kcal_model"] == 850
+    assert row["est_power_source"] == "true_pace"
+
+
+def test_activity_row_power_absent(monkeypatch):
+    from fitops.dashboard.routes.activities import _activity_row
+
+    _patch_scores(monkeypatch)
+    a = _make_activity_ns()
+    row = _activity_row(a)
+    assert row["est_power_avg_w"] is None
+    assert row["est_power_max_w"] is None
+    assert row["est_power_np_w"] is None
+    assert row["est_kcal_model"] is None
+    assert row["est_power_source"] is None

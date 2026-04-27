@@ -169,7 +169,7 @@ When `--json` is used, the output is a single activity object enriched with all 
 | `elevation` | object | `total_gain_m` |
 | `heart_rate` | object\|null | `average_bpm`, `max_bpm` |
 | `cadence` | object\|null | `average_spm` |
-| `power` | object\|null | `average_watts`, `max_watts`, `weighted_average_watts` (rides only) |
+| `power` | object\|null | Rides: `average_watts`, `max_watts`, `weighted_average_watts`. Runs: `avg_w`, `max_w`, `np_w`, `est_kcal`, `source` (estimated from pace stream — see [Estimated Running Power](/concepts/estimated-power)) |
 | `training_metrics` | object | `suffer_score`, `calories`, `training_stress_score` |
 | `equipment` | object | `gear_id`, `gear_name`, `gear_type` |
 | `description` | string\|null | Activity description (whitespace-trimmed) |

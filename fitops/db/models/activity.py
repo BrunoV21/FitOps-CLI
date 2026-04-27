@@ -55,6 +55,12 @@ class Activity(Base):
     anaerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     vo2max_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    est_power_avg_w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    est_power_max_w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    est_power_np_w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    est_kcal_model: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    est_power_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     calories: Mapped[int | None] = mapped_column(Integer, nullable=True)
     suffer_score: Mapped[int | None] = mapped_column(Integer, nullable=True)

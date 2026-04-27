@@ -57,6 +57,7 @@ export default defineConfig({
           { text: 'Training Load', link: '/concepts/training-load' },
           { text: 'HR Zones', link: '/concepts/zones' },
           { text: 'VO2max', link: '/concepts/vo2max' },
+          { text: 'Estimated Running Power', link: '/concepts/estimated-power' },
           { text: 'Weather & Pace', link: '/concepts/weather-pace' },
           { text: 'Workouts & Compliance', link: '/concepts/workouts' },
           { text: 'Race Simulation', link: '/concepts/race-simulation' },

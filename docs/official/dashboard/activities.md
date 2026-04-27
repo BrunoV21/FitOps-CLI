@@ -45,10 +45,20 @@ Click any activity row to open its detail page (`/activities/{id}`). The detail 
 - **Aerobic training score** — estimated aerobic stimulus for the session
 - **Anaerobic training score** — estimated anaerobic contribution
 
+**Running Power panel** (runs only, when streams are available):
+- **Avg Power** — average estimated running power in watts
+- **Max Power** — peak estimated wattage during the session
+- **Normalised Power** — intensity-weighted average (equivalent to NP for cycling)
+- **Est. kcal** — energy expenditure estimated from the power model
+- Source label confirms the value is model-derived (not a Stryd or footpod)
+
+Power is computed at sync time and cached; the page never recomputes it on load. See [Estimated Running Power](/concepts/estimated-power) for the formula and accuracy notes.
+
 **Charts** (when streams are available):
 - Heart rate over time
 - Pace over time (with grade-adjusted pace overlay if GPS data is present)
 - Elevation profile
+- Power (hidden by default — click the **Pwr** toggle to show the wattage series)
 
 ![Activity Analysis — streams, HR drift, scatter plots](../assets/dashboard-activity-analysis.png)
 

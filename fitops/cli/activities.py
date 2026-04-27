@@ -387,6 +387,36 @@ def get_activity(
                     round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
                 ]
 
+        # Running power — compute + persist when streams are available
+        if streams and (fetch_fresh or row.est_power_avg_w is None):
+            from fitops.analytics.running_power import persist_power_for_activity
+
+            weight_kg = _settings.weight_kg
+            if weight_kg:
+                async with get_async_session() as _pw_session:
+                    _pw_result = await _pw_session.execute(
+                        select(Activity).where(Activity.strava_id == activity_id)
+                    )
+                    _pw_row = _pw_result.scalar_one_or_none()
+                    if _pw_row:
+                        await persist_power_for_activity(
+                            _pw_session, _pw_row.id, _pw_row, streams, weight_kg
+                        )
+                        row.est_power_avg_w = _pw_row.est_power_avg_w
+                        row.est_power_max_w = _pw_row.est_power_max_w
+                        row.est_power_np_w = _pw_row.est_power_np_w
+                        row.est_kcal_model = _pw_row.est_kcal_model
+                        row.est_power_source = _pw_row.est_power_source
+
+        if row.est_power_avg_w is not None:
+            formatted["power"] = {
+                "avg_w": row.est_power_avg_w,
+                "max_w": row.est_power_max_w,
+                "np_w": row.est_power_np_w,
+                "est_kcal": row.est_kcal_model,
+                "source": row.est_power_source,
+            }
+
         # HR drift
         hr_data = streams.get("heartrate", [])
         vel_data = streams.get("velocity_smooth", [])
@@ -778,6 +808,7 @@ _VALID_STREAMS = frozenset(
         "distance",
         "cadence",
         "watts",
+        "power",
     }
 )
 

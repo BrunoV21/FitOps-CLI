@@ -53,6 +53,11 @@ _ACTIVITY_NEW_COLUMNS: list[tuple[str, str]] = [
     ("aerobic_score", "REAL"),
     ("anaerobic_score", "REAL"),
     ("vo2max_estimate", "REAL"),
+    ("est_power_avg_w", "REAL"),
+    ("est_power_max_w", "REAL"),
+    ("est_power_np_w", "REAL"),
+    ("est_kcal_model", "INTEGER"),
+    ("est_power_source", "TEXT"),
 ]
 
 
@@ -121,6 +126,10 @@ _RACE_SESSION_NEW_COLUMNS: list[tuple[str, str]] = [
     ("replay_time_step_s", "REAL"),
 ]
 
+_RACE_SESSION_EVENT_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("context_json", "TEXT"),
+]
+
 
 async def _migrate_race_session_columns(conn) -> None:
     """Add new columns to the race_sessions table if they don't exist yet."""
@@ -130,6 +139,17 @@ async def _migrate_race_session_columns(conn) -> None:
         if col_name not in existing:
             await conn.execute(
                 text(f"ALTER TABLE race_sessions ADD COLUMN {col_name} {col_type}")
+            )
+
+
+async def _migrate_race_session_event_columns(conn) -> None:
+    """Add new columns to the race_session_events table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(race_session_events)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _RACE_SESSION_EVENT_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE race_session_events ADD COLUMN {col_name} {col_type}")
             )
 
 
@@ -269,6 +289,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_workout_activity_links(conn)
         await _migrate_race_plans(conn)
         await _migrate_race_session_columns(conn)
+        await _migrate_race_session_event_columns(conn)
 
 
 def init_db() -> None:

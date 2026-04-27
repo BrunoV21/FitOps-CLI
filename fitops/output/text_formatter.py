@@ -1957,15 +1957,32 @@ def print_race_session_segments(data: dict) -> None:
 
 def print_race_session_events(data: dict) -> None:
     events = data.get("events") or []
+    summary = data.get("events_summary") or {}
     if not events:
         console.print("[dim]No events detected.[/dim]")
         return
 
     console.print()
+    headline = summary.get("headline")
+    decisive = summary.get("decisive_point")
+    if headline or decisive:
+        console.print("[bold]Race Story[/bold]")
+        if headline:
+            console.print(
+                f"  Headline: {headline.get('athlete_label')} [{headline.get('event_type')}] at km {headline.get('distance_km', 0):.1f}"
+            )
+        if decisive:
+            console.print(
+                f"  Decisive point: km {decisive.get('distance_km', 0):.1f} — {decisive.get('description')}"
+            )
+        console.print()
+
     table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
     table.add_column("km", justify="right", no_wrap=True)
     table.add_column("Type", no_wrap=True)
     table.add_column("Athlete")
+    table.add_column("Rival")
+    table.add_column("Rank", justify="center", no_wrap=True)
     table.add_column("Impact", justify="right", no_wrap=True)
     table.add_column("Description")
 
@@ -1976,6 +1993,12 @@ def print_race_session_events(data: dict) -> None:
         "fade": "yellow",
         "final_sprint": "magenta",
         "separation": "red",
+        "pass": "blue",
+        "caught": "cyan",
+        "breakaway": "magenta",
+        "pack_split": "yellow",
+        "decisive_move": "red",
+        "recovery": "green",
     }
 
     for ev in events:
@@ -1984,12 +2007,26 @@ def print_race_session_events(data: dict) -> None:
         impact_str = f"{sign}{impact:.0f}s" if impact != 0 else "—"
         etype = ev.get("event_type") or ""
         color = event_colors.get(etype, "white")
+        ctx = ev.get("context") or {}
+        rank_before = ctx.get("rank_before")
+        rank_after = ctx.get("rank_after")
+        rank_str = (
+            f"P{rank_before}->P{rank_after}"
+            if rank_before and rank_after
+            else (f"P{rank_after}" if rank_after else "-")
+        )
+        desc = ev.get("description") or ""
+        seg = ctx.get("segment_label")
+        if seg:
+            desc = f"{desc} [{seg}]"
         table.add_row(
             f"{ev.get('distance_km', 0):.1f}",
             f"[{color}]{etype}[/{color}]",
             ev.get("athlete_label") or "",
+            ctx.get("rival_label") or "-",
+            rank_str,
             impact_str,
-            ev.get("description") or "",
+            desc,
         )
 
     console.print(table)

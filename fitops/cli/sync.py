@@ -45,6 +45,7 @@ async def _fetch_streams_for_activities(
     _athlete_settings = get_athlete_settings()
     _lthr = _athlete_settings.lthr
     _max_hr = _athlete_settings.max_hr
+    _weight_kg = _athlete_settings.weight_kg
     for idx, (internal_id, strava_id) in enumerate(
         zip(activity_ids, strava_ids, strict=False), 1
     ):
@@ -58,6 +59,18 @@ async def _fetch_streams_for_activities(
                         )
                     )
             stream_data = await client.get_activity_streams(strava_id)
+            # Flatten {type: {"data": [...]} | [...]} → {type: [...]}
+            flat_streams = {
+                st: (so.get("data", []) if isinstance(so, dict) else so)
+                for st, so in stream_data.items()
+            }
+            # Promote grade_adjusted_speed → gap_pace so running power uses
+            # the grade-corrected velocity rather than raw velocity_smooth.
+            if "gap_pace" not in flat_streams and "grade_adjusted_speed" in flat_streams:
+                gas = flat_streams["grade_adjusted_speed"]
+                flat_streams["gap_pace"] = [
+                    round(1000.0 / v, 2) if v and v > 0.1 else None for v in gas
+                ]
             async with get_async_session() as session:
                 for stream_type, stream_obj in stream_data.items():
                     data_list = (
@@ -92,6 +105,17 @@ async def _fetch_streams_for_activities(
                     )
                     if vo2max_est is not None:
                         row.vo2max_estimate = vo2max_est.estimate
+                    # Compute and cache running power for run sport types.
+                    if _weight_kg:
+                        from fitops.analytics.running_power import (
+                            RUN_SPORT_TYPES,
+                            persist_power_for_activity,
+                        )
+
+                        if getattr(row, "sport_type", "") in RUN_SPORT_TYPES:
+                            await persist_power_for_activity(
+                                session, internal_id, row, flat_streams, _weight_kg
+                            )
             # Silently try to auto-associate to a race plan
             try:
                 from fitops.analytics.race_plan import match_activity_to_plans

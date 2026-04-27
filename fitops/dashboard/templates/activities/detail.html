@@ -91,7 +91,7 @@
 </div>
 
 {# ── Secondary metrics ───────────────────────────────────────── #}
-{% set has_secondary = activity.avg_hr or avg_gap or activity.avg_cadence or activity.avg_watts or activity.calories or activity.suffer_score %}
+{% set has_secondary = activity.avg_hr or avg_gap or activity.avg_cadence or activity.avg_watts or activity.calories or activity.suffer_score or activity.est_power_avg_w %}
 {% if has_secondary %}
 <div class="metric-row" style="margin-bottom:1px;">
   {% if activity.avg_hr %}
@@ -131,6 +131,16 @@
   <div class="panel" style="--delay:400ms">
     <p class="panel-label">Suffer Score</p>
     <p class="panel-metric--md">{{ activity.suffer_score }}</p>
+  </div>
+  {% endif %}
+  {% if activity.est_power_avg_w %}
+  <div class="panel panel--accent-amber" style="--delay:440ms">
+    <p class="panel-label">Est. Running Power</p>
+    <p class="panel-metric--md c-amber">{{ activity.est_power_avg_w }}<span class="panel-unit">W avg</span></p>
+    <p class="panel-sub">
+      {% if activity.est_power_np_w %}NP {{ activity.est_power_np_w }} W · {% endif %}Max {{ activity.est_power_max_w }} W
+      {% if activity.est_kcal_model %} · ~{{ activity.est_kcal_model }} kcal{% endif %}
+    </p>
   </div>
   {% endif %}
 </div>
@@ -742,7 +752,7 @@ async function applyInsight(settingKey, value, btn) {
     tp:   (STREAMS.true_pace || []).length > 0,
     alt:  (STREAMS.altitude || []).length > 0,
     cad:  (STREAMS.cadence || []).length > 0,
-    pwr:  (STREAMS.watts || []).length > 0,
+    pwr:  (STREAMS.watts || STREAMS.power || []).length > 0,
   }, SPORT_TYPE);
 
   // Sync x-axis toggle buttons to the chart's actual initial state.

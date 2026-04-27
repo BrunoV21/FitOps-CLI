@@ -136,6 +136,11 @@ def _activity_row(a) -> dict:
         "anaerobic_score_int": int(anaerobic_score),
         "aerobic_label": _aerobic_label(aerobic_score),
         "anaerobic_label": _anaerobic_label(anaerobic_score),
+        "est_power_avg_w": round(a.est_power_avg_w) if getattr(a, "est_power_avg_w", None) else None,
+        "est_power_max_w": round(a.est_power_max_w) if getattr(a, "est_power_max_w", None) else None,
+        "est_power_np_w": round(a.est_power_np_w) if getattr(a, "est_power_np_w", None) else None,
+        "est_kcal_model": getattr(a, "est_kcal_model", None),
+        "est_power_source": getattr(a, "est_power_source", None),
     }
 
 
@@ -390,6 +395,35 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 streams["true_pace"] = [
                     round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
                 ]
+
+        # Running power — compute + persist when streams are available
+        if activity and streams and activity.est_power_avg_w is None:
+            from fitops.analytics.athlete_settings import (
+                get_athlete_settings as _get_athlete_settings_pw,
+            )
+            from fitops.analytics.running_power import persist_power_for_activity
+            from fitops.db.models.activity import Activity as _Activity
+            from fitops.db.session import get_async_session
+
+            _pw_settings = _get_athlete_settings_pw()
+            _weight_kg = _pw_settings.weight_kg
+            if _weight_kg:
+                async with get_async_session() as _pw_session:
+                    from sqlalchemy import select as _select
+
+                    _pw_result = await _pw_session.execute(
+                        _select(_Activity).where(_Activity.id == activity.id)
+                    )
+                    _pw_row = _pw_result.scalar_one_or_none()
+                    if _pw_row:
+                        await persist_power_for_activity(
+                            _pw_session, _pw_row.id, _pw_row, streams, _weight_kg
+                        )
+                        activity.est_power_avg_w = _pw_row.est_power_avg_w
+                        activity.est_power_max_w = _pw_row.est_power_max_w
+                        activity.est_power_np_w = _pw_row.est_power_np_w
+                        activity.est_kcal_model = _pw_row.est_kcal_model
+                        activity.est_power_source = _pw_row.est_power_source
 
         if activity and streams:
             analytics = compute_activity_analytics(activity, streams)
