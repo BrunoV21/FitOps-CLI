@@ -98,7 +98,7 @@ Frame shape (one entry per `time_step_s`, default 5 s):
 }
 ```
 
-`frame.athletes[i]` corresponds positionally to the athlete at index `i` returned by the server — athletes are ordered with the primary first, then by insertion time. Rank is assigned by `course_m` descending (leader = rank 1, `gap_m = 0`). `course_m` is each athlete's projected progress along the primary athlete's route, so leaderboard order matches map position even when athletes started recording at different moments on the course. `gap_m` is the along-route distance behind the leader; `gap_geo_m` is the straight-line haversine distance between the athlete's and leader's lat/lon at that instant — this is what the leaderboard displays so it matches what's visible on the map.
+`frame.athletes[i]` corresponds positionally to the athlete at index `i` returned by the server — athletes are ordered with the primary first, then by insertion time. Rank is assigned by `course_m` descending while the winner is still racing (leader = rank 1, `gap_m = 0`). `course_m` is each athlete's projected progress along the primary athlete's route, so leaderboard order matches map position even when athletes started recording at different moments on the course. `gap_m` is the along-route distance behind the leader; `gap_geo_m` is the straight-line haversine distance between the athlete's and leader's lat/lon at that instant — this is what the live leaderboard displays so it matches what's visible on the map. Once the winner finishes, the leaderboard switches to finish-time order and shows time behind the winner until each remaining athlete finishes, then freezes at the final gap.
 
 ---
 

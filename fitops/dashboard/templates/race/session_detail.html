@@ -417,12 +417,33 @@
 // where the inner array order matches ATHLETES_DATA. course_m is each athlete's
 // projected progress along the primary's polyline. The frontend is a pure renderer.
 const ATHLETES_DATA = {{ athletes_streams | tojson }};
+const ATHLETE_SUMMARY_DATA = {{ athletes | tojson }};
 const GAP_DATA = {{ gap_data | tojson }};
 const REPLAY_FRAMES = {{ replay_frames | tojson }};
 const ATHLETE_COLORS = [
   '#4ade80','#60a5fa','#f97316','#a78bfa','#f472b6',
   '#facc15','#34d399','#fb7185','#38bdf8','#c084fc',
 ];
+const ATHLETE_FINISH_TIMES_S = ATHLETES_DATA.map((a, i) => {
+  const summary = ATHLETE_SUMMARY_DATA[i] || {};
+  if (typeof summary.finish_time_s === 'number') return summary.finish_time_s;
+  const elapsed = Array.isArray(a.elapsed_s) ? a.elapsed_s : [];
+  return elapsed.length ? elapsed[elapsed.length - 1] : null;
+});
+const LEADER_FINISH_TIME_S = ATHLETE_FINISH_TIMES_S
+  .filter(t => typeof t === 'number' && Number.isFinite(t))
+  .reduce((minT, t) => Math.min(minT, t), Number.POSITIVE_INFINITY);
+const POST_FINISH_ORDER = ATHLETE_FINISH_TIMES_S
+  .map((finishTimeS, i) => ({ i, finishTimeS }))
+  .sort((a, b) => {
+    const aFinite = typeof a.finishTimeS === 'number' && Number.isFinite(a.finishTimeS);
+    const bFinite = typeof b.finishTimeS === 'number' && Number.isFinite(b.finishTimeS);
+    if (aFinite && bFinite) return a.finishTimeS - b.finishTimeS || a.i - b.i;
+    if (aFinite) return -1;
+    if (bFinite) return 1;
+    return a.i - b.i;
+  })
+  .map(entry => entry.i);
 
 // ── Leaflet map replay ────────────────────────────────────────────────────────
 const map = L.map('replay-map', { zoomControl: true });
@@ -607,9 +628,11 @@ function computeLeaderboard(frameIdx) {
   const frame = replayFrames[Math.min(frameIdx, totalFrames - 1)];
   if (!frame) return { entries: [], t: 0 };
   const t = frame.t_s ?? (frameIdx * TIME_STEP_S);
+  const useFinishStandings = Number.isFinite(LEADER_FINISH_TIME_S) && t >= LEADER_FINISH_TIME_S;
 
   const entries = (frame.athletes || []).map((entry, i) => {
     const a = ATHLETES_DATA[i] || {};
+    const finishTimeS = ATHLETE_FINISH_TIMES_S[i];
     const vel = entry.vel != null && entry.vel > 0.3 ? entry.vel : null;
     const hr  = entry.hr  != null ? Math.round(entry.hr) : null;
     return {
@@ -619,12 +642,31 @@ function computeLeaderboard(frameIdx) {
       course_m: entry.course_m ?? 0,
       gap_geo_m: entry.gap_geo_m ?? 0,
       rank: entry.rank ?? (i + 1),
+      finish_time_s: finishTimeS,
+      post_finish_gap_s: (
+        useFinishStandings
+        && typeof finishTimeS === 'number'
+        && Number.isFinite(finishTimeS)
+        && Number.isFinite(LEADER_FINISH_TIME_S)
+      )
+        ? Math.max(0, Math.min(t, finishTimeS) - LEADER_FINISH_TIME_S)
+        : null,
       vel, hr,
     };
   });
 
-  entries.sort((a, b) => a.rank - b.rank);
-  return { entries, t };
+  if (useFinishStandings) {
+    const orderIndex = new Map(POST_FINISH_ORDER.map((athleteIdx, pos) => [athleteIdx, pos]));
+    entries.sort((a, b) => {
+      return (orderIndex.get(a.idx) ?? 10_000) - (orderIndex.get(b.idx) ?? 10_000);
+    });
+    entries.forEach((entry, pos) => {
+      entry.rank = pos + 1;
+    });
+  } else {
+    entries.sort((a, b) => a.rank - b.rank);
+  }
+  return { entries, t, useFinishStandings };
 }
 
 function fmtPace(vel_ms) {
@@ -638,19 +680,25 @@ function fmtGap(gap_m) {
   return `+${(gap_m / 1000).toFixed(2)}km`;
 }
 
+function fmtTimeGap(gapS) {
+  return `+${fmtTime(Math.max(0, gapS || 0))}`;
+}
+
 function updateLeaderboard(frameIdx) {
   const rowsEl  = document.getElementById('f1-rows');
   const clockEl = document.getElementById('f1-clock');
   if (!rowsEl) return;
 
-  const { entries, t } = computeLeaderboard(frameIdx);
+  const { entries, t, useFinishStandings } = computeLeaderboard(frameIdx);
   if (clockEl) clockEl.textContent = fmtTime(t);
 
   const hasHr   = entries.some(e => e.hr   != null);
   const hasPace = entries.some(e => e.vel  != null);
 
   rowsEl.innerHTML = entries.map(e => {
-    const gapStr  = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_geo_m);
+    const gapStr  = e.rank === 1
+      ? (useFinishStandings ? 'WIN' : 'LEAD')
+      : (useFinishStandings ? fmtTimeGap(e.post_finish_gap_s) : fmtGap(e.gap_geo_m));
     const paceStr = hasPace ? (e.vel ? fmtPace(e.vel) + '/km' : '—') : '';
     const hrStr   = hasHr   ? (e.hr  ? `${e.hr} ♥`  : '—')   : '';
     return `<div class="f1-row">

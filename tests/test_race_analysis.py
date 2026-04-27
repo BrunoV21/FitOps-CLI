@@ -1374,6 +1374,8 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
     assert resp.status_code == 200
     # Frames render into the REPLAY_FRAMES JSON literal in the template
     assert "REPLAY_FRAMES" in resp.text
+    assert "ATHLETE_SUMMARY_DATA" in resp.text
+    assert '"finish_time_s": 300.0' in resp.text or '"finish_time_s":300.0' in resp.text
     assert '"t_s": 5.0' in resp.text or '"t_s":5.0' in resp.text
 
 
