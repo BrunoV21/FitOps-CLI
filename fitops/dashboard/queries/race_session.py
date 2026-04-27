@@ -315,6 +315,34 @@ async def get_session_detail(session_id: int) -> dict | None:
     gap_data = await get_gap_series(session_id)
     events = await get_events(session_id)
     segments = await get_segments(session_id)
+    athlete_order = {a.athlete_label: idx for idx, a in enumerate(athletes)}
+    gap_data.sort(key=lambda g: athlete_order.get(g["athlete_label"], 10_000))
+
+    replay_frames = sess.get_replay_frames()
+    replay_time_step_s = sess.replay_time_step_s or 5.0
+    from fitops.analytics.race_analysis import REPLAY_FRAME_SCHEMA_V
+
+    # Cold-start fallback: sessions created before the server-driven replay
+    # timeline was introduced have no persisted frames. Also recompute when
+    # the cached payload predates the current replay schema so existing
+    # sessions migrate transparently on next read.
+    stale = bool(
+        replay_frames
+        and replay_frames[0].get("schema_v") != REPLAY_FRAME_SCHEMA_V
+    )
+    if (not replay_frames or stale) and athletes:
+        from fitops.analytics.race_analysis import (
+            compute_replay_frames,
+            normalized_stream_from_dict,
+        )
+
+        try:
+            ns_list = [normalized_stream_from_dict(a.get_stream()) for a in athletes]
+            replay_frames = compute_replay_frames(ns_list, time_step_s=replay_time_step_s)
+        except Exception:
+            replay_frames = []
+        if replay_frames:
+            await save_replay_frames(session_id, replay_frames, replay_time_step_s)
 
     return {
         "session": sess.to_summary_dict(),
@@ -322,6 +350,6 @@ async def get_session_detail(session_id: int) -> dict | None:
         "gap_data": gap_data,
         "events": events,
         "segments": segments,
-        "replay_frames": sess.get_replay_frames(),
-        "replay_time_step_s": sess.replay_time_step_s or 5.0,
+        "replay_frames": replay_frames,
+        "replay_time_step_s": replay_time_step_s,
     }

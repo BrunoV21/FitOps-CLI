@@ -45,7 +45,7 @@ The session detail page has three panels:
 
 ### Gap Analysis
 
-A time-series chart showing each athlete's gap to the leader (in seconds) over the course of the race. The leader at any given point is the athlete with the minimum elapsed time — their line is anchored at 0.
+A time-series chart showing each athlete's gap to the leader (in seconds) over the course of the race — at every distance, the leader is the athlete with the minimum elapsed time and their line is anchored at 0. The y-axis is seconds; the same time-gap values feed event detection (drop / bridge / separation).
 
 - Positive gap = behind the leader
 - A rising line = falling further behind
@@ -92,13 +92,13 @@ Frame shape (one entry per `time_step_s`, default 5 s):
 {
   "t_s": 15.0,
   "athletes": [
-    {"lat": 40.0, "lon": -8.01, "dist_m": 52.4, "vel": 3.5, "hr": 158, "rank": 1, "gap_m": 0.0},
-    {"lat": 40.0, "lon": -8.009, "dist_m": 47.1, "vel": 3.3, "hr": 162, "rank": 2, "gap_m": 5.3}
+    {"lat": 40.0, "lon": -8.01, "course_m": 52.4, "vel": 3.5, "hr": 158, "rank": 1, "gap_m": 0.0, "gap_geo_m": 0.0},
+    {"lat": 40.0, "lon": -8.009, "course_m": 47.1, "vel": 3.3, "hr": 162, "rank": 2, "gap_m": 5.3, "gap_geo_m": 4.8}
   ]
 }
 ```
 
-`frame.athletes[i]` corresponds positionally to the athlete at index `i` returned by the server — athletes are ordered with the primary first, then by insertion time. Rank is assigned by `dist_m` descending (leader = rank 1, `gap_m = 0`).
+`frame.athletes[i]` corresponds positionally to the athlete at index `i` returned by the server — athletes are ordered with the primary first, then by insertion time. Rank is assigned by `course_m` descending (leader = rank 1, `gap_m = 0`). `course_m` is each athlete's projected progress along the primary athlete's route, so leaderboard order matches map position even when athletes started recording at different moments on the course. `gap_m` is the along-route distance behind the leader; `gap_geo_m` is the straight-line haversine distance between the athlete's and leader's lat/lon at that instant — this is what the leaderboard displays so it matches what's visible on the map.
 
 ---
 

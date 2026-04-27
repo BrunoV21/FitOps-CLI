@@ -149,14 +149,14 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">Gap to Leader</span>
-      <span class="panel-meta">leader at 0 m — others show metres behind</span>
+      <span class="panel-meta">leader at 0 s — others show seconds behind</span>
     </div>
     <canvas id="gap-chart" style="max-height:380px;"></canvas>
   </div>
 </div>
 
 {# ── Row 1b: Pace / HR comparison ── #}
-{% set has_pace = athletes_streams and athletes_streams[0].velocity %}
+{% set has_pace = athletes_streams | selectattr('velocity') | list %}
 {% if has_pace %}
 <div class="panel" style="margin-bottom:1.25rem;">
   <div class="panel-header">
@@ -413,8 +413,9 @@
 <script>
 // ── Data from server ──────────────────────────────────────────────────────────
 // Server is the single source of truth: REPLAY_FRAMES is a pre-computed timeline
-// [{t_s, athletes: [{lat, lon, dist_m, vel, hr, rank, gap_m}, ...]}] where the
-// inner array order matches ATHLETES_DATA. The frontend is a pure renderer.
+// [{t_s, athletes: [{lat, lon, course_m, vel, hr, rank, gap_m, gap_geo_m}, ...]}]
+// where the inner array order matches ATHLETES_DATA. course_m is each athlete's
+// projected progress along the primary's polyline. The frontend is a pure renderer.
 const ATHLETES_DATA = {{ athletes_streams | tojson }};
 const GAP_DATA = {{ gap_data | tojson }};
 const REPLAY_FRAMES = {{ replay_frames | tojson }};
@@ -598,9 +599,10 @@ function setSpeed(v) { playSpeed = parseInt(v, 10); }
 
 // ── F1 Leaderboard ────────────────────────────────────────────────────────────
 
-// Returns {entries, t} sorted by rank (P1 first). rank/gap_m/vel/hr/dist_m all
-// come straight from the server-computed frame — no interpolation or ranking
-// happens here. Guarantees the leaderboard is always in lock-step with the map.
+// Returns {entries, t} sorted by rank (P1 first). rank/gap_geo_m/vel/hr/course_m
+// all come straight from the server-computed frame — no interpolation or
+// ranking happens here. gap_geo_m is the haversine distance from the leader
+// at the same instant, so the leaderboard always matches what's on the map.
 function computeLeaderboard(frameIdx) {
   const frame = replayFrames[Math.min(frameIdx, totalFrames - 1)];
   if (!frame) return { entries: [], t: 0 };
@@ -614,8 +616,8 @@ function computeLeaderboard(frameIdx) {
       idx: i,
       label: a.label ?? '',
       color: ATHLETE_COLORS[i % ATHLETE_COLORS.length],
-      dist_m: entry.dist_m ?? 0,
-      gap_m: entry.gap_m ?? 0,
+      course_m: entry.course_m ?? 0,
+      gap_geo_m: entry.gap_geo_m ?? 0,
       rank: entry.rank ?? (i + 1),
       vel, hr,
     };
@@ -648,7 +650,7 @@ function updateLeaderboard(frameIdx) {
   const hasPace = entries.some(e => e.vel  != null);
 
   rowsEl.innerHTML = entries.map(e => {
-    const gapStr  = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_m);
+    const gapStr  = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_geo_m);
     const paceStr = hasPace ? (e.vel ? fmtPace(e.vel) + '/km' : '—') : '';
     const hrStr   = hasHr   ? (e.hr  ? `${e.hr} ♥`  : '—')   : '';
     return `<div class="f1-row">
@@ -706,7 +708,7 @@ function drawLeaderboardOnCanvas(ctx, entries, t) {
     ctx.fillText(name, x0 + 20, ry + rowH - 4);
 
     // Gap
-    const gapStr = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_m);
+    const gapStr = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_geo_m);
     ctx.fillStyle = e.rank === 1 ? '#4ade80' : '#f87171';
     ctx.textAlign = 'right';
     let cx = x0 + boardW - 5;
@@ -978,7 +980,7 @@ renderFrame(0);
   const ctx = document.getElementById('gap-chart').getContext('2d');
   const datasets = GAP_DATA.map((g, i) => {
     const color = ATHLETE_COLORS[i % ATHLETE_COLORS.length];
-    const pts = (g.gap_series || []).map(p => ({ x: p.distance_km, y: p.gap_to_leader_m }));
+    const pts = (g.gap_series || []).map(p => ({ x: p.distance_km, y: p.gap_to_leader_s }));
     return {
       label: g.athlete_label,
       data: pts,
@@ -1002,7 +1004,15 @@ renderFrame(0);
         legend: { labels: { color: '#ccc', font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.dataset.label}: +${ctx.parsed.y.toFixed(0)}m`,
+            label: ctx => {
+              const s = ctx.parsed.y;
+              const sign = s < 0 ? '-' : '+';
+              const abs = Math.abs(s);
+              if (abs < 60) return `${ctx.dataset.label}: ${sign}${abs.toFixed(1)}s`;
+              const m = Math.floor(abs / 60);
+              const rem = abs - m * 60;
+              return `${ctx.dataset.label}: ${sign}${m}:${rem.toFixed(0).padStart(2,'0')}`;
+            },
           }
         }
       },
@@ -1014,7 +1024,7 @@ renderFrame(0);
           grid: { color: '#222' },
         },
         y: {
-          title: { display: true, text: 'Gap to leader (m)', color: '#666' },
+          title: { display: true, text: 'Gap to leader (s)', color: '#666' },
           ticks: { color: '#666' },
           grid: { color: '#222' },
         }

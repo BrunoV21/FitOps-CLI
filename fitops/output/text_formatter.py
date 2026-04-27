@@ -1893,7 +1893,6 @@ def print_race_session_gaps(data: dict) -> None:
         table.add_column("km", justify="right", no_wrap=True)
         table.add_column("Elapsed", justify="right", no_wrap=True)
         table.add_column("Gap to Leader", justify="right", no_wrap=True)
-        table.add_column("Gap (m)", justify="right", no_wrap=True)
         table.add_column("Pos", justify="right", no_wrap=True)
 
         # Sample every ~10 points to avoid wall of text
@@ -1905,7 +1904,6 @@ def print_race_session_gaps(data: dict) -> None:
                 f"{point.get('distance_km', 0):.1f}",
                 _fmt_time(point.get("time_s")),
                 gap_str,
-                f"{point.get('gap_to_leader_m', 0):.0f}",
                 str(point.get("position") or ""),
             )
         console.print(table)

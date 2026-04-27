@@ -18,6 +18,7 @@ from fitops.analytics.race_analysis import (
     NormalizedStream,
     RaceEvent,
     DetectedSegment,
+    REPLAY_FRAME_SCHEMA_V,
     _clean_elapsed_spikes,
     build_common_grid,
     compute_delta_series,
@@ -861,15 +862,9 @@ def client():
 
 def test_dashboard_race_sessions_empty(client, monkeypatch):
     """GET /race/sessions should return 200 with an empty sessions list."""
-    async def _fake_create_all():
-        pass
-
     async def _fake_get_all():
         return []
 
-    monkeypatch.setattr(
-        "fitops.dashboard.routes.race.create_all_tables", _fake_create_all
-    )
     monkeypatch.setattr(
         "fitops.dashboard.routes.race.get_all_race_sessions", _fake_get_all
     )
@@ -881,9 +876,6 @@ def test_dashboard_race_sessions_empty(client, monkeypatch):
 
 def test_dashboard_race_sessions_with_data(client, monkeypatch):
     """GET /race/sessions should render the sessions table when data exists."""
-    async def _fake_create_all():
-        pass
-
     async def _fake_get_all():
         return [
             {
@@ -897,9 +889,6 @@ def test_dashboard_race_sessions_with_data(client, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "fitops.dashboard.routes.race.create_all_tables", _fake_create_all
-    )
-    monkeypatch.setattr(
         "fitops.dashboard.routes.race.get_all_race_sessions", _fake_get_all
     )
 
@@ -910,15 +899,9 @@ def test_dashboard_race_sessions_with_data(client, monkeypatch):
 
 def test_dashboard_race_session_not_found(client, monkeypatch):
     """GET /race/sessions/999 should return 404 when session doesn't exist."""
-    async def _fake_create_all():
-        pass
-
     async def _fake_get_detail(session_id):
         return None
 
-    monkeypatch.setattr(
-        "fitops.dashboard.routes.race.create_all_tables", _fake_create_all
-    )
     monkeypatch.setattr(
         "fitops.dashboard.routes.race.get_session_detail", _fake_get_detail
     )
@@ -929,9 +912,6 @@ def test_dashboard_race_session_not_found(client, monkeypatch):
 
 def test_dashboard_race_session_detail(client, monkeypatch):
     """GET /race/sessions/1 should return 200 with session data rendered."""
-    async def _fake_create_all():
-        pass
-
     fake_session_row = MagicMock()
     fake_session_row.id = 1
     fake_session_row.name = "Test Race Session"
@@ -974,9 +954,6 @@ def test_dashboard_race_session_detail(client, monkeypatch):
     async def _fake_get_athletes(session_id):
         return [fake_athlete]
 
-    monkeypatch.setattr(
-        "fitops.dashboard.routes.race.create_all_tables", _fake_create_all
-    )
     monkeypatch.setattr(
         "fitops.dashboard.routes.race.get_session_detail", _fake_get_detail
     )
@@ -1045,11 +1022,160 @@ def test_replay_frames_rank_by_distance():
     mid = frames[10]
     fast_entry = mid["athletes"][0]
     slow_entry = mid["athletes"][1]
-    assert fast_entry["dist_m"] > slow_entry["dist_m"]
+    assert fast_entry["course_m"] > slow_entry["course_m"]
     assert fast_entry["rank"] == 1
     assert slow_entry["rank"] == 2
     assert fast_entry["gap_m"] == 0.0
     assert slow_entry["gap_m"] > 0.0
+
+
+def test_replay_frames_rank_uses_projection_not_raw_distance():
+    """Ranking reflects projection onto primary's polyline, not each
+    athlete's own cumulative recorded distance."""
+    n_pts = 50
+    times = [i * 200.0 / (n_pts - 1) for i in range(n_pts)]
+
+    # Primary: 1000m straight east, lon span 0.001
+    primary_distances = [i * 1000.0 / (n_pts - 1) for i in range(n_pts)]
+    primary_latlng = [
+        [40.0, -8.0 + (i / (n_pts - 1)) * 0.001] for i in range(n_pts)
+    ]
+    primary = normalize_stream(
+        {"distance": primary_distances, "time": times, "latlng": primary_latlng},
+        "Primary",
+        True,
+    )
+
+    # BigDistShortProj: large recorded distance (800m) but lat/lon only
+    # spans half of primary's polyline (0.0005 lon).
+    a_distances = [i * 800.0 / (n_pts - 1) for i in range(n_pts)]
+    a_latlng = [
+        [40.0, -8.0 + (i / (n_pts - 1)) * 0.0005] for i in range(n_pts)
+    ]
+    athlete_a = normalize_stream(
+        {"distance": a_distances, "time": times, "latlng": a_latlng},
+        "BigDistShortProj",
+        False,
+    )
+
+    # ShortDistLongProj: smaller recorded distance (400m) but lat/lon
+    # reaches 90% along primary's polyline (0.0009 lon).
+    b_distances = [i * 400.0 / (n_pts - 1) for i in range(n_pts)]
+    b_latlng = [
+        [40.0, -8.0 + (i / (n_pts - 1)) * 0.0009] for i in range(n_pts)
+    ]
+    athlete_b = normalize_stream(
+        {"distance": b_distances, "time": times, "latlng": b_latlng},
+        "ShortDistLongProj",
+        False,
+    )
+
+    frames = compute_replay_frames([primary, athlete_a, athlete_b], time_step_s=10.0)
+    final = frames[-1]
+    primary_entry, a_entry, b_entry = final["athletes"]
+
+    # B projects further than A even though A logged more raw distance.
+    assert b_entry["course_m"] > a_entry["course_m"]
+    assert primary_entry["rank"] == 1
+    assert b_entry["rank"] == 2
+    assert a_entry["rank"] == 3
+
+
+def test_replay_frames_projection_stays_on_continuous_course_branch():
+    """Projection should not snap across nearby out-and-back segments."""
+    n_pts = 41
+    times = [i * 400.0 / (n_pts - 1) for i in range(n_pts)]
+
+    # Primary course: eastbound lower lane, short connector, westbound upper lane.
+    primary_distances = []
+    primary_latlng = []
+    for i in range(n_pts):
+        frac = i / (n_pts - 1)
+        if frac <= 0.5:
+            leg_frac = frac / 0.5
+            primary_distances.append(leg_frac * 1000.0)
+            primary_latlng.append([40.0, -8.0 + leg_frac * 0.001])
+        else:
+            leg_frac = (frac - 0.5) / 0.5
+            primary_distances.append(1000.0 + leg_frac * 1000.0)
+            primary_latlng.append([40.00005, -7.999 + (1.0 - leg_frac) * 0.001])
+    primary = normalize_stream(
+        {"distance": primary_distances, "time": times, "latlng": primary_latlng},
+        "Primary",
+        True,
+    )
+
+    # Secondary athlete runs the lower eastbound lane only. A northward GPS blip
+    # near halfway puts them physically closer to the upper return lane, which
+    # used to make projection jump from ~500m to ~1500m.
+    athlete_distances = [i * 1000.0 / (n_pts - 1) for i in range(n_pts)]
+    athlete_latlng = []
+    for i in range(n_pts):
+        lat = 40.0
+        if i == n_pts // 2:
+            lat = 40.00004
+        athlete_latlng.append([lat, -8.0 + (i / (n_pts - 1)) * 0.001])
+    athlete = normalize_stream(
+        {"distance": athlete_distances, "time": times, "latlng": athlete_latlng},
+        "Runner",
+        False,
+    )
+
+    frames = compute_replay_frames([primary, athlete], time_step_s=10.0)
+    mid_entry = frames[len(frames) // 2]["athletes"][1]
+
+    assert mid_entry["course_m"] == pytest.approx(500.0, abs=80.0)
+    assert mid_entry["course_m"] < 900.0
+
+
+def test_replay_frames_projection_handles_start_finish_overlap():
+    """Start/finish loops should not snap an athlete onto the finish branch."""
+    n_pts = 41
+    times = [i * 400.0 / (n_pts - 1) for i in range(n_pts)]
+
+    # Canonical route: out leg, long middle, return near the starting area.
+    primary_distances = []
+    primary_latlng = []
+    for i in range(n_pts):
+        frac = i / (n_pts - 1)
+        if frac <= 0.33:
+            leg_frac = frac / 0.33
+            primary_distances.append(leg_frac * 400.0)
+            primary_latlng.append([40.0, -8.0 + leg_frac * 0.0004])
+        elif frac <= 0.66:
+            leg_frac = (frac - 0.33) / 0.33
+            primary_distances.append(400.0 + leg_frac * 400.0)
+            primary_latlng.append([40.0006, -7.9996 + leg_frac * 0.0004])
+        else:
+            leg_frac = (frac - 0.66) / 0.34
+            primary_distances.append(800.0 + leg_frac * 400.0)
+            primary_latlng.append([40.00005, -7.9992 - leg_frac * 0.00035])
+    primary = normalize_stream(
+        {"distance": primary_distances, "time": times, "latlng": primary_latlng},
+        "Primary",
+        True,
+    )
+
+    # Athlete follows the early branch only. The opening samples are physically
+    # close to the later return leg, so a nearest-only projection would choose
+    # the finish branch instead of the start branch.
+    athlete_distances = [i * 500.0 / (n_pts - 1) for i in range(n_pts)]
+    athlete_latlng = [
+        [40.0 + (i / (n_pts - 1)) * 0.00035, -8.0 + (i / (n_pts - 1)) * 0.00038]
+        for i in range(n_pts)
+    ]
+    athlete = normalize_stream(
+        {"distance": athlete_distances, "time": times, "latlng": athlete_latlng},
+        "Runner",
+        False,
+    )
+
+    frames = compute_replay_frames([primary, athlete], time_step_s=10.0)
+    early_entry = frames[1]["athletes"][1]
+    mid_entry = frames[len(frames) // 3]["athletes"][1]
+
+    assert early_entry["course_m"] < 150.0
+    assert mid_entry["course_m"] < 700.0
 
 
 def test_replay_frames_gap_non_negative():
@@ -1090,6 +1216,48 @@ def test_replay_frames_preserves_input_order():
     assert mid["athletes"][1]["rank"] == 1
 
 
+def test_replay_frames_rank_uses_exact_course_m_for_near_ties():
+    """Near-tied athletes should still rank by exact progress, not just display rounding."""
+    n_pts = 50
+    times = [i * 200.0 / (n_pts - 1) for i in range(n_pts)]
+
+    primary = normalize_stream(
+        {
+            "distance": [i * 1000.0 / (n_pts - 1) for i in range(n_pts)],
+            "time": times,
+            "latlng": [[40.0, -8.0 + (i / (n_pts - 1)) * 0.001] for i in range(n_pts)],
+        },
+        "Primary",
+        True,
+    )
+    a = normalize_stream(
+        {
+            "distance": [i * 500.0 / (n_pts - 1) for i in range(n_pts)],
+            "time": times,
+            "latlng": [[40.0, -8.0 + (i / (n_pts - 1)) * 0.00050000] for i in range(n_pts)],
+        },
+        "A",
+        False,
+    )
+    b = normalize_stream(
+        {
+            "distance": [i * 500.0 / (n_pts - 1) for i in range(n_pts)],
+            "time": times,
+            "latlng": [[40.0, -8.0 + (i / (n_pts - 1)) * 0.00050008] for i in range(n_pts)],
+        },
+        "B",
+        False,
+    )
+
+    frames = compute_replay_frames([primary, a, b], time_step_s=10.0)
+    final = frames[-1]["athletes"]
+    a_entry = final[1]
+    b_entry = final[2]
+
+    assert abs(a_entry["course_m"] - b_entry["course_m"]) < 0.11
+    assert b_entry["rank"] < a_entry["rank"]
+
+
 def test_replay_frames_invalid_time_step():
     """Non-positive time_step_s returns empty."""
     ns = _make_ns_with_latlng("A", 500.0, 200.0, is_primary=True)
@@ -1105,28 +1273,56 @@ def test_replay_frames_frame_shape():
     assert "t_s" in f
     assert "athletes" in f
     entry = f["athletes"][0]
-    for key in ("lat", "lon", "dist_m", "vel", "hr", "rank", "gap_m"):
+    for key in ("lat", "lon", "course_m", "vel", "hr", "rank", "gap_m", "gap_geo_m"):
         assert key in entry
+
+
+def test_replay_frames_gap_geo_m_leader_zero_and_haversine():
+    """gap_geo_m: 0 for leader, equals haversine(leader_latlon, athlete_latlon) otherwise."""
+    import math
+
+    fast = _make_ns_with_latlng("Fast", 1000.0, 200.0, is_primary=True)
+    slow = _make_ns_with_latlng("Slow", 1000.0, 400.0, is_primary=False)
+    frames = compute_replay_frames([fast, slow], time_step_s=10.0)
+
+    def haversine_m(lat1, lon1, lat2, lon2):
+        R = 6_371_000.0
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        d_phi = math.radians(lat2 - lat1)
+        d_lam = math.radians(lon2 - lon1)
+        a = (math.sin(d_phi / 2) ** 2
+             + math.cos(phi1) * math.cos(phi2) * math.sin(d_lam / 2) ** 2)
+        return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    for f in frames:
+        for entry in f["athletes"]:
+            assert entry["gap_geo_m"] >= 0.0
+        leader = next(e for e in f["athletes"] if e["rank"] == 1)
+        assert leader["gap_geo_m"] == 0.0
+        for entry in f["athletes"]:
+            if entry["rank"] == 1:
+                continue
+            expected = haversine_m(leader["lat"], leader["lon"], entry["lat"], entry["lon"])
+            assert entry["gap_geo_m"] == pytest.approx(round(expected, 1), abs=0.2)
 
 
 def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch):
     """GET /race/sessions/1 should pass pre-built replay frames to the template."""
-    async def _fake_create_all():
-        pass
-
     frames = [
         {
+            "schema_v": REPLAY_FRAME_SCHEMA_V,
             "t_s": 0.0,
             "athletes": [
-                {"lat": 40.0, "lon": -8.0, "dist_m": 0.0, "vel": 3.0,
-                 "hr": 150.0, "rank": 1, "gap_m": 0.0}
+                {"lat": 40.0, "lon": -8.0, "course_m": 0.0, "vel": 3.0,
+                 "hr": 150.0, "rank": 1, "gap_m": 0.0, "gap_geo_m": 0.0}
             ],
         },
         {
+            "schema_v": REPLAY_FRAME_SCHEMA_V,
             "t_s": 5.0,
             "athletes": [
-                {"lat": 40.0, "lon": -7.9999, "dist_m": 15.0, "vel": 3.0,
-                 "hr": 151.0, "rank": 1, "gap_m": 0.0}
+                {"lat": 40.0, "lon": -7.9999, "course_m": 15.0, "vel": 3.0,
+                 "hr": 151.0, "rank": 1, "gap_m": 0.0, "gap_geo_m": 0.0}
             ],
         },
     ]
@@ -1168,9 +1364,6 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
         return [fake_athlete]
 
     monkeypatch.setattr(
-        "fitops.dashboard.routes.race.create_all_tables", _fake_create_all
-    )
-    monkeypatch.setattr(
         "fitops.dashboard.routes.race.get_session_detail", _fake_get_detail
     )
     monkeypatch.setattr(
@@ -1182,3 +1375,121 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
     # Frames render into the REPLAY_FRAMES JSON literal in the template
     assert "REPLAY_FRAMES" in resp.text
     assert '"t_s": 5.0' in resp.text or '"t_s":5.0' in resp.text
+
+
+def test_get_session_detail_lazy_computes_frames_for_cold_start(monkeypatch):
+    """Sessions predating the replay-frames feature must backfill frames on read."""
+    import asyncio
+
+    from fitops.dashboard.queries import race_session as qs
+
+    fake_sess = MagicMock()
+    fake_sess.replay_frames_json = None
+    fake_sess.replay_time_step_s = None
+    fake_sess.get_replay_frames.return_value = []
+    fake_sess.to_summary_dict.return_value = {"id": 1, "name": "Cold Start"}
+
+    ns = _make_ns_with_latlng("A", 1000.0, 200.0, is_primary=True)
+    stream_dict = normalized_stream_to_dict(ns)
+    fake_athlete = MagicMock()
+    fake_athlete.get_stream.return_value = stream_dict
+    fake_athlete.to_summary_dict.return_value = {"athlete_label": "A", "is_primary": True}
+
+    saved = {}
+
+    async def _fake_get_race_session(_id):
+        return fake_sess
+
+    async def _fake_get_session_athletes(_id):
+        return [fake_athlete]
+
+    async def _fake_save_replay_frames(session_id, frames, step):
+        saved["session_id"] = session_id
+        saved["frames"] = frames
+        saved["step"] = step
+
+    async def _empty_list(_id):
+        return []
+
+    monkeypatch.setattr(qs, "get_race_session", _fake_get_race_session)
+    monkeypatch.setattr(qs, "get_session_athletes", _fake_get_session_athletes)
+    monkeypatch.setattr(qs, "save_replay_frames", _fake_save_replay_frames)
+    monkeypatch.setattr(qs, "get_gap_series", _empty_list)
+    monkeypatch.setattr(qs, "get_events", _empty_list)
+    monkeypatch.setattr(qs, "get_segments", _empty_list)
+
+    detail = asyncio.run(qs.get_session_detail(1))
+
+    assert detail is not None
+    assert len(detail["replay_frames"]) > 0
+    assert detail["replay_time_step_s"] == 5.0
+    # Verifies the cold-start fallback persisted the freshly computed frames
+    assert saved["session_id"] == 1
+    assert saved["frames"] == detail["replay_frames"]
+    assert saved["step"] == 5.0
+
+
+def test_get_session_detail_recomputes_stale_replay_schema(monkeypatch):
+    """Older cached replay payloads should be rebuilt once with the new schema."""
+    import asyncio
+
+    from fitops.dashboard.queries import race_session as qs
+
+    fake_sess = MagicMock()
+    fake_sess.replay_frames_json = "stale"
+    fake_sess.replay_time_step_s = 5.0
+    fake_sess.get_replay_frames.return_value = [
+        {
+            "t_s": 0.0,
+            "athletes": [
+                {
+                    "lat": 40.0,
+                    "lon": -8.0,
+                    "course_m": 0.0,
+                    "vel": 3.0,
+                    "hr": 150.0,
+                    "rank": 1,
+                    "gap_m": 0.0,
+                    "gap_geo_m": 0.0,
+                }
+            ],
+        }
+    ]
+    fake_sess.to_summary_dict.return_value = {"id": 1, "name": "Stale Replay"}
+
+    ns = _make_ns_with_latlng("A", 1000.0, 200.0, is_primary=True)
+    stream_dict = normalized_stream_to_dict(ns)
+    fake_athlete = MagicMock()
+    fake_athlete.get_stream.return_value = stream_dict
+    fake_athlete.to_summary_dict.return_value = {"athlete_label": "A", "is_primary": True}
+
+    saved = {}
+
+    async def _fake_get_race_session(_id):
+        return fake_sess
+
+    async def _fake_get_session_athletes(_id):
+        return [fake_athlete]
+
+    async def _fake_save_replay_frames(session_id, frames, step):
+        saved["session_id"] = session_id
+        saved["frames"] = frames
+        saved["step"] = step
+
+    async def _empty_list(_id):
+        return []
+
+    monkeypatch.setattr(qs, "get_race_session", _fake_get_race_session)
+    monkeypatch.setattr(qs, "get_session_athletes", _fake_get_session_athletes)
+    monkeypatch.setattr(qs, "save_replay_frames", _fake_save_replay_frames)
+    monkeypatch.setattr(qs, "get_gap_series", _empty_list)
+    monkeypatch.setattr(qs, "get_events", _empty_list)
+    monkeypatch.setattr(qs, "get_segments", _empty_list)
+
+    detail = asyncio.run(qs.get_session_detail(1))
+
+    assert detail is not None
+    assert detail["replay_frames"][0]["schema_v"] == REPLAY_FRAME_SCHEMA_V
+    assert saved["session_id"] == 1
+    assert saved["frames"] == detail["replay_frames"]
+    assert saved["step"] == 5.0
