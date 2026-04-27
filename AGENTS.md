@@ -133,6 +133,45 @@ persist_training_load()  →    analytics_snapshots     ← dashboard / CLI SELE
 
 ---
 
+## Schema, Migrations, and DDL — Startup Only
+
+> **Never call `create_all_tables()`, run migrations, or execute DDL inside a route handler, CLI command, or `dashboard/queries/` function. Schema work happens once at process startup — never on the request path.**
+
+A single inline `await create_all_tables()` looks harmless. It is not. The dashboard ran with ~20 inline calls and produced intermittent multi-second hangs across Overview, Race simulate, and Race plan pages. The failure modes:
+
+1. **Per-request write transactions.** Every page load takes the SQLite writer lock. Concurrent readers stall behind it, serializing the whole dashboard.
+2. **Compounding latency.** A slow third-party upstream (e.g. Open-Meteo) holding a connection while the route also waits on the writer lock turns one slow call into a cascade.
+3. **Hidden one-shot data migrations.** Gating a data migration with a `schema_version` row is the right pattern, but only when it runs once at startup. On the request path it still costs two SELECTs and a possible write per hit.
+
+### Where DDL belongs
+
+| Operation | Where it runs |
+|-----------|---------------|
+| `create_all_tables()`, `Base.metadata.create_all` | FastAPI lifespan startup in `fitops/dashboard/server.py` (already wired) |
+| Idempotent column adds (`_migrate_*_columns`) | Same lifespan call — safe at every boot |
+| One-shot data migrations | Lifespan, gated by a `schema_version` row so they run once and skip on every subsequent boot |
+| New tables/indexes for a feature | Add the model + migration; the lifespan call picks it up at the next start |
+
+### Where DDL must NOT live
+
+- Inside any function in `fitops/dashboard/routes/`
+- Inside any Typer command handler in `fitops/cli/`
+- Inside any function in `fitops/dashboard/queries/`
+- Inside test fixtures that mirror production startup (mock the data layer, not the schema bootstrap)
+
+### The broader rule: no blocking writes on the read path
+
+DDL is the worst offender, but the principle generalises. **The dashboard request path and the CLI read path must not introduce blocking writes.** That includes:
+
+- Schema migrations and `CREATE TABLE` / `ALTER TABLE` calls.
+- Bulk re-indexes or full-table rewrites triggered by a page view.
+- Synchronous third-party HTTP calls without a tight timeout (use ≤3s for read-path calls; cache results with a TTL when the upstream is slow or rate-limited).
+- Background recomputation of values that already live in `analytics_snapshots` or on the `Activity` row.
+
+If a route needs a value that is expensive to compute, it is computed at sync time (see [Performance Rule](#performance-rule-compute-once-at-sync-read-at-display)) or at startup. Never on the request.
+
+---
+
 ## Agent Interface Contract (CLI)
 
 ### Output format
@@ -308,6 +347,8 @@ Follow these steps in order. Do not skip steps or defer them to a follow-up PR.
 - **Never put formatting or style rules in this file.** Those belong in `.ruff.toml` / pre-commit hooks, not here.
 - **Never modify `~/.fitops/fitops.db` directly** in code outside of `fitops/db/`. All DB access goes through the session and model layer.
 - **Never expose raw SQL to CLI or dashboard handlers.** SQL lives in `fitops/dashboard/queries/` or SQLModel query helpers.
+- **Never run schema operations on the request path.** `create_all_tables()`, `Base.metadata.create_all`, ad-hoc `ALTER TABLE`, and one-shot data migrations belong in the FastAPI lifespan (or the CLI's startup path). Inline calls inside routes serialize the SQLite writer and stall concurrent reads. See [Schema, Migrations, and DDL — Startup Only](#schema-migrations-and-ddl--startup-only).
+- **Never make blocking write or recompute calls on the read path.** Bulk re-indexes, full-table rewrites, and uncached third-party HTTP calls without a tight timeout do not belong in a route handler or CLI read command. Compute at sync time, cache with a TTL, or move to a background job.
 - **Never skip the docs update.** A feature with no doc change is incomplete by definition.
 - **Never ship a feature that only works on one surface** (CLI or dashboard) without an explicit exemption in the task description.
 

@@ -82,6 +82,8 @@ Follow this order — do not skip steps:
 - Ship a feature that only works on one surface without an explicit exemption
 - Skip the docs update
 - Use `--no-verify` or bypass hooks
+- **Run schema or DDL on the request path.** `create_all_tables()`, `Base.metadata.create_all`, ad-hoc `ALTER TABLE`, and one-shot data migrations belong in the FastAPI lifespan startup — never inside a route, CLI command, or `dashboard/queries/`. Inline DDL serializes the SQLite writer and stalls concurrent reads. See `AGENTS.md § Schema, Migrations, and DDL — Startup Only`.
+- **Add blocking writes, full-table rewrites, or uncached slow HTTP calls to a read path.** Compute at sync time, cache with a TTL, or move to a background job — a route handler must not stall on work that wasn't done up front.
 
 ---
 
@@ -90,6 +92,8 @@ Follow this order — do not skip steps:
 > **Expensive computations MUST be stored in the DB at sync time. Dashboard and CLI reads must never recompute what can be looked up.**
 
 This is non-negotiable. The dashboard runs on every page load — recomputing EWMA warmups or running N+1 DB loops on every request kills responsiveness.
+
+> The same logic extends to schema work: DDL and one-shot data migrations run **once at startup**, not on every request. See `AGENTS.md § Schema, Migrations, and DDL — Startup Only`.
 
 ### The pattern
 
