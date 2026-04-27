@@ -126,6 +126,7 @@ class RaceSessionEvent(Base):
     # Positive = gained time, negative = lost time
     impact_s: Mapped[float | None] = mapped_column(Float, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -137,6 +138,7 @@ class RaceSessionEvent(Base):
             "elapsed_s": self.elapsed_s,
             "impact_s": self.impact_s,
             "description": self.description,
+            "context": json.loads(self.context_json) if self.context_json else {},
         }
 
 

@@ -76,6 +76,10 @@ function initDeepAnalysis(config) {
   _da.config = config;
   const { streams, sportType, isRun, thresholds, dsStep, segments, laps, powerCurve } = config;
 
+  // Estimated running power is stored as stream_type "power"; fall back so
+  // the watts chart and segment analysis render it the same way.
+  if (!streams.watts && streams.power) streams.watts = streams.power;
+
   // Build X-axis labels
   const dist = streams.distance || [];
   const time = streams.time || [];

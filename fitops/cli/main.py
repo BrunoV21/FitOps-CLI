@@ -17,6 +17,7 @@ app = typer.Typer(
 
 def _register_subapps() -> None:
     from fitops.cli.activities import app as activities_app
+    from fitops.cli.admin import app as admin_app
     from fitops.cli.analytics import app as analytics_app
     from fitops.cli.athlete import app as athlete_app
     from fitops.cli.auth import app as auth_app
@@ -82,6 +83,11 @@ def _register_subapps() -> None:
         backup_app,
         name="backup",
         help=f"Backup and restore FitOps data.\n\nDocs: {CLI_DOCS['backup']}",
+    )
+    app.add_typer(
+        admin_app,
+        name="admin",
+        help=f"Admin utilities (backfill, recompute).\n\nDocs: {CLI_DOCS['admin']}",
     )
 
 

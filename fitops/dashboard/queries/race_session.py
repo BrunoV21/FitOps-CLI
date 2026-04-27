@@ -220,6 +220,7 @@ async def save_events(session_id: int, events: list) -> None:
                 elapsed_s=ev.elapsed_s,
                 impact_s=ev.impact_s,
                 description=ev.description,
+                context_json=json.dumps(ev.context or {}),
             )
             session.add(row)
 
@@ -315,6 +316,9 @@ async def get_session_detail(session_id: int) -> dict | None:
     gap_data = await get_gap_series(session_id)
     events = await get_events(session_id)
     segments = await get_segments(session_id)
+    from fitops.analytics.race_analysis import summarize_race_events
+
+    events_summary = summarize_race_events(events)
     athlete_order = {a.athlete_label: idx for idx, a in enumerate(athletes)}
     gap_data.sort(key=lambda g: athlete_order.get(g["athlete_label"], 10_000))
 
@@ -349,6 +353,7 @@ async def get_session_detail(session_id: int) -> dict | None:
         "athletes": [a.to_summary_dict() for a in athletes],
         "gap_data": gap_data,
         "events": events,
+        "events_summary": events_summary,
         "segments": segments,
         "replay_frames": replay_frames,
         "replay_time_step_s": replay_time_step_s,

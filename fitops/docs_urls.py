@@ -21,6 +21,7 @@ CLI_DOCS: dict[str, str] = {
     "race": f"{DOC_BASE}/commands/race",
     "notes": f"{DOC_BASE}/commands/notes",
     "backup": f"{DOC_BASE}/commands/backup",
+    "admin": f"{DOC_BASE}/getting-started/",
     "dashboard": f"{DOC_BASE}/getting-started/",
     # top-level fitops command
     "main": f"{DOC_BASE}/getting-started/",

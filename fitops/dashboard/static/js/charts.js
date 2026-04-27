@@ -466,11 +466,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     }
   }
 
-  // Power (hidden by default)
-  if ((streams.watts || []).length > 0) {
+  // Power (hidden by default) — Strava cycling watts or estimated running power
+  const _pwrStream = streams.watts || streams.power || [];
+  if (_pwrStream.length > 0) {
     datasets.push({
       label: 'Power',
-      data: streams.watts,
+      data: _pwrStream,
       borderColor: '#aa55ff',
       borderWidth: 1.5,
       pointRadius: 0,
@@ -480,7 +481,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       hidden: true,
       _metricKey: 'pwr',
     });
-    const pwrVals = streams.watts.filter(v => v && v > 0);
+    const pwrVals = _pwrStream.filter(v => v && v > 0);
     scales.yPwr = { display: false, position: 'right', min: 0 };
     if (pwrVals.length) {
       scales.yPwr.suggestedMax = Math.max(...pwrVals) * 1.05;
