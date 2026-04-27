@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime
 
 import httpx
 
 BASE_URL = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+
+# Forecast responses are cached in-memory for FORECAST_CACHE_TTL_S so the
+# overview page doesn't re-hit Open-Meteo on every refresh. The dashboard
+# request path uses a short timeout so a slow upstream can't stall the page.
+_FORECAST_CACHE_TTL_S = 600.0
+_FORECAST_TIMEOUT_S = 3.0
+_forecast_cache: dict[tuple, tuple[float, dict | None]] = {}
 
 HOURLY_FIELDS = [
     "temperature_2m",
@@ -73,6 +81,12 @@ async def fetch_forecast_weather(
     date: 'YYYY-MM-DD', hour: 0-23 (local time at location).
     Returns dict with normalized field names, or None on failure.
     """
+    cache_key = (round(lat, 3), round(lng, 3), date, hour)
+    now = time.monotonic()
+    cached = _forecast_cache.get(cache_key)
+    if cached and (now - cached[0]) < _FORECAST_CACHE_TTL_S:
+        return cached[1]
+
     params = {
         "latitude": round(lat, 4),
         "longitude": round(lng, 4),
@@ -84,7 +98,7 @@ async def fetch_forecast_weather(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=_FORECAST_TIMEOUT_S) as client:
             resp = await client.get(FORECAST_URL, params=params)
             resp.raise_for_status()
         data = resp.json()
@@ -92,6 +106,8 @@ async def fetch_forecast_weather(
         raw = {field: hourly[field][hour] for field in HOURLY_FIELDS}
         result = {_FIELD_MAP[k]: v for k, v in raw.items()}
         result["_timezone"] = data.get("timezone", "UTC")
-        return result
     except Exception:
-        return None
+        result = None
+
+    _forecast_cache[cache_key] = (now, result)
+    return result
