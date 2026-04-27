@@ -38,6 +38,8 @@ from fitops.dashboard.queries.race_session import (
     save_segments,
 )
 from fitops.analytics.race_analysis import (
+    _build_course_polyline,
+    _map_stream_to_course_progress,
     compute_athlete_metrics,
     compute_delta_series,
     compute_gap_series,
@@ -56,7 +58,6 @@ from fitops.analytics.race_analysis import (
 )
 
 REPLAY_TIME_STEP_S = 5.0
-from fitops.db.migrations import create_all_tables
 from fitops.race.course_parser import (
     build_km_segments,
     compute_total_elevation_gain,
@@ -215,7 +216,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/race", response_class=HTMLResponse)
     async def race_index(request: Request):
-        await create_all_tables()
         courses = await get_all_courses()
         return templates.TemplateResponse(
             request,
@@ -243,7 +243,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         url: str | None = Form(None),
         file: UploadFile | None = File(None),
     ):
-        await create_all_tables()
         error: str | None = None
         points = []
 
@@ -319,7 +318,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/race/plans", response_class=HTMLResponse)
     async def race_plans_list(request: Request):
-        await create_all_tables()
         plans = await get_all_race_plans()
         # Enrich with course names
         course_cache: dict[int, str] = {}
@@ -339,7 +337,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/race/sessions", response_class=HTMLResponse)
     async def race_sessions_list(request: Request):
-        await create_all_tables()
         sessions = await get_all_race_sessions()
         return templates.TemplateResponse(
             request,
@@ -353,7 +350,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/race/sessions/create", response_class=HTMLResponse)
     async def race_session_create_get(request: Request):
-        await create_all_tables()
         courses = await get_all_courses()
         return templates.TemplateResponse(
             request,
@@ -368,7 +364,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         activity: int = Form(...),
         course: str = Form(""),
     ):
-        await create_all_tables()
         course_id = int(course) if course.strip() else None
         error = None
 
@@ -445,7 +440,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         activity: str = Form(""),
         gpx_file: UploadFile = File(None),
     ):
-        await create_all_tables()
         error = None
 
         # ── Phase 1: fetch + normalise + persist athlete (errors are fatal) ──
@@ -576,7 +570,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/race/sessions/{session_id}/companions", response_class=JSONResponse)
     async def race_session_companions(request: Request, session_id: int):
         """Return Strava group-run companions for this session's primary activity."""
-        await create_all_tables()
         detail = await get_session_detail(session_id)
         if detail is None:
             return JSONResponse({"companions": [], "error": "Session not found"}, status_code=404)
@@ -598,7 +591,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         Processes Phase 1 (fetch + persist) for each athlete, then runs one
         Phase 2 recompute.  Returns ``{results: [{label, ok, error}]}``.
         """
-        await create_all_tables()
         body = await request.json()
         athletes_to_add = body if isinstance(body, list) else []
 
@@ -677,13 +669,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.post("/race/sessions/{session_id}/delete", response_class=HTMLResponse)
     async def race_session_delete(request: Request, session_id: int):
-        await create_all_tables()
         await delete_race_session(session_id)
         return RedirectResponse(url="/race/sessions", status_code=303)
 
     @router.get("/race/sessions/{session_id}", response_class=HTMLResponse)
     async def race_session_detail(request: Request, session_id: int):
-        await create_all_tables()
         detail = await get_session_detail(session_id)
         if detail is None:
             from fastapi.responses import Response
@@ -696,6 +686,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         # Build per-athlete stream data for the Leaflet replay + pace chart
         db_athletes = await get_session_athletes(session_id)
+        ns_by_label = {}
+        for a in db_athletes:
+            stream = a.get_stream()
+            if {"label", "is_primary", "distance_grid", "elapsed_s"}.issubset(stream):
+                ns_by_label[a.athlete_label] = normalized_stream_from_dict(stream)
+        primary_ns = next((ns for ns in ns_by_label.values() if ns.is_primary), None)
+        course = (
+            _build_course_polyline(primary_ns.latlng, primary_ns.distance_grid)
+            if primary_ns is not None
+            else None
+        )
         athletes_streams = []
         for a in db_athletes:
             stream = a.get_stream()
@@ -704,6 +705,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
             dist_grid = stream.get("distance_grid", [])
             velocity = stream.get("velocity", [])
             heartrate = stream.get("heartrate", [])
+            ns = ns_by_label.get(a.athlete_label)
+            course_progress_m = _map_stream_to_course_progress(ns, course) if ns else dist_grid
             # Subsample to every 5th point (~50 m resolution) for the pace chart
             step = 5
             athletes_streams.append({
@@ -711,7 +714,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "is_primary": a.is_primary,
                 "latlng": latlng,
                 "elapsed_s": elapsed,
-                "distance_km": [round(d / 1000, 3) for d in dist_grid[::step]] if dist_grid else [],
+                "distance_km": [round(d / 1000, 3) for d in course_progress_m[::step]] if course_progress_m else [],
                 "velocity": [round(v, 3) if v else None for v in velocity[::step]] if velocity else [],
                 "heartrate": [round(h, 1) if h else None for h in heartrate[::step]] if heartrate else [],
                 "strava_url": f"https://www.strava.com/activities/{a.activity_id}" if a.activity_id else None,
@@ -737,13 +740,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.post("/race/{course_id}/delete", response_class=HTMLResponse)
     async def race_delete(request: Request, course_id: int):
-        await create_all_tables()
         await delete_course(course_id)
         return RedirectResponse(url="/race", status_code=303)
 
     @router.get("/race/{course_id}", response_class=HTMLResponse)
     async def race_course(request: Request, course_id: int):
-        await create_all_tables()
         course = await get_course(course_id)
         if course is None:
             return HTMLResponse(
@@ -770,7 +771,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/race/{course_id}/simulate", response_class=HTMLResponse)
     async def race_simulate_form(request: Request, course_id: int):
-        await create_all_tables()
         course = await get_course(course_id)
         if course is None:
             return HTMLResponse(
@@ -815,7 +815,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         wind: str | None = Form(None),
         wind_dir: str | None = Form(None),
     ):
-        await create_all_tables()
         course = await get_course(course_id)
         if course is None:
             return HTMLResponse(
@@ -1117,7 +1116,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         override_plan_id: str | None = Form(None),
     ):
         """Save a simulation result as a named race plan."""
-        await create_all_tables()
         course = await get_course(course_id)
         if course is None:
             return HTMLResponse(
@@ -1302,7 +1300,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/race/plans/{plan_id}", response_class=HTMLResponse)
     async def race_plan_detail(request: Request, plan_id: int):
-        await create_all_tables()
         plan = await get_race_plan(plan_id)
         if plan is None:
             return HTMLResponse(
@@ -1454,7 +1451,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         wind_dir: str | None = Form(None),
     ):
         """Re-simulate and update an existing plan."""
-        await create_all_tables()
         plan = await get_race_plan(plan_id)
         if plan is None:
             return HTMLResponse(
@@ -1554,7 +1550,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.post("/race/plans/{plan_id}/delete", response_class=HTMLResponse)
     async def race_plan_delete(request: Request, plan_id: int):
-        await create_all_tables()
         await delete_race_plan(plan_id)
         return RedirectResponse(url="/race/plans", status_code=303)
 

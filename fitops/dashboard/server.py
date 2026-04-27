@@ -30,11 +30,16 @@ def create_app(port: int = 8888) -> FastAPI:
         workouts,
     )
 
+    from fitops.db.migrations import create_all_tables
+
     _scheduler_task: asyncio.Task | None = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         nonlocal _scheduler_task
+        # Run schema creation + migrations once at startup so request handlers
+        # don't open a write transaction on every page load.
+        await create_all_tables()
         _scheduler_task = asyncio.create_task(backup.run_scheduler())
         yield
         if _scheduler_task:

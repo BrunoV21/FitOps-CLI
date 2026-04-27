@@ -326,11 +326,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if cfg.athlete_id and ("weight_kg" in updates or "birthday" in updates):
             from sqlalchemy import select
 
-            from fitops.db.migrations import create_all_tables
             from fitops.db.models.athlete import Athlete
             from fitops.db.session import get_async_session
 
-            await create_all_tables()
             async with get_async_session() as session:
                 result = await session.execute(
                     select(Athlete).where(Athlete.strava_id == cfg.athlete_id)

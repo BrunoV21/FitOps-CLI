@@ -7,7 +7,6 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
 from fitops.dashboard.queries.notes import get_all_notes, get_all_tags, upsert_note
-from fitops.db.migrations import create_all_tables
 from fitops.db.models.note import Note
 from fitops.db.session import get_async_session
 from fitops.notes.loader import (
@@ -44,7 +43,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         activity_id: str = "",
         q: str = "",
     ):
-        await create_all_tables()
         await _sync_db_from_disk()
 
         act_id = int(activity_id) if activity_id.strip().isdigit() else None
@@ -101,7 +99,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         body: str = Form(""),
         activity_id: str = Form(""),
     ):
-        await create_all_tables()
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
         act_id = int(activity_id) if activity_id.strip().isdigit() else None
 
@@ -150,7 +147,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         body: str = Form(""),
         activity_id: str = Form(""),
     ):
-        await create_all_tables()
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
         act_id = int(activity_id) if activity_id.strip().isdigit() else None
 
@@ -167,7 +163,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
     @router.post("/notes/{slug}/delete")
     async def notes_delete(request: Request, slug: str):
-        await create_all_tables()
         delete_note_file(slug)
 
         async with get_async_session() as session:
