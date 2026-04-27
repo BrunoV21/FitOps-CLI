@@ -17,8 +17,15 @@ class RaceSession(Base):
     primary_activity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     course_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Pre-computed replay timeline — JSON: list of
-    # {t_s, athletes: [{lat, lon, dist_m, vel, hr, rank, gap_m}, ...]}
-    # Athletes array preserves the order returned by get_session_athletes().
+    # {t_s, athletes: [{lat, lon, course_m, vel, hr, rank, gap_m, gap_geo_m}, ...]}
+    # course_m is each athlete's projected progress along the primary athlete's
+    # recorded track (their interpolated lat/lon perpendicular-projected onto
+    # the primary's polyline). Ranking and gap_m derive from course_m so they
+    # match visual position on the map regardless of where each athlete pressed
+    # Start. gap_m = leader's course_m − this athlete's course_m. gap_geo_m is
+    # the straight-line haversine distance to the leader's lat/lon at that
+    # instant. Athletes array preserves the order returned by
+    # get_session_athletes().
     replay_frames_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     replay_time_step_s: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -90,7 +97,7 @@ class RaceSessionGap(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     athlete_label: Mapped[str] = mapped_column(Text, nullable=False)
-    # gap_series — JSON: list of {distance_km, time_s, gap_to_leader_s, gap_to_leader_m, position}
+    # gap_series — JSON: list of {distance_km, time_s, gap_to_leader_s, position}
     gap_series_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # delta_series — JSON: list of {distance_km, delta_s_per_km} (derivative of gap)
     delta_series_json: Mapped[str | None] = mapped_column(Text, nullable=True)

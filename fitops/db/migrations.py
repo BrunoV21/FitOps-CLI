@@ -162,8 +162,42 @@ async def _migrate_race_plans(conn) -> None:
     )
 
 
+async def _ensure_schema_version_table(conn) -> None:
+    """Create the schema_version key/value table used to gate one-shot migrations."""
+    await conn.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS schema_version ("
+            "key TEXT PRIMARY KEY, "
+            "value TEXT, "
+            "applied_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+    )
+
+
+async def _has_migration_run(conn, key: str) -> bool:
+    result = await conn.execute(
+        text("SELECT 1 FROM schema_version WHERE key = :k"), {"k": key}
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _mark_migration_run(conn, key: str) -> None:
+    await conn.execute(
+        text(
+            "INSERT OR IGNORE INTO schema_version (key, value) "
+            "VALUES (:k, :v)"
+        ),
+        {"k": key, "v": "1"},
+    )
+
+
 async def _migrate_workout_activity_links(conn) -> None:
-    """Create workout_activity_links table and migrate any existing Workout.activity_id data."""
+    """Create workout_activity_links table and migrate any existing Workout.activity_id data.
+
+    The data backfill is one-shot: gated on a row in `schema_version` so that
+    after the first successful run we skip the SELECT/INSERT loop entirely.
+    """
     # Create table (Base.metadata.create_all handles it, but we also need the data migration)
     await conn.execute(
         text("""
@@ -178,6 +212,10 @@ async def _migrate_workout_activity_links(conn) -> None:
         )
         """)
     )
+
+    if await _has_migration_run(conn, "workout_activity_links_backfill"):
+        return
+
     # Migrate existing 1:1 links from workouts.activity_id
     result = await conn.execute(
         text(
@@ -212,12 +250,17 @@ async def _migrate_workout_activity_links(conn) -> None:
                 },
             )
 
+    await _mark_migration_run(conn, "workout_activity_links_backfill")
+
 
 async def create_all_tables(engine: AsyncEngine | None = None) -> None:
     if engine is None:
         engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # schema_version gates one-shot data migrations; create it before any
+        # gated migration tries to read from it.
+        await _ensure_schema_version_table(conn)
         # Migrate any missing columns on pre-existing tables
         await _migrate_athlete_columns(conn)
         await _migrate_activity_columns(conn)
