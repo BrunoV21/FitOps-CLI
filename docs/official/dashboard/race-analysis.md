@@ -69,22 +69,42 @@ Segments are derived from the linked course's km-segments (grade-based merging) 
 
 ### Event Timeline
 
-Automatically detected tactical events displayed in chronological order:
+The Race Events section now has two layers:
+
+- **Story cards** at the top summarise the headline move, decisive point, biggest gain, lead-change count, and notable finish kicks.
+- **Narrative timeline** underneath lists each detected event with the athlete, rival, rank swing, segment context, and gap before/after the move.
+
+The event engine still uses the gap chart as its base, but it now adds rival-aware context so the timeline can explain *who* a move happened against and *why* it mattered.
 
 | Event Type | What it means |
 |-----------|---------------|
-| **Surge** | An athlete's pace jumped >15% above their 60 s rolling baseline and held for ≥20 s |
-| **Fade** | An athlete's second-half average pace was <90% of their first-half average |
+| **Surge** | An athlete lifted speed >15% above their 60 s rolling baseline for a sustained window |
+| **Fade** | An athlete's pace fell materially below their own first-half baseline; this is terrain-sensitive on back-loaded courses |
 | **Final Sprint** | An athlete ran the last 400 m >10% faster than their race average |
-| **Drop** | An athlete's gap to the leader grew by >10 s over a 500 m window |
-| **Bridge** | An athlete closed the gap to the leader by >10 s over a 500 m window |
-| **Separation** | The total field spread (fastest to slowest) exceeded 30 s |
+| **Drop** | An athlete lost >10 s to the leader over a 500 m window |
+| **Bridge** | An athlete gained >10 s on the leader over a 500 m window |
+| **Separation** | An athlete first fell 30 s behind the leader |
+| **Pass** | An athlete improved race position and overtook the runner ahead |
+| **Caught** | An athlete closed a meaningful gap and made contact with the rival ahead |
+| **Breakaway** | An athlete opened a sustained gap on the runner behind |
+| **Pack Split** | A clear time gap opened between adjacent race positions, separating the field into groups |
+| **Decisive Move** | The move where an eventual top finisher entered their final position and never gave it back |
+| **Recovery** | An athlete regained lost time or position after a previous difficult patch |
+
+Each event row also carries:
+
+- `Rival`: the athlete directly involved when one can be inferred
+- `Rank`: position change such as `P3 → P2`
+- `Context`: segment label, move duration, and tags like `finish`, `climb`, or `decisive`
+- `Gap`: the before/after gap values that explain the move quantitatively
 
 ### Replay
 
 The session detail page animates each athlete along the course on a map alongside a live leaderboard and pace/HR charts.
 
 **Architecture: server-driven.** When a session is created or an athlete is added, the backend pre-computes a canonical replay timeline and persists it on the `race_sessions` row (`replay_frames_json`, `replay_time_step_s`). The frontend is a pure renderer — it reads the frames out of a JSON literal embedded in the template and indexes into them during animation, GIF export, and leaderboard updates. No interpolation happens in the browser, which guarantees that the map position, leaderboard rank, and gap always agree.
+
+GIF export reuses that same timeline, but renders at the live map's viewport area and current `devicePixelRatio` instead of a fixed small canvas. Tile requests use retina variants on high-DPI screens, and the export expands the source timeline to a minimum 60 fps playback cadence so long sessions do not get frame-dropped down to a coarse animation. The leaderboard overlay also scales from the export viewport, with larger fonts and wider stat columns in portrait ratios such as `9:16`, so standings remain readable on phone-sized outputs.
 
 Frame shape (one entry per `time_step_s`, default 5 s):
 

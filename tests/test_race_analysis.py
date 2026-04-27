@@ -275,6 +275,10 @@ def test_gap_series_distance_km_field():
         for point in series:
             assert "distance_km" in point
             assert point["distance_km"] >= 0.0
+            assert "rival_ahead_label" in point
+            assert "rival_behind_label" in point
+            assert "gap_to_next_ahead_s" in point
+            assert "local_gap_delta_s_per_km" in point
 
 
 def test_gap_series_single_athlete():
@@ -550,6 +554,31 @@ def test_detect_final_sprint():
     assert sprint_events[0].athlete_label == "Sprinter"
 
 
+def test_detect_surge_flushes_at_finish():
+    """A surge that runs into the finish should still be emitted."""
+    n = 220
+    dist = [i * 10.0 for i in range(n)]
+    vel = [4.0] * n
+    for i in range(n - 25, n):
+        vel[i] = 9.0
+    elapsed = [0.0]
+    for i in range(1, n):
+        elapsed.append(elapsed[-1] + (10.0 / vel[i]))
+
+    ns = NormalizedStream(
+        label="Closer", is_primary=True, activity_id=None,
+        distance_grid=dist, elapsed_s=elapsed, velocity=vel
+    )
+    gaps = compute_gap_series([ns])
+    events = detect_events([ns], gaps)
+    surge_events = [e for e in events if e.event_type == "surge"]
+    assert surge_events
+    assert any(
+        abs((e.end_distance_km or 0.0) - (dist[-1] / 1000.0)) <= 0.05
+        for e in surge_events
+    )
+
+
 # ---------------------------------------------------------------------------
 # detect_events — drop (gap-based)
 # ---------------------------------------------------------------------------
@@ -625,6 +654,37 @@ def test_detect_separation():
     events = detect_events([fast, very_slow], gaps)
     sep_events = [e for e in events if e.event_type == "separation"]
     assert len(sep_events) >= 1
+
+
+def test_detect_pass_event():
+    """An athlete overtaking another should emit a pass event with rank context."""
+    leader = _make_normalized("Leader", total_dist_m=2000.0, total_time_s=520.0, velocity=4.0)
+    n = 200
+    dist = [i * 10.0 for i in range(n)]
+    mid_vel = [4.8] * 90 + [2.8] * 110
+    chaser_vel = [3.3] * 70 + [5.6] * 130
+
+    def _elapsed(vels):
+        vals = [0.0]
+        for i in range(1, len(vels)):
+            vals.append(vals[-1] + (10.0 / vels[i]))
+        return vals
+
+    mid = NormalizedStream(
+        label="Mid", is_primary=False, activity_id=None,
+        distance_grid=dist, elapsed_s=_elapsed(mid_vel), velocity=mid_vel
+    )
+    chaser = NormalizedStream(
+        label="Chaser", is_primary=False, activity_id=None,
+        distance_grid=dist, elapsed_s=_elapsed(chaser_vel), velocity=chaser_vel
+    )
+    gaps = compute_gap_series([leader, mid, chaser])
+    events = detect_events([leader, mid, chaser], gaps)
+    pass_events = [e for e in events if e.event_type == "pass" and e.athlete_label == "Chaser"]
+    assert pass_events
+    assert pass_events[0].rank_before is not None
+    assert pass_events[0].rank_after is not None
+    assert pass_events[0].rank_after < pass_events[0].rank_before
 
 
 # ---------------------------------------------------------------------------
@@ -829,6 +889,7 @@ def test_session_events_json_shape():
             "elapsed_s": e.elapsed_s,
             "impact_s": e.impact_s,
             "description": e.description,
+            "context": e.context,
         }
         for e in events
     ]
@@ -840,6 +901,7 @@ def test_session_events_json_shape():
         assert "event_type" in ev
         assert "athlete_label" in ev
         assert "distance_km" in ev
+        assert "context" in ev
 
 
 # ---------------------------------------------------------------------------
@@ -895,6 +957,9 @@ def test_dashboard_race_sessions_with_data(client, monkeypatch):
     resp = client.get("/race/sessions")
     assert resp.status_code == 200
     assert "Berlin 2026" in resp.text
+    assert "race-loading-overlay" in resp.text
+    assert "Opening race analysis" in resp.text
+    assert "data-race-session-link" in resp.text
 
 
 def test_dashboard_race_session_not_found(client, monkeypatch):
@@ -1349,7 +1414,52 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
                 }
             ],
             "gap_data": [],
-            "events": [],
+            "events": [
+                {
+                    "event_type": "decisive_move",
+                    "athlete_label": "Me",
+                    "distance_km": 0.8,
+                    "elapsed_s": 240.0,
+                    "impact_s": 6.0,
+                    "description": "Me made the decisive move into P1",
+                    "context": {
+                        "rank_before": 2,
+                        "rank_after": 1,
+                        "rival_label": "Rival",
+                        "segment_label": "Flat 0.0–1.0 km",
+                        "duration_s": 25.0,
+                        "gap_before_s": 6.0,
+                        "gap_after_s": 0.0,
+                        "confidence": 0.87,
+                        "context_tags": ["decisive", "finish"],
+                    },
+                }
+            ],
+            "events_summary": {
+                "headline": {
+                    "event_type": "decisive_move",
+                    "athlete_label": "Me",
+                    "distance_km": 0.8,
+                    "description": "Me made the decisive move into P1",
+                    "impact_s": 6.0,
+                },
+                "decisive_point": {
+                    "event_type": "decisive_move",
+                    "athlete_label": "Me",
+                    "distance_km": 0.8,
+                    "description": "Me made the decisive move into P1",
+                    "impact_s": 6.0,
+                },
+                "biggest_gain": {
+                    "event_type": "decisive_move",
+                    "athlete_label": "Me",
+                    "distance_km": 0.8,
+                    "description": "Me made the decisive move into P1",
+                    "impact_s": 6.0,
+                },
+                "lead_changes": 1,
+                "finish_kicks": [],
+            },
             "segments": [],
             "replay_frames": frames,
             "replay_time_step_s": 5.0,
@@ -1375,8 +1485,16 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
     # Frames render into the REPLAY_FRAMES JSON literal in the template
     assert "REPLAY_FRAMES" in resp.text
     assert "ATHLETE_SUMMARY_DATA" in resp.text
+    assert "TARGET_EXPORT_FPS = 60" in resp.text
+    assert "window.devicePixelRatio" in resp.text
+    assert "@2x" in resp.text
+    assert "drawLeaderboardOnCanvas(ctx, entries, t, { width: W_CSS, height: H_CSS }, useFinishStandings)" in resp.text
+    assert "const isPortrait = vh > vw" in resp.text
     assert '"finish_time_s": 300.0' in resp.text or '"finish_time_s":300.0' in resp.text
     assert '"t_s": 5.0' in resp.text or '"t_s":5.0' in resp.text
+    assert "Decisive Point" in resp.text
+    assert "event-type-filter" in resp.text
+    assert "P2 → P1" in resp.text
 
 
 def test_get_session_detail_lazy_computes_frames_for_cold_start(monkeypatch):

@@ -55,6 +55,7 @@ from fitops.analytics.race_analysis import (
     normalized_stream_from_dict,
     normalized_stream_to_dict,
     parse_gpx_streams,
+    summarize_race_events,
 )
 
 REPLAY_TIME_STEP_S = 5.0
@@ -412,7 +413,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             athlete_metrics = compute_segment_athlete_metrics([primary_ns], segments)
             await save_segments(session_id, segments, athlete_metrics)
 
-            events = detect_events([primary_ns], gap_series)
+            events = detect_events([primary_ns], gap_series, segments)
             await save_events(session_id, events)
 
             return session_id, None
@@ -513,7 +514,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
             await save_segments(session_id, segs, athlete_metrics)
-            events = detect_events(all_ns, gap_series)
+            events = detect_events(all_ns, gap_series, segs)
             await save_events(session_id, events)
 
         try:
@@ -558,6 +559,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "athletes_streams": athletes_streams,
                     "gap_data": detail.get("gap_data", []) if detail else [],
                     "events": detail.get("events", []) if detail else [],
+                    "events_summary": detail.get("events_summary", {}) if detail else {},
                     "segments": detail.get("segments", []) if detail else [],
                     "replay_frames": detail.get("replay_frames", []) if detail else [],
                     "replay_time_step_s": detail.get("replay_time_step_s", REPLAY_TIME_STEP_S) if detail else REPLAY_TIME_STEP_S,
@@ -660,7 +662,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     segs = detect_segments_from_altitude(primary_ns)
                 athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
                 await save_segments(session_id, segs, athlete_metrics)
-                events = detect_events(all_ns, gap_series)
+                events = detect_events(all_ns, gap_series, segs)
                 await save_events(session_id, events)
             except Exception:
                 pass
@@ -682,6 +684,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         athletes = detail.get("athletes", [])
         gap_data = detail.get("gap_data", [])
         events = detail.get("events", [])
+        events_summary = detail.get("events_summary", summarize_race_events(events))
         segments = detail.get("segments", [])
 
         # Build per-athlete stream data for the Leaflet replay + pace chart
@@ -730,6 +733,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "athletes_streams": athletes_streams,
                 "gap_data": gap_data,
                 "events": events,
+                "events_summary": events_summary,
                 "segments": segments,
                 "replay_frames": detail.get("replay_frames", []),
                 "replay_time_step_s": detail.get("replay_time_step_s", REPLAY_TIME_STEP_S),

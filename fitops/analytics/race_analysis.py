@@ -50,12 +50,45 @@ class DetectedSegment:
 
 @dataclass
 class RaceEvent:
-    event_type: str  # surge|drop|bridge|fade|final_sprint|separation
+    event_type: str  # surge|drop|bridge|fade|final_sprint|separation|pass|caught|breakaway|pack_split|decisive_move|recovery
     athlete_label: str
     distance_km: float
     elapsed_s: float
     impact_s: float  # positive = gained, negative = lost
     description: str
+    start_distance_km: float | None = None
+    end_distance_km: float | None = None
+    start_elapsed_s: float | None = None
+    end_elapsed_s: float | None = None
+    duration_s: float | None = None
+    rival_label: str | None = None
+    rank_before: int | None = None
+    rank_after: int | None = None
+    gap_before_s: float | None = None
+    gap_after_s: float | None = None
+    segment_label: str | None = None
+    gradient_type: str | None = None
+    confidence: float | None = None
+    context_tags: list[str] = field(default_factory=list)
+
+    @property
+    def context(self) -> dict[str, Any]:
+        return {
+            "start_distance_km": self.start_distance_km,
+            "end_distance_km": self.end_distance_km,
+            "start_elapsed_s": self.start_elapsed_s,
+            "end_elapsed_s": self.end_elapsed_s,
+            "duration_s": self.duration_s,
+            "rival_label": self.rival_label,
+            "rank_before": self.rank_before,
+            "rank_after": self.rank_after,
+            "gap_before_s": self.gap_before_s,
+            "gap_after_s": self.gap_after_s,
+            "segment_label": self.segment_label,
+            "gradient_type": self.gradient_type,
+            "confidence": self.confidence,
+            "context_tags": self.context_tags,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -366,10 +399,23 @@ def compute_gap_series(
 
         leader_time = min(times.values())
         sorted_labels = sorted(times.keys(), key=lambda lbl: times[lbl])
+        leader_label = sorted_labels[0]
 
         for rank_0, label in enumerate(sorted_labels):
             t = times[label]
             gap_s = t - leader_time
+            rival_ahead = sorted_labels[rank_0 - 1] if rank_0 > 0 else None
+            rival_behind = (
+                sorted_labels[rank_0 + 1] if rank_0 + 1 < len(sorted_labels) else None
+            )
+            gap_to_next_ahead_s = (
+                round(t - times[rival_ahead], 1) if rival_ahead is not None else 0.0
+            )
+            gap_to_next_behind_s = (
+                round(times[rival_behind] - t, 1)
+                if rival_behind is not None
+                else None
+            )
 
             result[label].append(
                 {
@@ -377,8 +423,26 @@ def compute_gap_series(
                     "time_s": round(t, 1),
                     "gap_to_leader_s": round(gap_s, 1),
                     "position": rank_0 + 1,
+                    "leader_label": leader_label,
+                    "rival_ahead_label": rival_ahead,
+                    "rival_behind_label": rival_behind,
+                    "gap_to_next_ahead_s": gap_to_next_ahead_s,
+                    "gap_to_next_behind_s": gap_to_next_behind_s,
                 }
             )
+
+    for series in result.values():
+        for i, point in enumerate(series):
+            if i == 0:
+                point["local_gap_delta_s_per_km"] = 0.0
+                continue
+            prev = series[i - 1]
+            d_dist = point["distance_km"] - prev["distance_km"]
+            if d_dist <= 0:
+                point["local_gap_delta_s_per_km"] = 0.0
+                continue
+            d_gap = prev["gap_to_leader_s"] - point["gap_to_leader_s"]
+            point["local_gap_delta_s_per_km"] = round(d_gap / d_dist, 2)
 
     return result
 
@@ -1229,18 +1293,83 @@ def compute_athlete_metrics(ns: NormalizedStream) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _event_tags(distance_km: float, total_km: float | None = None) -> list[str]:
+    tags: list[str] = []
+    if total_km and total_km > 0:
+        ratio = distance_km / total_km
+        if ratio <= 0.2:
+            tags.append("start")
+        elif ratio >= 0.8:
+            tags.append("finish")
+        else:
+            tags.append("middle")
+    return tags
+
+
+def _segment_context(
+    distance_km: float,
+    segments: list[DetectedSegment] | None,
+) -> tuple[str | None, str | None]:
+    if not segments:
+        return (None, None)
+    for seg in segments:
+        if seg.start_km <= distance_km <= seg.end_km:
+            return (seg.label, seg.gradient_type)
+    return (None, None)
+
+
+def _append_event(
+    events: list[RaceEvent],
+    *,
+    event_type: str,
+    athlete_label: str,
+    distance_km: float,
+    elapsed_s: float,
+    impact_s: float,
+    description: str,
+    total_km: float | None = None,
+    segments: list[DetectedSegment] | None = None,
+    **kwargs,
+) -> None:
+    segment_label, gradient_type = _segment_context(distance_km, segments)
+    context_tags = list(kwargs.pop("context_tags", []) or [])
+    context_tags.extend(_event_tags(distance_km, total_km))
+    if gradient_type and gradient_type not in context_tags:
+        context_tags.append(gradient_type)
+    events.append(
+        RaceEvent(
+            event_type=event_type,
+            athlete_label=athlete_label,
+            distance_km=round(distance_km, 2),
+            elapsed_s=round(elapsed_s, 1),
+            impact_s=round(impact_s, 1),
+            description=description,
+            segment_label=segment_label,
+            gradient_type=gradient_type,
+            context_tags=context_tags,
+            **kwargs,
+        )
+    )
+
+
 def detect_events(
     athletes: list[NormalizedStream],
     gap_series: dict[str, list[dict]],
+    segments: list[DetectedSegment] | None = None,
 ) -> list[RaceEvent]:
     """Rules-based event detection across all athletes.
 
-    Events: surge | drop | bridge | fade | final_sprint | separation
+    Events: surge | drop | bridge | fade | final_sprint | separation | pass |
+    caught | breakaway | pack_split | decisive_move | recovery
     """
     events: list[RaceEvent] = []
     primary = next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
     course = _build_course_polyline(primary.latlng, primary.distance_grid) if primary else None
     progress_series = {ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes}
+    total_km = max(
+        ((progress[-1] if progress else 0.0) / 1000.0 for progress in progress_series.values()),
+        default=0.0,
+    )
 
     for ns in athletes:
         if not ns.velocity or not ns.distance_grid or len(ns.velocity) < 20:
@@ -1248,9 +1377,9 @@ def detect_events(
 
         progress = progress_series.get(ns.label, ns.distance_grid)
         total_dist_m = progress[-1] if progress else ns.distance_grid[-1]
-        _detect_surges(ns, progress, events)
-        _detect_fade(ns, progress, events)
-        _detect_final_sprint(ns, progress, events, total_dist_m)
+        _detect_surges(ns, progress, events, total_dist_m / 1000.0, segments)
+        _detect_fade(ns, progress, events, total_dist_m / 1000.0, segments)
+        _detect_final_sprint(ns, progress, events, total_dist_m, segments)
 
     # Gap-based events (require at least 2 athletes)
     if len(athletes) > 1:
@@ -1258,13 +1387,20 @@ def detect_events(
             series = gap_series.get(ns.label, [])
             if not series:
                 continue
-            _detect_drops(ns, series, events)
-            _detect_bridges(ns, series, events)
-            _detect_separation(ns, series, events)
+            _detect_drops(ns, series, events, total_km, segments)
+            _detect_bridges(ns, series, events, total_km, segments)
+            _detect_separation(ns, series, events, total_km, segments)
+            _detect_passes(ns, series, events, total_km, segments)
+            _detect_catches(ns, series, events, total_km, segments)
+            _detect_breakaways(ns, series, events, total_km, segments)
+            _detect_recoveries(ns, series, events, total_km, segments)
 
-    # Sort by distance
-    events.sort(key=lambda e: e.distance_km)
-    return events
+        _detect_pack_splits(gap_series, events, total_km, segments)
+        _detect_decisive_moves(gap_series, events, total_km, segments)
+
+    # Sort by distance, then by stronger impact first for clustered events.
+    events.sort(key=lambda e: (e.distance_km, -abs(e.impact_s)))
+    return _dedupe_events(events)
 
 
 def _rolling_mean(values: list[float | None], center: int, half_window: int) -> float | None:
@@ -1278,6 +1414,8 @@ def _detect_surges(
     ns: NormalizedStream,
     progress_m: list[float],
     events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
 ) -> None:
     """Surge: pace increases >15% above 60s rolling average, sustained 20s+."""
     grid = progress_m if progress_m else ns.distance_grid
@@ -1320,15 +1458,50 @@ def _detect_surges(
                 baseline_t = (grid[i] - grid[surge_start_idx]) / baseline if baseline > 0 else 0
                 actual_t = elapsed[i] - elapsed[surge_start_idx]
                 gained = round(baseline_t - actual_t, 1)
-                events.append(
-                    RaceEvent(
-                        event_type="surge",
-                        athlete_label=ns.label,
-                        distance_km=round(d_km, 2),
-                        elapsed_s=round(t_s, 1),
-                        impact_s=gained,
-                        description=f"{ns.label} surged at km {d_km:.1f}, gaining ~{gained:.0f}s",
-                    )
+                _append_event(
+                    events,
+                    event_type="surge",
+                    athlete_label=ns.label,
+                    distance_km=d_km,
+                    elapsed_s=t_s,
+                    impact_s=gained,
+                    description=f"{ns.label} surged from km {grid[surge_start_idx] / 1000:.1f} to {grid[i] / 1000:.1f}, gaining ~{gained:.0f}s",
+                    total_km=total_km,
+                    segments=segments,
+                    start_distance_km=round(grid[surge_start_idx] / 1000, 2),
+                    end_distance_km=round(grid[i] / 1000, 2),
+                    start_elapsed_s=round(elapsed[surge_start_idx], 1),
+                    end_elapsed_s=round(elapsed[i], 1),
+                    duration_s=round(actual_t, 1),
+                    confidence=0.79,
+                )
+    if in_surge:
+        end_idx = len(vel) - 1
+        surge_len = end_idx - surge_start_idx
+        if surge_len >= sustained_20s_pts:
+            baseline_vals = [u for u in vel[max(0, surge_start_idx - window_60s_pts):surge_start_idx] if u is not None]
+            baseline = statistics.mean(baseline_vals) if baseline_vals else None
+            if baseline and baseline > 0:
+                mid_idx = (surge_start_idx + end_idx) // 2
+                baseline_t = (grid[end_idx] - grid[surge_start_idx]) / baseline
+                actual_t = elapsed[end_idx] - elapsed[surge_start_idx]
+                gained = round(baseline_t - actual_t, 1)
+                _append_event(
+                    events,
+                    event_type="surge",
+                    athlete_label=ns.label,
+                    distance_km=grid[mid_idx] / 1000,
+                    elapsed_s=elapsed[mid_idx],
+                    impact_s=gained,
+                    description=f"{ns.label} sustained a surge into the finish from km {grid[surge_start_idx] / 1000:.1f}",
+                    total_km=total_km,
+                    segments=segments,
+                    start_distance_km=round(grid[surge_start_idx] / 1000, 2),
+                    end_distance_km=round(grid[end_idx] / 1000, 2),
+                    start_elapsed_s=round(elapsed[surge_start_idx], 1),
+                    end_elapsed_s=round(elapsed[end_idx], 1),
+                    duration_s=round(actual_t, 1),
+                    confidence=0.81,
                 )
 
 
@@ -1336,6 +1509,8 @@ def _detect_fade(
     ns: NormalizedStream,
     progress_m: list[float],
     events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
 ) -> None:
     """Fade: 30s rolling pace degrades >10% in second half of race."""
     vel = ns.velocity
@@ -1363,15 +1538,23 @@ def _detect_fade(
             d_km = grid[i] / 1000
             t_s = elapsed[i]
             degradation_pct = round((1 - win_mean / first_mean) * 100, 1)
-            events.append(
-                RaceEvent(
-                    event_type="fade",
-                    athlete_label=ns.label,
-                    distance_km=round(d_km, 2),
-                    elapsed_s=round(t_s, 1),
-                    impact_s=0.0,
-                    description=f"{ns.label} faded at km {d_km:.1f} ({degradation_pct}% pace loss vs first half)",
-                )
+            _append_event(
+                events,
+                event_type="fade",
+                athlete_label=ns.label,
+                distance_km=d_km,
+                elapsed_s=t_s,
+                impact_s=0.0,
+                description=f"{ns.label} faded at km {d_km:.1f} ({degradation_pct}% pace loss vs first half)",
+                total_km=total_km,
+                segments=segments,
+                start_distance_km=round(grid[max(mid, i - w)] / 1000, 2),
+                end_distance_km=round(d_km, 2),
+                start_elapsed_s=round(elapsed[max(mid, i - w)], 1),
+                end_elapsed_s=round(t_s, 1),
+                duration_s=round(t_s - elapsed[max(mid, i - w)], 1),
+                confidence=0.68,
+                context_tags=["terrain_sensitive"],
             )
             break  # One fade event per athlete
 
@@ -1381,6 +1564,7 @@ def _detect_final_sprint(
     progress_m: list[float],
     events: list[RaceEvent],
     total_dist_m: float,
+    segments: list[DetectedSegment] | None,
 ) -> None:
     """Final sprint: last 400m, pace >10% faster than race average."""
     vel = ns.velocity
@@ -1416,15 +1600,23 @@ def _detect_final_sprint(
         )
         d_km = grid[sprint_idx] / 1000
         t_s = elapsed[sprint_idx]
-        events.append(
-            RaceEvent(
-                event_type="final_sprint",
-                athlete_label=ns.label,
-                distance_km=round(d_km, 2),
-                elapsed_s=round(t_s, 1),
-                impact_s=0.0,
-                description=f"{ns.label} sprinted in the final 400m ({sprint_avg:.1f} m/s vs {race_avg:.1f} race avg)",
-            )
+        _append_event(
+            events,
+            event_type="final_sprint",
+            athlete_label=ns.label,
+            distance_km=d_km,
+            elapsed_s=t_s,
+            impact_s=0.0,
+            description=f"{ns.label} sprinted in the final 400m ({sprint_avg:.1f} m/s vs {race_avg:.1f} race avg)",
+            total_km=total_dist_m / 1000.0,
+            segments=segments,
+            start_distance_km=round(sprint_start_m / 1000, 2),
+            end_distance_km=round(total_dist_m / 1000, 2),
+            start_elapsed_s=round(t_s, 1),
+            end_elapsed_s=round(elapsed[-1], 1),
+            duration_s=round(elapsed[-1] - t_s, 1),
+            confidence=0.88,
+            context_tags=["finish_kick"],
         )
 
 
@@ -1432,6 +1624,8 @@ def _detect_drops(
     ns: NormalizedStream,
     series: list[dict],
     events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
 ) -> None:
     """Drop: gap to leader increases >10s over 500m and continues growing."""
     window_km = 0.5
@@ -1453,15 +1647,27 @@ def _detect_drops(
             # Check it's still growing (look at one more point ahead)
             if i + 1 < len(series) and series[i + 1]["gap_to_leader_s"] > point["gap_to_leader_s"]:
                 impact_s = round(-gap_increase, 1)
-                events.append(
-                    RaceEvent(
-                        event_type="drop",
-                        athlete_label=ns.label,
-                        distance_km=point["distance_km"],
-                        elapsed_s=point["time_s"],
-                        impact_s=impact_s,
-                        description=f"{ns.label} dropped {gap_increase:.0f}s over {window_km:.1f} km at km {point['distance_km']:.1f}",
-                    )
+                _append_event(
+                    events,
+                    event_type="drop",
+                    athlete_label=ns.label,
+                    distance_km=point["distance_km"],
+                    elapsed_s=point["time_s"],
+                    impact_s=impact_s,
+                    description=f"{ns.label} lost {gap_increase:.0f}s over {window_km:.1f} km at km {point['distance_km']:.1f}",
+                    total_km=total_km,
+                    segments=segments,
+                    rival_label=point.get("leader_label"),
+                    rank_before=prev.get("position"),
+                    rank_after=point.get("position"),
+                    gap_before_s=prev.get("gap_to_leader_s"),
+                    gap_after_s=point.get("gap_to_leader_s"),
+                    start_distance_km=prev.get("distance_km"),
+                    end_distance_km=point.get("distance_km"),
+                    start_elapsed_s=prev.get("time_s"),
+                    end_elapsed_s=point.get("time_s"),
+                    duration_s=round(point["time_s"] - prev["time_s"], 1),
+                    confidence=0.83,
                 )
                 break  # One drop event per detection window — avoid spam
 
@@ -1470,6 +1676,8 @@ def _detect_bridges(
     ns: NormalizedStream,
     series: list[dict],
     events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
 ) -> None:
     """Bridge: gap decreases >10s over 500m."""
     window_km = 0.5
@@ -1490,15 +1698,27 @@ def _detect_bridges(
         gap_decrease = prev["gap_to_leader_s"] - point["gap_to_leader_s"]
         if gap_decrease >= threshold_s and point["distance_km"] - last_bridge_km > 1.0:
             impact_s = round(gap_decrease, 1)
-            events.append(
-                RaceEvent(
-                    event_type="bridge",
-                    athlete_label=ns.label,
-                    distance_km=point["distance_km"],
-                    elapsed_s=point["time_s"],
-                    impact_s=impact_s,
-                    description=f"{ns.label} bridged {gap_decrease:.0f}s over {window_km:.1f} km at km {point['distance_km']:.1f}",
-                )
+            _append_event(
+                events,
+                event_type="bridge",
+                athlete_label=ns.label,
+                distance_km=point["distance_km"],
+                elapsed_s=point["time_s"],
+                impact_s=impact_s,
+                description=f"{ns.label} bridged {gap_decrease:.0f}s over {window_km:.1f} km at km {point['distance_km']:.1f}",
+                total_km=total_km,
+                segments=segments,
+                rival_label=prev.get("leader_label"),
+                rank_before=prev.get("position"),
+                rank_after=point.get("position"),
+                gap_before_s=prev.get("gap_to_leader_s"),
+                gap_after_s=point.get("gap_to_leader_s"),
+                start_distance_km=prev.get("distance_km"),
+                end_distance_km=point.get("distance_km"),
+                start_elapsed_s=prev.get("time_s"),
+                end_elapsed_s=point.get("time_s"),
+                duration_s=round(point["time_s"] - prev["time_s"], 1),
+                confidence=0.82,
             )
             last_bridge_km = point["distance_km"]
 
@@ -1507,6 +1727,8 @@ def _detect_separation(
     ns: NormalizedStream,
     series: list[dict],
     events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
 ) -> None:
     """Separation: first time an athlete falls >30s behind the leader."""
     threshold_s = 30.0
@@ -1516,17 +1738,340 @@ def _detect_separation(
         if already_detected:
             break
         if point["gap_to_leader_s"] >= threshold_s:
-            events.append(
-                RaceEvent(
-                    event_type="separation",
-                    athlete_label=ns.label,
-                    distance_km=point["distance_km"],
-                    elapsed_s=point["time_s"],
-                    impact_s=round(-point["gap_to_leader_s"], 1),
-                    description=f"{ns.label} fell {point['gap_to_leader_s']:.0f}s behind the leader at km {point['distance_km']:.1f}",
-                )
+            _append_event(
+                events,
+                event_type="separation",
+                athlete_label=ns.label,
+                distance_km=point["distance_km"],
+                elapsed_s=point["time_s"],
+                impact_s=round(-point["gap_to_leader_s"], 1),
+                description=f"{ns.label} fell {point['gap_to_leader_s']:.0f}s behind the leader at km {point['distance_km']:.1f}",
+                total_km=total_km,
+                segments=segments,
+                rival_label=point.get("leader_label"),
+                rank_after=point.get("position"),
+                gap_after_s=point.get("gap_to_leader_s"),
+                confidence=0.76,
+                context_tags=["field_spread"],
             )
             already_detected = True
+
+
+def _detect_passes(
+    ns: NormalizedStream,
+    series: list[dict],
+    events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
+) -> None:
+    last_pass_km = -1.0
+    for prev, curr in zip(series, series[1:]):
+        pos_before = prev.get("position")
+        pos_after = curr.get("position")
+        if pos_before is None or pos_after is None or pos_after >= pos_before:
+            continue
+        if curr["distance_km"] - last_pass_km < 0.25:
+            continue
+        rival = prev.get("rival_ahead_label") or curr.get("rival_behind_label")
+        _append_event(
+            events,
+            event_type="pass",
+            athlete_label=ns.label,
+            distance_km=curr["distance_km"],
+            elapsed_s=curr["time_s"],
+            impact_s=max(0.0, (prev.get("gap_to_leader_s") or 0.0) - (curr.get("gap_to_leader_s") or 0.0)),
+            description=f"{ns.label} moved from P{pos_before} to P{pos_after}" + (f", passing {rival}" if rival else ""),
+            total_km=total_km,
+            segments=segments,
+            rival_label=rival,
+            rank_before=pos_before,
+            rank_after=pos_after,
+            gap_before_s=prev.get("gap_to_leader_s"),
+            gap_after_s=curr.get("gap_to_leader_s"),
+            start_distance_km=prev.get("distance_km"),
+            end_distance_km=curr.get("distance_km"),
+            start_elapsed_s=prev.get("time_s"),
+            end_elapsed_s=curr.get("time_s"),
+            duration_s=round(curr["time_s"] - prev["time_s"], 1),
+            confidence=0.9,
+            context_tags=["position_change"],
+        )
+        last_pass_km = curr["distance_km"]
+
+
+def _detect_catches(
+    ns: NormalizedStream,
+    series: list[dict],
+    events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
+) -> None:
+    for prev, curr in zip(series, series[1:]):
+        prev_gap = prev.get("gap_to_next_ahead_s")
+        curr_gap = curr.get("gap_to_next_ahead_s")
+        rival = curr.get("rival_ahead_label") or prev.get("rival_ahead_label")
+        if rival is None or prev_gap is None or curr_gap is None:
+            continue
+        if prev_gap >= 5.0 and curr_gap <= 1.5:
+            _append_event(
+                events,
+                event_type="caught",
+                athlete_label=ns.label,
+                distance_km=curr["distance_km"],
+                elapsed_s=curr["time_s"],
+                impact_s=round(prev_gap - curr_gap, 1),
+                description=f"{ns.label} caught {rival} and joined the battle ahead",
+                total_km=total_km,
+                segments=segments,
+                rival_label=rival,
+                rank_before=prev.get("position"),
+                rank_after=curr.get("position"),
+                gap_before_s=prev_gap,
+                gap_after_s=curr_gap,
+                start_distance_km=prev.get("distance_km"),
+                end_distance_km=curr.get("distance_km"),
+                start_elapsed_s=prev.get("time_s"),
+                end_elapsed_s=curr.get("time_s"),
+                duration_s=round(curr["time_s"] - prev["time_s"], 1),
+                confidence=0.84,
+                context_tags=["contact"],
+            )
+            break
+
+
+def _detect_breakaways(
+    ns: NormalizedStream,
+    series: list[dict],
+    events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
+) -> None:
+    last_breakaway_km = -1.0
+    for prev, curr in zip(series, series[1:]):
+        gap_before = prev.get("gap_to_next_behind_s")
+        gap_after = curr.get("gap_to_next_behind_s")
+        rival = prev.get("rival_behind_label") or curr.get("rival_behind_label")
+        if rival is None or gap_before is None or gap_after is None:
+            continue
+        if gap_before <= 2.0 and gap_after >= 8.0 and curr["distance_km"] - last_breakaway_km > 1.0:
+            _append_event(
+                events,
+                event_type="breakaway",
+                athlete_label=ns.label,
+                distance_km=curr["distance_km"],
+                elapsed_s=curr["time_s"],
+                impact_s=round(gap_after - gap_before, 1),
+                description=f"{ns.label} opened a clear gap on {rival}",
+                total_km=total_km,
+                segments=segments,
+                rival_label=rival,
+                rank_before=prev.get("position"),
+                rank_after=curr.get("position"),
+                gap_before_s=gap_before,
+                gap_after_s=gap_after,
+                start_distance_km=prev.get("distance_km"),
+                end_distance_km=curr.get("distance_km"),
+                start_elapsed_s=prev.get("time_s"),
+                end_elapsed_s=curr.get("time_s"),
+                duration_s=round(curr["time_s"] - prev["time_s"], 1),
+                confidence=0.86,
+                context_tags=["gap_opening"],
+            )
+            last_breakaway_km = curr["distance_km"]
+
+
+def _detect_recoveries(
+    ns: NormalizedStream,
+    series: list[dict],
+    events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
+) -> None:
+    peak_idx = None
+    peak_gap = 0.0
+    for i, point in enumerate(series):
+        gap = point.get("gap_to_leader_s") or 0.0
+        if gap > peak_gap:
+            peak_gap = gap
+            peak_idx = i
+    if peak_idx is None or peak_gap < 8.0 or peak_idx >= len(series) - 2:
+        return
+    peak = series[peak_idx]
+    for curr in series[peak_idx + 1 :]:
+        gap_recovered = peak_gap - (curr.get("gap_to_leader_s") or 0.0)
+        pos_gain = (peak.get("position") or 99) - (curr.get("position") or 99)
+        if gap_recovered >= 8.0 or pos_gain >= 1:
+            _append_event(
+                events,
+                event_type="recovery",
+                athlete_label=ns.label,
+                distance_km=curr["distance_km"],
+                elapsed_s=curr["time_s"],
+                impact_s=round(gap_recovered, 1),
+                description=f"{ns.label} recovered after losing ground, regaining {gap_recovered:.0f}s",
+                total_km=total_km,
+                segments=segments,
+                rank_before=peak.get("position"),
+                rank_after=curr.get("position"),
+                gap_before_s=peak.get("gap_to_leader_s"),
+                gap_after_s=curr.get("gap_to_leader_s"),
+                start_distance_km=peak.get("distance_km"),
+                end_distance_km=curr.get("distance_km"),
+                start_elapsed_s=peak.get("time_s"),
+                end_elapsed_s=curr.get("time_s"),
+                duration_s=round(curr["time_s"] - peak["time_s"], 1),
+                confidence=0.73,
+                context_tags=["response"],
+            )
+            break
+
+
+def _detect_pack_splits(
+    gap_series: dict[str, list[dict]],
+    events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
+) -> None:
+    if not gap_series:
+        return
+    labels = list(gap_series.keys())
+    base_series = gap_series[labels[0]]
+    last_split_km = -1.0
+    threshold_s = 12.0
+    for idx in range(1, len(base_series)):
+        snapshot = []
+        prev_snapshot = []
+        for label in labels:
+            if idx >= len(gap_series[label]):
+                snapshot = []
+                break
+            snapshot.append(gap_series[label][idx])
+            prev_snapshot.append(gap_series[label][idx - 1])
+        if len(snapshot) < 3:
+            continue
+        snapshot.sort(key=lambda p: p["position"])
+        prev_snapshot.sort(key=lambda p: p["position"])
+        for j in range(len(snapshot) - 1):
+            front = snapshot[j]
+            back = snapshot[j + 1]
+            prev_front = prev_snapshot[j]
+            prev_back = prev_snapshot[j + 1]
+            gap_now = back["gap_to_leader_s"] - front["gap_to_leader_s"]
+            gap_prev = prev_back["gap_to_leader_s"] - prev_front["gap_to_leader_s"]
+            if gap_now >= threshold_s and gap_prev < threshold_s and front["distance_km"] - last_split_km > 1.0:
+                _append_event(
+                    events,
+                    event_type="pack_split",
+                    athlete_label=front.get("leader_label") or labels[0],
+                    distance_km=front["distance_km"],
+                    elapsed_s=front["time_s"],
+                    impact_s=round(gap_now, 1),
+                    description=f"The field split between P{front['position']} and P{back['position']}",
+                    total_km=total_km,
+                    segments=segments,
+                    rival_label=back.get("rival_ahead_label"),
+                    rank_before=front.get("position"),
+                    rank_after=back.get("position"),
+                    gap_before_s=round(gap_prev, 1),
+                    gap_after_s=round(gap_now, 1),
+                    confidence=0.8,
+                    context_tags=["field_spread", "group_split"],
+                )
+                last_split_km = front["distance_km"]
+                break
+
+
+def _detect_decisive_moves(
+    gap_series: dict[str, list[dict]],
+    events: list[RaceEvent],
+    total_km: float,
+    segments: list[DetectedSegment] | None,
+) -> None:
+    final_positions = {
+        label: series[-1].get("position")
+        for label, series in gap_series.items()
+        if series
+    }
+    for label, final_pos in sorted(final_positions.items(), key=lambda item: item[1] or 99):
+        if final_pos is None or final_pos > 3:
+            continue
+        series = gap_series.get(label, [])
+        decisive_idx = None
+        for i, point in enumerate(series):
+            if point.get("position") != final_pos:
+                continue
+            if all(later.get("position") == final_pos for later in series[i:]):
+                decisive_idx = i
+                break
+        if decisive_idx is None or decisive_idx == 0:
+            continue
+        point = series[decisive_idx]
+        prev = series[decisive_idx - 1]
+        _append_event(
+            events,
+            event_type="decisive_move",
+            athlete_label=label,
+            distance_km=point["distance_km"],
+            elapsed_s=point["time_s"],
+            impact_s=round((prev.get("gap_to_leader_s") or 0.0) - (point.get("gap_to_leader_s") or 0.0), 1),
+            description=f"{label} made the decisive move into P{final_pos}",
+            total_km=total_km,
+            segments=segments,
+            rank_before=prev.get("position"),
+            rank_after=point.get("position"),
+            gap_before_s=prev.get("gap_to_leader_s"),
+            gap_after_s=point.get("gap_to_leader_s"),
+            start_distance_km=prev.get("distance_km"),
+            end_distance_km=point.get("distance_km"),
+            start_elapsed_s=prev.get("time_s"),
+            end_elapsed_s=point.get("time_s"),
+            duration_s=round(point["time_s"] - prev["time_s"], 1),
+            confidence=0.87,
+            context_tags=["position_change", "decisive"],
+        )
+
+
+def _dedupe_events(events: list[RaceEvent]) -> list[RaceEvent]:
+    deduped: list[RaceEvent] = []
+    seen: set[tuple[str, str, int, str | None]] = set()
+    for ev in events:
+        key = (
+            ev.event_type,
+            ev.athlete_label,
+            int(round((ev.distance_km or 0.0) * 10)),
+            ev.rival_label,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(ev)
+    return deduped
+
+
+def summarize_race_events(events: list[dict]) -> dict[str, Any]:
+    """Build a compact race-story summary from persisted event dicts."""
+    if not events:
+        return {
+            "headline": None,
+            "decisive_point": None,
+            "biggest_gain": None,
+            "lead_changes": 0,
+            "finish_kicks": [],
+        }
+
+    decisive = next((e for e in events if e.get("event_type") == "decisive_move"), None)
+    biggest_gain = max(events, key=lambda e: e.get("impact_s") or 0.0)
+    passes = [e for e in events if e.get("event_type") == "pass"]
+    finish_kicks = [e for e in events if e.get("event_type") == "final_sprint"]
+    headline = decisive or biggest_gain
+
+    return {
+        "headline": headline,
+        "decisive_point": decisive,
+        "biggest_gain": biggest_gain if (biggest_gain.get("impact_s") or 0.0) > 0 else None,
+        "lead_changes": len(passes),
+        "finish_kicks": finish_kicks[:3],
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -49,6 +49,7 @@ from fitops.analytics.race_analysis import (
     normalize_stream,
     normalized_stream_to_dict,
     parse_gpx_streams,
+    summarize_race_events,
 )
 from fitops.dashboard.queries.race_session import (
     add_session_athlete,
@@ -950,7 +951,7 @@ def session_create(
         await save_segments(session_id, segments, athlete_metrics)
 
         # 7. Detect events
-        events = detect_events([primary_ns], gap_series)
+        events = detect_events([primary_ns], gap_series, segments)
         await save_events(session_id, events)
 
         return await get_session_detail(session_id) or {}
@@ -1043,7 +1044,7 @@ def session_add_athlete(
 
         athlete_metrics = compute_segment_athlete_metrics(all_ns, segs)
         await save_segments(session_id, segs, athlete_metrics)
-        events = detect_events(all_ns, gap_series)
+        events = detect_events(all_ns, gap_series, segs)
         await save_events(session_id, events)
 
     async def _run() -> dict:
@@ -1164,7 +1165,12 @@ def session_events(
     """Show detected events for a race session."""
     init_db()
     events = asyncio.run(get_events(session_id))
-    out = {"_meta": make_meta(), "session_id": session_id, "events": events}
+    out = {
+        "_meta": make_meta(),
+        "session_id": session_id,
+        "events": events,
+        "events_summary": summarize_race_events(events),
+    }
     if json_output:
         typer.echo(json.dumps(out, indent=2, default=str))
     else:

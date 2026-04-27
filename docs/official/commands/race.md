@@ -293,7 +293,7 @@ fitops race plan-delete 1
 
 ## Race Analysis — Multi-Athlete Sessions
 
-Race Analysis lets you replay a race with one or more athletes side by side, computing gap trends, segment breakdowns, and automatically detected tactical events (surges, fades, bridges, etc.).
+Race Analysis lets you replay a race with one or more athletes side by side, computing gap trends, segment breakdowns, and a richer tactical event timeline (surges, passes, breakaways, decisive moves, and more).
 
 ### `fitops race session-create`
 
@@ -416,7 +416,7 @@ Segments are detected from the linked course's km-segments (grade-based merging)
 
 ### `fitops race session-events <id>`
 
-Show automatically detected tactical events. Events are classified into six types:
+Show automatically detected tactical events. The JSON payload and terminal view now include structured context for each event: rival, rank before/after, move window, gap before/after, segment label, confidence, and tags.
 
 | Type | Detection rule |
 |------|---------------|
@@ -425,11 +425,19 @@ Show automatically detected tactical events. Events are classified into six type
 | `final_sprint` | Last 400 m average velocity >10% above race average |
 | `drop` | Gap to leader grows by >10 s over any 500 m window |
 | `bridge` | Gap to leader shrinks by >10 s over any 500 m window |
-| `separation` | Total field spread exceeds 30 s for a sustained distance |
+| `separation` | Athlete first falls 30 s behind the leader |
+| `pass` | Athlete improves race position and overtakes the runner ahead |
+| `caught` | Athlete closes a meaningful gap and makes contact with the runner ahead |
+| `breakaway` | Athlete opens a sustained gap on the runner behind |
+| `pack_split` | A field-separating gap opens between adjacent race positions |
+| `decisive_move` | Eventual top finisher moves into their final place and keeps it |
+| `recovery` | Athlete regains lost ground after a difficult patch |
 
 ```bash
 fitops race session-events <id> [--json]
 ```
+
+`--json` includes an `events_summary` block with the headline move, decisive point, biggest gain, lead-change count, and notable finish kicks.
 
 ---
 

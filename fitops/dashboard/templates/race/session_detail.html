@@ -29,8 +29,30 @@
   .event-fade { background:#713f12; color:#fbbf24; }
   .event-final_sprint { background:#4a044e; color:#e879f9; }
   .event-separation { background:#7f1d1d; color:#f87171; }
+  .event-pass { background:#1d4ed8; color:#bfdbfe; }
+  .event-caught { background:#0f766e; color:#99f6e4; }
+  .event-breakaway { background:#7c3aed; color:#ddd6fe; }
+  .event-pack_split { background:#7c2d12; color:#fdba74; }
+  .event-decisive_move { background:#9f1239; color:#fda4af; }
+  .event-recovery { background:#365314; color:#bef264; }
   .gap-positive { color:#4ade80; }
   .gap-negative { color:#f87171; }
+  .events-summary-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.85rem; margin-bottom:1rem; }
+  .event-summary-card { background:linear-gradient(180deg, rgba(31,31,31,0.95), rgba(18,18,18,0.95));
+                        border:1px solid #2a2a2a; border-radius:10px; padding:0.9rem 1rem; min-height:104px; }
+  .event-summary-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:#777; margin-bottom:0.38rem; }
+  .event-summary-main { font-size:0.95rem; color:#f3f4f6; font-weight:650; line-height:1.35; }
+  .event-summary-sub { font-size:0.78rem; color:#9ca3af; margin-top:0.35rem; line-height:1.45; }
+  .events-filter-bar { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin:0 0 0.9rem; }
+  .events-filter { background:#171717; border:1px solid #303030; border-radius:6px; color:#d4d4d4; font-size:0.78rem;
+                   padding:0.4rem 0.55rem; min-width:150px; }
+  .event-description { display:flex; flex-direction:column; gap:0.25rem; }
+  .event-meta-line { font-size:0.75rem; color:#7d8590; }
+  .event-context-chip { display:inline-block; margin-right:0.35rem; margin-top:0.2rem; padding:0.1rem 0.38rem;
+                        border:1px solid #30363d; border-radius:999px; font-size:0.68rem; color:#9ca3af; }
+  @media (max-width: 980px) {
+    .events-summary-grid { grid-template-columns:1fr; }
+  }
   #gif-progress { display:none; margin-top:0.5rem; }
   #gif-progress-bar-wrap { background:#222; border-radius:4px; height:6px; overflow:hidden; margin-top:0.3rem; }
   #gif-progress-bar { background:var(--accent-primary); height:100%; width:0; transition:width 0.1s; }
@@ -283,25 +305,125 @@
     <span class="panel-title">Race Events</span>
     <span class="panel-meta">{{ events | length }} event{% if events | length != 1 %}s{% endif %}</span>
   </div>
+  <div style="padding:1rem 1.25rem 0.25rem;">
+    <div class="events-summary-grid">
+      <div class="event-summary-card">
+        <div class="event-summary-label">Headline</div>
+        {% set headline = events_summary.get('headline') if events_summary else None %}
+        <div class="event-summary-main">
+          {% if headline %}
+          {{ headline.athlete_label }} · {{ headline.event_type | replace('_', ' ') }}
+          {% else %}
+          No decisive story extracted
+          {% endif %}
+        </div>
+        <div class="event-summary-sub">
+          {% if headline %}
+          km {{ "%.1f"|format(headline.distance_km or 0) }} · {{ headline.description }}
+          {% else %}
+          The timeline below still shows the full tactical sequence.
+          {% endif %}
+        </div>
+      </div>
+      <div class="event-summary-card">
+        <div class="event-summary-label">Decisive Point</div>
+        {% set decisive = events_summary.get('decisive_point') if events_summary else None %}
+        <div class="event-summary-main">
+          {% if decisive %}
+          km {{ "%.1f"|format(decisive.distance_km or 0) }} · {{ decisive.athlete_label }}
+          {% else %}
+          No decisive move detected
+          {% endif %}
+        </div>
+        <div class="event-summary-sub">
+          {% if decisive %}
+          {{ decisive.description }}
+          {% else %}
+          Final order may have been stable throughout the race.
+          {% endif %}
+        </div>
+      </div>
+      <div class="event-summary-card">
+        <div class="event-summary-label">Biggest Gain</div>
+        {% set biggest_gain = events_summary.get('biggest_gain') if events_summary else None %}
+        <div class="event-summary-main">
+          {% if biggest_gain %}
+          {{ biggest_gain.athlete_label }} · +{{ "%.1f"|format(biggest_gain.impact_s or 0) }}s
+          {% else %}
+          No positive swing recorded
+          {% endif %}
+        </div>
+        <div class="event-summary-sub">
+          {% if biggest_gain %}
+          km {{ "%.1f"|format(biggest_gain.distance_km or 0) }} · {{ biggest_gain.description }}
+          {% else %}
+          Gains were too small or too diffuse to stand out.
+          {% endif %}
+        </div>
+      </div>
+      <div class="event-summary-card">
+        <div class="event-summary-label">Race Shape</div>
+        <div class="event-summary-main">
+          {{ events_summary.get('lead_changes', 0) if events_summary else 0 }} lead change{% if (events_summary.get('lead_changes', 0) if events_summary else 0) != 1 %}s{% endif %}
+        </div>
+        <div class="event-summary-sub">
+          {% set finish_kicks = events_summary.get('finish_kicks', []) if events_summary else [] %}
+          {% if finish_kicks %}
+          Finish kicks: {{ finish_kicks | map(attribute='athlete_label') | join(', ') }}
+          {% else %}
+          No clear finish kick was detected.
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="events-filter-bar">
+      <select id="event-athlete-filter" class="events-filter" onchange="filterRaceEvents()">
+        <option value="">All athletes</option>
+        {% for athlete in athletes %}
+        <option value="{{ athlete.athlete_label }}">{{ athlete.athlete_label }}</option>
+        {% endfor %}
+      </select>
+      <select id="event-type-filter" class="events-filter" onchange="filterRaceEvents()">
+        <option value="">All event types</option>
+        {% for ev in events %}
+        <option value="{{ ev.event_type }}">{{ ev.event_type | replace('_', ' ') }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
   <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table" id="race-events-table">
       <thead>
         <tr>
           <th>Type</th>
           <th>Athlete</th>
+          <th>Rival</th>
+          <th>Rank</th>
           <th>Distance</th>
           <th>Elapsed</th>
           <th>Impact</th>
+          <th>Context</th>
           <th>Description</th>
         </tr>
       </thead>
       <tbody>
         {% for ev in events %}
-        <tr>
+        {% set ctx = ev.context or {} %}
+        <tr data-event-athlete="{{ ev.athlete_label }}" data-event-type="{{ ev.event_type }}">
           <td>
             <span class="event-badge event-{{ ev.event_type }}">{{ ev.event_type | replace('_', ' ') }}</span>
           </td>
           <td style="font-size:0.88rem;">{{ ev.athlete_label }}</td>
+          <td style="font-size:0.82rem; color:#aaa;">{{ ctx.get('rival_label') or '—' }}</td>
+          <td style="font-size:0.82rem; color:#d4d4d8;">
+            {% if ctx.get('rank_before') and ctx.get('rank_after') %}
+            P{{ ctx.get('rank_before') }} → P{{ ctx.get('rank_after') }}
+            {% elif ctx.get('rank_after') %}
+            P{{ ctx.get('rank_after') }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
           <td style="font-size:0.85rem; color:#888;">
             {% if ev.distance_km is not none %}{{ "%.1f"|format(ev.distance_km) }} km{% else %}—{% endif %}
           </td>
@@ -315,7 +437,34 @@
             </span>
             {% else %}—{% endif %}
           </td>
-          <td style="font-size:0.82rem; color:#aaa;">{{ ev.description or '—' }}</td>
+          <td style="font-size:0.78rem; color:#9ca3af;">
+            {% if ctx.get('segment_label') %}
+            <div>{{ ctx.get('segment_label') }}</div>
+            {% endif %}
+            {% if ctx.get('duration_s') %}
+            <div>{{ "%.0f"|format(ctx.get('duration_s')) }}s window</div>
+            {% endif %}
+            {% if ctx.get('context_tags') %}
+            <div>
+              {% for tag in ctx.get('context_tags') %}
+              <span class="event-context-chip">{{ tag | replace('_', ' ') }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td style="font-size:0.82rem; color:#aaa;">
+            <div class="event-description">
+              <span>{{ ev.description or '—' }}</span>
+              <span class="event-meta-line">
+                {% if ctx.get('gap_before_s') is not none or ctx.get('gap_after_s') is not none %}
+                Gap: {{ "%.1f"|format(ctx.get('gap_before_s') or 0) }}s → {{ "%.1f"|format(ctx.get('gap_after_s') or 0) }}s
+                {% endif %}
+                {% if ctx.get('confidence') is not none %}
+                · confidence {{ "%.2f"|format(ctx.get('confidence')) }}
+                {% endif %}
+              </span>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -712,15 +861,48 @@ function updateLeaderboard(frameIdx) {
   }).join('');
 }
 
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+
 // Draw the leaderboard onto an off-screen canvas context (for GIF export)
-function drawLeaderboardOnCanvas(ctx, entries, t) {
+function drawLeaderboardOnCanvas(ctx, entries, t, viewport, useFinishStandings) {
+  const vw = viewport?.width ?? 600;
+  const vh = viewport?.height ?? 600;
   const hasHr   = entries.some(e => e.hr  != null);
   const hasPace = entries.some(e => e.vel != null);
-  const cols    = 1 + (hasPace ? 1 : 0) + (hasHr ? 1 : 0);
-  const boardW  = 100 + cols * 48;
-  const rowH    = 16, hdrH = 20, pad = 4;
-  const boardH  = hdrH + entries.length * rowH + pad;
-  const x0 = 8, y0 = 8;
+  const isPortrait = vh > vw;
+  const shortSide = Math.min(vw, vh);
+  const scaleBase = clamp(shortSide / 380, 1, 1.7);
+  const scale = isPortrait ? scaleBase * 1.18 : scaleBase;
+  const xPad = Math.round(8 * scale);
+  const yPad = Math.round(8 * scale);
+  const innerPad = Math.round(5 * scale);
+  const rowH = Math.round(16 * scale);
+  const hdrH = Math.round(20 * scale);
+  const colorBarW = Math.max(4, Math.round(3 * scale));
+  const rankW = Math.round(14 * scale);
+  const statW = Math.round((isPortrait ? 58 : 48) * scale);
+  const gapW = Math.round((isPortrait ? 72 : 60) * scale);
+  const minBoardW = Math.round((isPortrait ? 0.62 : 0.42) * vw);
+  const maxBoardW = Math.round((isPortrait ? 0.9 : 0.68) * vw);
+  const boardW = clamp(
+    Math.round((112 + gapW + (hasPace ? statW : 0) + (hasHr ? statW : 0)) * scale),
+    minBoardW,
+    maxBoardW
+  );
+  const boardH = hdrH + entries.length * rowH + yPad;
+  const x0 = xPad;
+  const y0 = yPad;
+  const leftTextX = x0 + innerPad;
+  const colorX = leftTextX + rankW + Math.round(4 * scale);
+  const nameX = colorX + colorBarW + Math.round(5 * scale);
+  const rightInnerX = x0 + boardW - innerPad;
+  const headerFontPx = Math.round(10 * scale);
+  const rankFontPx = Math.round(9 * scale);
+  const bodyFontPx = Math.round(10 * scale);
+  const statFontPx = Math.round(9 * scale);
+  const maxNameChars = clamp(Math.floor((boardW - (nameX - x0) - gapW - (hasPace ? statW : 0) - (hasHr ? statW : 0)) / (bodyFontPx * 0.6)), 8, 18);
 
   // Background
   ctx.fillStyle = 'rgba(0,0,0,0.84)';
@@ -730,40 +912,44 @@ function drawLeaderboardOnCanvas(ctx, entries, t) {
   ctx.fillStyle = '#e10600';
   ctx.fillRect(x0, y0, boardW, hdrH);
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 10px monospace';
+  ctx.font = `bold ${headerFontPx}px monospace`;
   ctx.textAlign = 'left';
-  ctx.fillText('LIVE', x0 + 5, y0 + 14);
+  ctx.fillText('LIVE', x0 + innerPad, y0 + Math.round(hdrH * 0.72));
   ctx.textAlign = 'right';
-  ctx.fillText(fmtTime(t), x0 + boardW - 5, y0 + 14);
+  ctx.fillText(fmtTime(t), rightInnerX, y0 + Math.round(hdrH * 0.72));
 
   entries.forEach((e, i) => {
     const ry = y0 + hdrH + i * rowH;
-    const name = e.label.length > 9 ? e.label.slice(0, 9) + '…' : e.label;
+    const name = e.label.length > maxNameChars ? e.label.slice(0, maxNameChars) + '…' : e.label;
+    const baselineY = ry + rowH - Math.round(4 * scale);
 
     // Rank
     ctx.textAlign = 'left';
     ctx.fillStyle = e.rank === 1 ? '#fbbf24' : '#888';
-    ctx.font = 'bold 9px monospace';
-    ctx.fillText(String(e.rank), x0 + 4, ry + rowH - 4);
+    ctx.font = `bold ${rankFontPx}px monospace`;
+    ctx.fillText(String(e.rank), leftTextX, baselineY);
 
     // Color bar
     ctx.fillStyle = e.color;
-    ctx.fillRect(x0 + 14, ry + 3, 3, rowH - 6);
+    ctx.fillRect(colorX, ry + Math.round(3 * scale), colorBarW, rowH - Math.round(6 * scale));
 
     // Name
     ctx.fillStyle = '#eee';
-    ctx.font = '9px sans-serif';
-    ctx.fillText(name, x0 + 20, ry + rowH - 4);
+    ctx.font = `${bodyFontPx}px sans-serif`;
+    ctx.fillText(name, nameX, baselineY);
 
     // Gap
-    const gapStr = e.rank === 1 ? 'LEAD' : fmtGap(e.gap_geo_m);
+    const gapStr = e.rank === 1
+      ? (useFinishStandings ? 'WIN' : 'LEAD')
+      : (useFinishStandings ? fmtTimeGap(e.post_finish_gap_s) : fmtGap(e.gap_geo_m));
     ctx.fillStyle = e.rank === 1 ? '#4ade80' : '#f87171';
     ctx.textAlign = 'right';
-    let cx = x0 + boardW - 5;
-    if (hasHr)   { ctx.fillStyle = '#f472b6'; ctx.fillText(e.hr  ? `${e.hr}♥` : '—', cx, ry + rowH - 4); cx -= 42; }
-    if (hasPace) { ctx.fillStyle = '#60a5fa'; ctx.fillText(e.vel ? fmtPace(e.vel) : '—', cx, ry + rowH - 4); cx -= 42; }
+    ctx.font = `${statFontPx}px sans-serif`;
+    let cx = rightInnerX;
+    if (hasHr)   { ctx.fillStyle = '#f472b6'; ctx.fillText(e.hr  ? `${e.hr}♥` : '—', cx, baselineY); cx -= statW; }
+    if (hasPace) { ctx.fillStyle = '#60a5fa'; ctx.fillText(e.vel ? fmtPace(e.vel) : '—', cx, baselineY); cx -= statW; }
     ctx.fillStyle = e.rank === 1 ? '#4ade80' : '#f87171';
-    ctx.fillText(gapStr, cx, ry + rowH - 4);
+    ctx.fillText(gapStr, cx, baselineY);
   });
   ctx.textAlign = 'left';
   return { x0, y0, boardW, boardH };
@@ -809,11 +995,16 @@ async function startExportGif(ratio) {
   const allLL = ATHLETES_DATA.flatMap(a => (a.latlng || []).filter(p => p));
   if (!allLL.length) { alert('No GPS data to export.'); return; }
 
-  // Canvas dimensions from chosen ratio
+  // Match the live map viewport area, then rasterize at the current screen density.
   const [rw, rh] = ratio.split(':').map(Number);
-  const LONG_SIDE = 600;
-  const W = rw >= rh ? LONG_SIDE : Math.round(LONG_SIDE * rw / rh);
-  const H = rh >= rw ? LONG_SIDE : Math.round(LONG_SIDE * rh / rw);
+  const exportRatio = rw / rh;
+  const liveMapSize = map.getSize();
+  const baseAreaCssPx = Math.max(1, liveMapSize.x * liveMapSize.y);
+  const W_CSS = Math.max(1, Math.round(Math.sqrt(baseAreaCssPx * exportRatio)));
+  const H_CSS = Math.max(1, Math.round(W_CSS / exportRatio));
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  const W = Math.max(1, Math.round(W_CSS * pixelRatio));
+  const H = Math.max(1, Math.round(H_CSS * pixelRatio));
 
   const minLat = Math.min(...allLL.map(p => p[0]));
   const maxLat = Math.max(...allLL.map(p => p[0]));
@@ -845,7 +1036,7 @@ async function startExportGif(ratio) {
   // Project lat/lon to canvas coordinates relative to a per-frame center
   function projectFollow(lat, lon, cX, cY) {
     const wp = _latLonToWorldPx(lat, lon, zoom);
-    return { x: W / 2 + (wp.px - cX) * scale, y: H / 2 + (wp.py - cY) * scale };
+    return { x: W_CSS / 2 + (wp.px - cX) * scale, y: H_CSS / 2 + (wp.py - cY) * scale };
   }
 
   // ── Load CartoDB dark tiles ──
@@ -856,8 +1047,8 @@ async function startExportGif(ratio) {
   const tileSet = new Set();
   for (let fi = 0; fi < totalFrames; fi++) {
     const { px: cX, py: cY } = getFrameCenter(replayFrames[fi]);
-    for (let tx = Math.max(0, Math.floor((cX - W / 2) / 256)); tx <= Math.min(maxTileIdx, Math.ceil((cX + W / 2) / 256)); tx++)
-      for (let ty = Math.max(0, Math.floor((cY - H / 2) / 256)); ty <= Math.min(maxTileIdx, Math.ceil((cY + H / 2) / 256)); ty++)
+    for (let tx = Math.max(0, Math.floor((cX - W_CSS / 2) / 256)); tx <= Math.min(maxTileIdx, Math.ceil((cX + W_CSS / 2) / 256)); tx++)
+      for (let ty = Math.max(0, Math.floor((cY - H_CSS / 2) / 256)); ty <= Math.min(maxTileIdx, Math.ceil((cY + H_CSS / 2) / 256)); ty++)
         tileSet.add(`${tx},${ty}`);
   }
   const tilePromises = [];
@@ -867,7 +1058,7 @@ async function startExportGif(ratio) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     tilePromises.push(new Promise(res => { img.onload = res; img.onerror = res; }));
-    img.src = `https://${s}.basemaps.cartocdn.com/dark_all/${zoom}/${tx}/${ty}.png`;
+    img.src = `https://${s}.basemaps.cartocdn.com/dark_all/${zoom}/${tx}/${ty}${pixelRatio > 1 ? '@2x' : ''}.png`;
     tileImgs[key] = img;
   }
 
@@ -897,8 +1088,8 @@ async function startExportGif(ratio) {
       if (!img || !img.complete || img.naturalWidth === 0) continue;
       const [tx, ty] = key.split(',').map(Number);
       ctx.drawImage(img,
-        W / 2 + (tx * 256 - cX) * scale,
-        H / 2 + (ty * 256 - cY) * scale,
+        W_CSS / 2 + (tx * 256 - cX) * scale,
+        H_CSS / 2 + (ty * 256 - cY) * scale,
         256 * scale, 256 * scale
       );
     }
@@ -907,22 +1098,40 @@ async function startExportGif(ratio) {
   // Canvas setup
   const canvas = document.getElementById('gif-canvas');
   canvas.width = W; canvas.height = H;
+  canvas.style.width = `${W_CSS}px`;
+  canvas.style.height = `${H_CSS}px`;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.imageSmoothingEnabled = true;
 
   // gif.js setup
   const gif = new GIF({ workers: 2, quality: 8, width: W, height: H, workerScript: '/static/js/gif.worker.js' });
 
-  // Frame selection (same logic: match live playback speed, cap at 150 frames)
-  const GIF_MIN_DELAY_MS = 20, MAX_FRAMES = 150;
+  // Preserve the full source timeline and expand it to a minimum 60 fps export.
+  const TARGET_EXPORT_FPS = 60;
+  const GIF_DELAY_QUANTUM_MS = 10;
+  const TARGET_FRAME_DELAY_MS = 1000 / TARGET_EXPORT_FPS;
   const idealDelayMs = TIME_STEP_S * 1000 / playSpeed;
-  const step = Math.max(
-    Math.max(1, Math.floor(totalFrames / MAX_FRAMES)),
-    Math.max(1, Math.ceil(GIF_MIN_DELAY_MS / idealDelayMs))
-  );
-  const frameIdxs = [];
-  for (let f = 0; f < totalFrames; f += step) frameIdxs.push(f);
-  if (frameIdxs[frameIdxs.length - 1] !== totalFrames - 1) frameIdxs.push(totalFrames - 1);
-  const clampedDelay = Math.round(step * idealDelayMs);
+  const frameQueue = [];
+  for (let f = 0; f < totalFrames; f++) {
+    const totalQuanta = Math.max(
+      1,
+      Math.round(Math.max(idealDelayMs, GIF_DELAY_QUANTUM_MS) / GIF_DELAY_QUANTUM_MS)
+    );
+    const sliceCount = Math.max(
+      1,
+      Math.ceil(Math.max(idealDelayMs, GIF_DELAY_QUANTUM_MS) / TARGET_FRAME_DELAY_MS)
+    );
+    const baseQuanta = Math.floor(totalQuanta / sliceCount);
+    const extraQuanta = totalQuanta % sliceCount;
+    for (let sliceIdx = 0; sliceIdx < sliceCount; sliceIdx++) {
+      const quantaForSlice = baseQuanta + (sliceIdx < extraQuanta ? 1 : 0);
+      frameQueue.push({
+        frameIdx: f,
+        delayMs: Math.max(GIF_DELAY_QUANTUM_MS, quantaForSlice * GIF_DELAY_QUANTUM_MS),
+      });
+    }
+  }
 
   function setProgress(pct, label) { progBar.style.width = pct + '%'; progLabel.textContent = label; }
 
@@ -936,7 +1145,7 @@ async function startExportGif(ratio) {
     const { px: cX, py: cY } = getFrameCenter(frame);
 
     ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, W_CSS, H_CSS);
     drawTiles(ctx, cX, cY);
 
     // Ghost routes (world-pixel coords → canvas via current center)
@@ -947,8 +1156,8 @@ async function startExportGif(ratio) {
       ctx.strokeStyle = ATHLETE_COLORS[i % ATHLETE_COLORS.length] + '77';
       ctx.lineWidth = 2;
       pts.forEach((wp, j) => {
-        const cx2 = W / 2 + (wp.px - cX) * scale;
-        const cy2 = H / 2 + (wp.py - cY) * scale;
+        const cx2 = W_CSS / 2 + (wp.px - cX) * scale;
+        const cy2 = H_CSS / 2 + (wp.py - cY) * scale;
         j === 0 ? ctx.moveTo(cx2, cy2) : ctx.lineTo(cx2, cy2);
       });
       ctx.stroke();
@@ -969,8 +1178,8 @@ async function startExportGif(ratio) {
     });
 
     // F1 leaderboard + race clock
-    const { entries } = computeLeaderboard(fidx);
-    const lb = drawLeaderboardOnCanvas(ctx, entries, t);
+    const { entries, useFinishStandings } = computeLeaderboard(fidx);
+    const lb = drawLeaderboardOnCanvas(ctx, entries, t, { width: W_CSS, height: H_CSS }, useFinishStandings);
 
     // Branding strip — same width as leaderboard, clipped exactly
     const brandH = 14, brandY = lb.y0 + lb.boardH + 2;
@@ -986,22 +1195,23 @@ async function startExportGif(ratio) {
 
     const clockStr = fmtTime(t) + ' / ' + fmtTime((totalFrames - 1) * TIME_STEP_S);
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(W - 118, H - 26, 113, 20);
+    ctx.fillRect(W_CSS - 118, H_CSS - 26, 113, 20);
     ctx.fillStyle = '#bbb'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
-    ctx.fillText(clockStr, W - 6, H - 10); ctx.textAlign = 'left';
+    ctx.fillText(clockStr, W_CSS - 6, H_CSS - 10); ctx.textAlign = 'left';
 
-    gif.addFrame(canvas, { copy: true, delay: clampedDelay });
+    gif.addFrame(canvas, { copy: true, delay: frameQueue[ci].delayMs });
   }
 
   function captureNext() {
-    if (ci >= frameIdxs.length) {
+    if (ci >= frameQueue.length) {
       setProgress(50, 'Encoding GIF… 0%');
       btn.textContent = '⏳ Encoding…';
       gif.render();
       return;
     }
-    drawGifFrame(frameIdxs[ci++]);
-    setProgress(Math.round((ci / frameIdxs.length) * 50), `Capturing frame ${ci} / ${frameIdxs.length}…`);
+    drawGifFrame(frameQueue[ci].frameIdx);
+    ci += 1;
+    setProgress(Math.round((ci / frameQueue.length) * 50), `Capturing frame ${ci} / ${frameQueue.length}…`);
     requestAnimationFrame(captureNext);
   }
 
@@ -1191,6 +1401,31 @@ function showChart(mode) {
     if (meta) meta.textContent = 'bpm — heart rate over distance';
   }
 }
+
+function filterRaceEvents() {
+  const athlete = document.getElementById('event-athlete-filter')?.value || '';
+  const type = document.getElementById('event-type-filter')?.value || '';
+  const rows = document.querySelectorAll('#race-events-table tbody tr');
+  rows.forEach((row) => {
+    const athleteOk = !athlete || row.dataset.eventAthlete === athlete;
+    const typeOk = !type || row.dataset.eventType === type;
+    row.style.display = athleteOk && typeOk ? '' : 'none';
+  });
+}
+
+(function initRaceEventFilters() {
+  const typeFilter = document.getElementById('event-type-filter');
+  if (!typeFilter) return;
+  const seen = new Set();
+  [...typeFilter.options].forEach((opt, idx) => {
+    if (idx === 0 || !opt.value) return;
+    if (seen.has(opt.value)) {
+      opt.remove();
+      return;
+    }
+    seen.add(opt.value);
+  });
+})();
 
 // ── Companion athletes from Strava group run ──────────────────────────────────
 (async function loadCompanions() {
