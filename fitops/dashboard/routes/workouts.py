@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.training_scores import (
@@ -23,6 +23,7 @@ from fitops.dashboard.queries.workouts import (
     get_workout_with_segments,
 )
 from fitops.db.models.workout import Workout
+from fitops.db.models.workout_activity_link import WorkoutActivityLink
 from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
 
@@ -497,6 +498,20 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 )
                 workouts = list(result.scalars().all())
 
+            workout_ids = [w.id for w in workouts]
+            session_counts: dict[int, int] = {}
+            if workout_ids:
+                async with get_async_session() as session:
+                    cnt_result = await session.execute(
+                        select(
+                            WorkoutActivityLink.workout_id,
+                            func.count(WorkoutActivityLink.id).label("cnt"),
+                        )
+                        .where(WorkoutActivityLink.workout_id.in_(workout_ids))
+                        .group_by(WorkoutActivityLink.workout_id)
+                    )
+                    session_counts = {row.workout_id: row.cnt for row in cnt_result.all()}
+
             for w in workouts:
                 async with get_async_session() as session:
                     seg_result = await session.execute(
@@ -534,6 +549,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         if w.compliance_score is not None
                         else None,
                         "segment_count": len(segments),
+                        "session_count": session_counts.get(w.id, 0),
                         "segments": seg_rows,
                     }
                 )

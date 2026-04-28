@@ -22,7 +22,7 @@
         <th>Workout</th>
         <th>Sport</th>
         <th>Linked</th>
-        <th>Status</th>
+        <th class="r">Sessions</th>
         <th class="r">Compliance</th>
         <th class="r">Segments</th>
       </tr>
@@ -37,14 +37,7 @@
           </span>
         </td>
         <td>{{ w.linked_at }}</td>
-        <td>
-          <span class="badge
-            {% if w.status == 'completed' %}badge-green
-            {% elif w.status == 'planned' %}badge-dim
-            {% else %}badge-blue{% endif %}">
-            {{ w.status | capitalize }}
-          </span>
-        </td>
+        <td class="r">{{ w.session_count }}</td>
         <td class="r">
           {% if w.compliance_pct is not none %}
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
