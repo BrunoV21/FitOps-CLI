@@ -98,6 +98,8 @@ Sync your Strava activities once, then explore them however you like — visuall
 | 6 — Notes | ✅ Done | Markdown training notes with tags and activity linking |
 | 7 — Weather-Adjusted Pace | ✅ Done | WAP, True Pace, Open-Meteo historical/forecast weather |
 | 8 — Race Simulation | ✅ Done | Course import, per-split pacing, pacer strategy |
+| 9 — Training Goals | 🔜 Planned | Rule-based targets: weekly mileage, active time, activity counts, progressive overload |
+| 10 — AI Training Plans | 🔜 Planned | Race-specific periodized plans, calendar adherence, strength mesocycles — all primitives are in place |
 
 ## Quick Setup for AI Agents
 

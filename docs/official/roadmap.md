@@ -545,3 +545,166 @@ fitops race splits <course_id> --target-time HH:MM:SS   # just the split table
 - **Split overlay:** colored bars showing target pace per split (green = easy, red = hard)
 - **Pacer visualization:** line showing pacer pace vs your plan, with the breakaway point marked
 - **Comparison mode:** overlay multiple simulation scenarios (e.g., 3:10 vs 3:15 target)
+
+---
+
+## Phase 9 — Training Goals 🔜
+
+**Goal:** Let athletes define rule-based training targets — measurable commitments that sit below a full training plan — and track progress automatically after every sync.
+
+Goals are about habits and volume, not scheduled workouts. They answer "am I building the week I said I'd build?" rather than "did I follow today's workout?"
+
+### Goal Types
+
+| Type | Example |
+|------|---------|
+| **Weekly distance** | Run ≥ 60 km this week |
+| **Weekly active time** | Train ≥ 6 h per week |
+| **Weekly activity count** | Complete ≥ 3 runs and ≥ 2 rides per week |
+| **Workout-type frequency** | Do 1× interval session + 1× long run per week |
+| **Progressive overload** | Increase weekly running distance 5% per week until 90 km/wk |
+| **Monthly target** | Accumulate 250 km on the bike in April |
+
+### Progressive Overload Rules
+
+Goals can embed a progression rule:
+
+```
+base: 50 km/wk
+step: +5% per week
+cap: 90 km/wk
+```
+
+After each week closes, FitOps checks the result against the target, computes the next week's target, and logs the streak.
+
+### Goal State Machine
+
+```
+active → on_track | at_risk | failed | completed
+```
+
+- **on_track:** current week/month trajectory meets the target
+- **at_risk:** pace through today puts the target at risk (e.g., only 40% done with 70% of the week elapsed)
+- **failed:** week/month closed below target — streak resets
+- **completed:** reached the cap of a progressive goal (graduation)
+
+### Storage
+
+```
+training_goals
+  id, name, metric (distance|time|count|workout_type), sport,
+  period (weekly|monthly), target_value, unit,
+  progression_pct (nullable), progression_cap (nullable),
+  active_from, active_until (nullable), created_at
+
+goal_results
+  id, goal_id (FK), period_start, period_end,
+  target_value, actual_value, status (on_track|at_risk|failed|completed),
+  evaluated_at
+```
+
+### CLI Commands
+
+```bash
+fitops goals create --name "Weekly running base" \
+  --metric distance --sport Run --period weekly \
+  --target 60 --unit km
+
+fitops goals create --name "Build to 90 km/wk" \
+  --metric distance --sport Run --period weekly \
+  --target 50 --unit km --progress 5% --cap 90
+
+fitops goals create --name "Run 3 times + ride twice" \
+  --metric count --sport Run --target 3 \
+  --metric count --sport Ride --target 2 --period weekly
+
+fitops goals list                           # all active goals with current-week status
+fitops goals status                         # dashboard-style summary: goal | target | actual | status
+fitops goals history <goal_id>             # week-by-week result log
+fitops goals edit <goal_id> --target 70    # update a goal parameter
+fitops goals pause <goal_id>               # suspend without deleting
+fitops goals delete <goal_id>
+```
+
+### Dashboard
+
+- **Goals overview card** on the main dashboard: each active goal shows a progress bar, target, actual, and on-track/at-risk badge
+- **Goal detail page:** week-by-week history chart, streak counter, projected completion date for progressive goals
+- **At-risk alerts:** highlighted in red when a goal is at risk before the week closes — surfaced in the dashboard header and in CLI `--json` output so an agent can act on it
+
+---
+
+## Phase 10 — AI-Powered Training Plans 🔜
+
+**Goal:** Generate periodized, race-specific training plans — and enforce adherence through a calendar-aware schedule that carries plans forward when workouts are missed.
+
+Everything needed is already in place: workouts (Phase 3), compliance scoring (Phase 3), race simulation and course profiles (Phase 8), and weather-adjusted pace (Phase 7). This phase assembles those primitives into an agent-driven planning layer.
+
+> **If there is demand, this is fully buildable without new infrastructure.** The design is intentional — each preceding phase was scoped so this could be added cleanly.
+
+### What a Training Plan Is
+
+A **training plan** is a time-bound sequence of `Workout` instances (Phase 3) generated from a periodization template and anchored to a race date. It differs from a goal (Phase 9) in that it is prescriptive: each day has a specific session with a target intensity, duration, and type.
+
+```
+PlanTemplate  →  TrainingPlan  →  Workout[]
+(periodization  (athlete-specific  (daily sessions,
+ blueprint)      instance)          linked to activities)
+```
+
+### Plan Generation
+
+The agent asks for:
+- Race date + target time (or target pace)
+- Current fitness (CTL, VO2max, threshold pace — already in the DB)
+- Available training days per week
+- Sport type: running, cycling, or triathlon
+
+From those inputs the engine:
+1. Back-calculates the number of training weeks available
+2. Assigns a periodization structure: base → build → peak → taper
+3. Distributes weekly volume across the requested days using the athlete's zone boundaries (Phase 2)
+4. For each session, creates a `WorkoutCourse` with appropriate movements (e.g., "15 min Z2 warm-up → 3 × 8 min Z4 @ threshold pace → 10 min Z1 cool-down")
+5. Weather-adjusts target paces per session using the historical climate at the athlete's home location
+
+### Calendar Adherence
+
+After each sync, the compliance engine (Phase 3) scores the completed activity against the planned workout. When a session is missed:
+- The plan reschedules it to the nearest available slot
+- Volume is preserved — a skipped long run is moved, not dropped
+- If the window closes (e.g., it's race week and a key session was skipped), the agent surfaces an alert via `--json` for downstream coaching tools
+
+### Strength Training
+
+The same planning logic applies to gym sessions:
+- Movements are resistance exercises (sets × reps × RPE) rather than zone-based cardio
+- Periodization follows a mesocycle structure: accumulation → intensification → realization
+- Compliance scoring compares planned vs logged sets/reps (requires the athlete to log sessions via `fitops workouts link`)
+
+### CLI Commands
+
+```bash
+# Plan creation
+fitops plan create --race-date 2026-10-18 --target-time 3:10:00 --days Mon,Wed,Fri,Sun
+fitops plan create --sport cycling --race-date 2026-09-07 --target-time 5:30:00
+fitops plan create --sport strength --template hypertrophy --weeks 8
+
+# Plan management
+fitops plan list                            # all plans (active and archived)
+fitops plan show <plan_id>                  # full schedule with compliance status per session
+fitops plan today                           # today's planned session
+fitops plan week                            # this week's sessions with status
+fitops plan reschedule <plan_id>            # re-optimize remaining sessions after missed workouts
+fitops plan delete <plan_id>
+
+# Adherence reporting
+fitops plan compliance <plan_id>           # overall and per-phase compliance score
+fitops plan compliance <plan_id> --week 4  # single-week breakdown
+```
+
+### Dashboard
+
+- **Plan timeline:** Gantt-style weekly calendar showing planned sessions, color-coded by sport and intensity zone; completed sessions show actual vs planned comparison
+- **Today's session card:** surfaced prominently on the dashboard home — workout description, target pace/power, and expected duration
+- **Compliance trend:** rolling 4-week bar chart of plan adherence percentage
+- **Missed-session alerts:** banner when a key session (long run, threshold block) was skipped and the plan needs rescheduling
