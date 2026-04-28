@@ -14,18 +14,17 @@
       {% endif %}
     </p>
   </div>
-  <form method="get" class="filter-bar" style="margin-bottom:0;">
-    <select name="sport" class="select-ctrl">
-      <option value="Run" {% if selected_sport == "Run" %}selected{% endif %}>Run</option>
-      <option value="Ride" {% if selected_sport == "Ride" %}selected{% endif %}>Ride</option>
-    </select>
-    <select name="days" class="select-ctrl">
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div class="period-tabs">
       {% for d in [90, 180, 365] %}
-      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      <a href="/analytics/performance?sport={{ selected_sport }}&days={{ d }}" class="period-tab {% if d == selected_days %}active{% endif %}">{{ d }}d</a>
       {% endfor %}
-    </select>
-    <button type="submit" class="btn btn-primary">Update</button>
-  </form>
+    </div>
+    <div class="period-tabs">
+      <a href="/analytics/performance?sport=Run&days={{ selected_days }}" class="period-tab {% if selected_sport == 'Run' %}active{% endif %}">Run</a>
+      <a href="/analytics/performance?sport=Ride&days={{ selected_days }}" class="period-tab {% if selected_sport == 'Ride' %}active{% endif %}">Ride</a>
+    </div>
+  </div>
 </div>
 
 {% if perf_metrics %}
