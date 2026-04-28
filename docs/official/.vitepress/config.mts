@@ -48,6 +48,7 @@ export default defineConfig({
           { text: 'race', link: '/commands/race' },
           { text: 'notes', link: '/commands/notes' },
           { text: 'backup', link: '/commands/backup' },
+          { text: 'admin', link: '/commands/admin' },
         ]
       },
       {
@@ -63,6 +64,7 @@ export default defineConfig({
           { text: 'Race Simulation', link: '/concepts/race-simulation' },
           { text: 'Training Notes', link: '/concepts/notes' },
           { text: 'AI Agent Integration', link: '/concepts/llm-integration' },
+          { text: 'Strava API & Data Use', link: '/concepts/strava-compliance' },
         ]
       },
       {

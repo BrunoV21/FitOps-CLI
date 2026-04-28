@@ -16,6 +16,7 @@ FitOps isn't just a data viewer — it applies established sports science models
 | [Race Simulation](./race-simulation.md) | Per-km pacing plans adjusted for elevation, weather, and strategy |
 | [Training Notes](./notes.md) | Markdown training journal, activity linking, tags, and agent memory |
 | [AI Agent Integration](./llm-integration.md) | Using FitOps with AI assistants, scripting, and persistent agent memory |
+| [Strava API & Data Use](./strava-compliance.md) | How FitOps's local-first design lines up with Strava's API agreement |
 
 ## The Core Ideas
 

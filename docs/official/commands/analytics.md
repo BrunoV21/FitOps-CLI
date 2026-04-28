@@ -296,6 +296,40 @@ Threshold pace is stored in `~/.fitops/athlete_settings.json`.
 
 ---
 
+### `fitops analytics recalculate-scores`
+
+Recompute aerobic and anaerobic scores for all activities and persist them to the database.
+
+```bash
+fitops analytics recalculate-scores [OPTIONS]
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | false | Output raw JSON instead of the formatted summary |
+
+```bash
+fitops analytics recalculate-scores
+fitops analytics recalculate-scores --json
+```
+
+Scores are derived from each activity's pace, HR, and current physiology settings (`~/.fitops/athlete_settings.json`). Run this command after updating LTHR, max HR, or threshold pace so that historical scores reflect your current settings.
+
+**JSON output:**
+
+```json
+{
+  "_meta": { ... },
+  "recalculated": 312
+}
+```
+
+This command does not contact Strava — it only reads and writes the local database.
+
+---
+
 ### `fitops analytics snapshot`
 
 Compute and save today's analytics snapshot (CTL, ATL, TSB, VO2max) to the database.

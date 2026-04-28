@@ -202,6 +202,8 @@ Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
 
 Copy your **Client ID** and **Client Secret** from the Strava API Settings page. See the [full authentication guide](https://brunov21.github.io/fitops/getting-started/authentication) for details.
 
+> **On Strava's API agreement:** FitOps is a single-user, local-only tool — your activities never leave your machine, are never used to train AI models, and are never displayed to anyone but you. This is the personal-coaching pattern Strava's [Nov 2024 API update](https://press.strava.com/articles/updates-to-stravas-api-agreement) explicitly preserved. Full breakdown: [Strava API & Data Use](https://brunov21.github.io/FitOps-CLI/concepts/strava-compliance).
+
 ### 2. Authenticate
 
 ```bash
