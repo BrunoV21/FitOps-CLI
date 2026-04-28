@@ -7,7 +7,6 @@ from datetime import UTC
 import typer
 
 from fitops.analytics.athlete_settings import get_athlete_settings
-from fitops.analytics.performance_metrics import compute_performance_metrics
 from fitops.analytics.power_curves import compute_power_curve
 from fitops.analytics.training_load import (
     _compute_overtraining_indicators,
@@ -24,7 +23,10 @@ from fitops.analytics.zone_inference import (
 )
 from fitops.analytics.zones import compute_zones
 from fitops.config.settings import get_settings
-from fitops.dashboard.queries.analytics import get_volume_summary
+from fitops.dashboard.queries.analytics import (
+    get_performance_context,
+    get_volume_summary,
+)
 from fitops.db.migrations import init_db
 from fitops.output.formatter import make_meta
 from fitops.output.text_formatter import (
@@ -509,6 +511,7 @@ def trends(
 
 @app.command("performance")
 def performance(
+    days: int = typer.Option(365, "--days", help="Number of days of history to use."),
     sport: str | None = typer.Option(None, "--sport", help="Sport type: Run or Ride."),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
@@ -523,22 +526,27 @@ def performance(
         raise typer.Exit(1)
 
     init_db()
-    result = asyncio.run(
-        compute_performance_metrics(athlete_id=settings.athlete_id, sport=sport)
+    context = asyncio.run(
+        get_performance_context(settings.athlete_id, sport=sport, days=days)
     )
 
-    if result is None:
+    if context is None:
         typer.echo("No qualifying activities found.", err=True)
         return
 
+    result = context["performance"]
+
     perf_out = {
-        "_meta": make_meta(filters_applied={"sport": sport}),
+        "_meta": make_meta(filters_applied={"sport": sport, "days": days}),
         "performance": {
             "sport": result.sport,
+            "days": result.days,
             "activity_count": result.activity_count,
             "overall_reliability": result.overall_reliability,
             "running": result.running,
             "cycling": result.cycling,
+            "current_load": context["current_load"],
+            "trends": context["trends"].__dict__ if context["trends"] else None,
         },
     }
     if json_output:
@@ -626,15 +634,19 @@ def pace_zones_cmd(
             )
             return
 
-    pz_out = {
-        "_meta": make_meta(),
-        "pace_zones": {
-            "threshold_pace": result.threshold_pace_fmt + "/km",
-            "threshold_pace_s": result.threshold_pace_s,
-            "source": result.source,
-            "zones": result.zones,
-        },
+    pz_block: dict = {
+        "threshold_pace": result.threshold_pace_fmt + "/km",
+        "threshold_pace_s": result.threshold_pace_s,
+        "source": result.source,
+        "zones": result.zones,
     }
+    if result.lt1_pace_fmt is not None:
+        pz_block["lt1_pace"] = result.lt1_pace_fmt + "/km"
+        pz_block["lt1_pace_s"] = result.lt1_pace_s
+    if result.vo2max_pace_fmt is not None:
+        pz_block["vo2max_pace"] = result.vo2max_pace_fmt + "/km"
+        pz_block["vo2max_pace_s"] = result.vo2max_pace_s
+    pz_out = {"_meta": make_meta(), "pace_zones": pz_block}
     if json_output:
         typer.echo(json.dumps(pz_out, indent=2, default=str))
     else:
@@ -725,3 +737,53 @@ def snapshot(
         typer.echo(json.dumps(snap_out, indent=2, default=str))
     else:
         print_snapshot(snap_out)
+
+
+@app.command("recalculate-scores")
+def recalculate_scores(
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Recompute aerobic and anaerobic scores for all activities and persist them."""
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1)
+
+    init_db()
+
+    async def _run():
+        from sqlalchemy import select
+
+        from fitops.analytics.athlete_settings import AthleteSettings
+        from fitops.analytics.training_scores import (
+            compute_aerobic_score,
+            compute_anaerobic_score,
+        )
+        from fitops.db.models.activity import Activity
+        from fitops.db.session import get_async_session
+
+        athlete_settings = AthleteSettings()
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(Activity).where(Activity.athlete_id == settings.athlete_id)
+            )
+            activities = result.scalars().all()
+            updated = 0
+            for a in activities:
+                a.aerobic_score = compute_aerobic_score(a, athlete_settings)
+                a.anaerobic_score = compute_anaerobic_score(a, athlete_settings)
+                updated += 1
+
+        return updated
+
+    count = asyncio.run(_run())
+    out = {"_meta": make_meta(), "recalculated": count}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        typer.echo(f"Recalculated scores for {count} activities.")

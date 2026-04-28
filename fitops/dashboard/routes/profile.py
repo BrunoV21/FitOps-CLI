@@ -8,9 +8,10 @@ from fastapi.templating import Jinja2Templates
 
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.pace_zones import compute_pace_zones
-from fitops.analytics.vo2max import estimate_vo2max
+from fitops.analytics.vo2max import compute_race_predictions, estimate_vo2max
 from fitops.analytics.zones import compute_zones
 from fitops.config.settings import get_settings
+from fitops.dashboard.queries.analytics import get_current_training_load
 from fitops.dashboard.queries.profile import get_athlete, get_equipment_with_stats
 
 router = APIRouter()
@@ -122,26 +123,28 @@ def _build_profile_context(
     # Race predictions from Daniels VDOT using fractional utilization per distance
     race_predictions = None
     if vo2max_result and vo2max_result.vdot:
-        vdot = vo2max_result.vdot
-
-        def _vdot_race(frac: float, dist_m: int) -> dict:
-            """Predict race pace and time for a given fractional utilization."""
-            demand = vdot * frac
-            a, b, c = 0.000104, 0.182258, -(demand + 4.6)
-            v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)
-            pace_s = round(1000 / (v_mpm / 60))
-            total_s = round(dist_m / (v_mpm / 60))
-            h, rem = divmod(total_s, 3600)
-            m, s = divmod(rem, 60)
-            time_fmt = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-            return {"pace": f"{pace_s // 60}:{pace_s % 60:02d}/km", "time": time_fmt}
-
+        preds = compute_race_predictions(vo2max_result).get("vdot_predictions", {})
         race_predictions = [
-            {"label": "5 K", **_vdot_race(0.979, 5000)},
-            {"label": "10 K", **_vdot_race(0.939, 10000)},
-            {"label": "12 K", **_vdot_race(0.922, 12000)},
-            {"label": "Half (21K)", **_vdot_race(0.879, 21097)},
-            {"label": "Marathon", **_vdot_race(0.838, 42195)},
+            {
+                "label": "5 K",
+                "pace": preds["5K"]["predicted_pace"] + "/km",
+                "time": preds["5K"]["hms"],
+            },
+            {
+                "label": "10 K",
+                "pace": preds["10K"]["predicted_pace"] + "/km",
+                "time": preds["10K"]["hms"],
+            },
+            {
+                "label": "Half (21K)",
+                "pace": preds["Half"]["predicted_pace"] + "/km",
+                "time": preds["Half"]["hms"],
+            },
+            {
+                "label": "Marathon",
+                "pace": preds["Marathon"]["predicted_pace"] + "/km",
+                "time": preds["Marathon"]["hms"],
+            },
         ]
 
     # Custom pace zone overrides
@@ -238,6 +241,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         athlete = await get_athlete(athlete_id) if athlete_id else None
         equipment = await get_equipment_with_stats(athlete_id) if athlete_id else []
         vo2max_result = await estimate_vo2max(athlete_id) if athlete_id else None
+        current_load = await get_current_training_load(athlete_id) if athlete_id else None
 
         s = get_athlete_settings()
         s.reload()
@@ -252,6 +256,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "error": error,
                 "vo2max_override_val": s.vo2max_override,
                 "vo2max_computed": vo2max_result,
+                "current_load": current_load,
             }
         )
         return templates.TemplateResponse(request, "profile.html", ctx)
@@ -324,11 +329,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if cfg.athlete_id and ("weight_kg" in updates or "birthday" in updates):
             from sqlalchemy import select
 
-            from fitops.db.migrations import create_all_tables
             from fitops.db.models.athlete import Athlete
             from fitops.db.session import get_async_session
 
-            await create_all_tables()
             async with get_async_session() as session:
                 result = await session.execute(
                     select(Athlete).where(Athlete.strava_id == cfg.athlete_id)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Request
@@ -18,6 +19,7 @@ from fitops.config.settings import get_settings
 from fitops.dashboard.queries.analytics import (
     RIDING_SPORTS,
     RUNNING_SPORTS,
+    get_performance_context,
     get_training_load_data,
     get_vo2max_history,
     get_volume_summary,
@@ -35,9 +37,9 @@ router = APIRouter()
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/analytics/training-load", response_class=HTMLResponse)
-    async def training_load(request: Request, days: int = 90, view: str = "run"):
+    async def training_load(request: Request, days: int = 90, view: str = "total"):
         if view not in _VIEW_SPORT_TYPES:
-            view = "run"
+            view = "total"
         sport_types = _VIEW_SPORT_TYPES[view]
 
         settings = get_settings()
@@ -52,6 +54,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         weeks = min(52, max(12, days // 7))
         weekly: list = []
 
+        run_weekly: list = []
+        ride_weekly: list = []
+
         if athlete_id:
             tl = await get_training_load_data(
                 athlete_id, days=days, sport_types=sport_types
@@ -62,6 +67,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
             weekly = await get_weekly_volume(
                 athlete_id, weeks=weeks, sport_types=sport_types
             )
+            if view == "total":
+                run_weekly, ride_weekly = await asyncio.gather(
+                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS),
+                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS),
+                )
 
         if tl:
             chart_data = [
@@ -93,6 +103,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "request": request,
                 "chart_data_json": json.dumps(chart_data),
                 "weekly_json": json.dumps(weekly),
+                "run_weekly_json": json.dumps(run_weekly),
+                "ride_weekly_json": json.dumps(ride_weekly),
                 "current_load": current_load,
                 "overtraining": overtraining,
                 "volume_summary": volume_summary,
@@ -103,7 +115,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         )
 
     @router.get("/analytics/performance", response_class=HTMLResponse)
-    async def performance(request: Request, days: int = 365):
+    async def performance(request: Request, days: int = 365, sport: str = "Run"):
         settings = get_settings()
         athlete_id = settings.athlete_id
 
@@ -112,17 +124,41 @@ def register(templates: Jinja2Templates) -> APIRouter:
         athlete_settings = get_athlete_settings()
         hr_configured = bool(athlete_settings.lthr or athlete_settings.max_hr)
 
+        sport_key = sport.lower() if sport else "run"
+        if sport_key in {"ride", "cycling", "bike"}:
+            selected_sport = "Ride"
+        else:
+            selected_sport = "Run"
+
         best_vo2max = None
         history = []
 
-        if athlete_id and hr_configured:
-            best_vo2max = await estimate_vo2max(athlete_id)
-            history = await get_vo2max_history(athlete_id, days=days)
-            # Anchor rolling model at the known best estimate so the starting
-            # point isn't dragged down by the first easy run in the window.
-            compute_vo2max_rolling(
-                history, initial=best_vo2max.estimate if best_vo2max else None
-            )
+        perf_metrics = None
+        current_load = None
+        trends = None
+        if athlete_id:
+            if hr_configured and selected_sport == "Run":
+                perf_context, best_vo2max, history = await asyncio.gather(
+                    get_performance_context(athlete_id, sport=selected_sport, days=days),
+                    estimate_vo2max(athlete_id),
+                    get_vo2max_history(athlete_id, days=days),
+                )
+            else:
+                perf_context = await get_performance_context(
+                    athlete_id, sport=selected_sport, days=days
+                )
+
+            if perf_context:
+                perf_metrics = perf_context["performance"]
+                current_load = perf_context["current_load"]
+                trends = perf_context["trends"]
+
+            if best_vo2max is not None or history:
+                # Anchor rolling model at the known best estimate so the starting
+                # point isn't dragged down by the first easy run in the window.
+                compute_vo2max_rolling(
+                    history, initial=best_vo2max.estimate if best_vo2max else None
+                )
         lt2_pace_s = athlete_settings.threshold_pace_per_km_s
         lt1_pace_s = athlete_settings.lt1_pace_s
         vo2max_pace_s = athlete_settings.vo2max_pace_s
@@ -199,12 +235,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "history": history,
                 "history_json": history_json,
                 "selected_days": days,
+                "selected_sport": selected_sport,
                 "lt1_pace_fmt": _fmt_pace(lt1_pace_s),
                 "lt2_pace_fmt": _fmt_pace(lt2_pace_s),
                 "vo2max_pace_fmt": _fmt_pace(vo2max_pace_s),
                 "race_predictions": race_predictions,
                 "hr_configured": hr_configured,
                 "vo2max_override": athlete_settings.vo2max_override,
+                "perf_metrics": perf_metrics,
+                "current_load": current_load,
+                "trends": trends,
                 "active_page": "performance",
             },
         )

@@ -11,7 +11,6 @@ from fitops.dashboard.queries.weather import (
     get_activities_missing_weather,
     get_wap_history,
 )
-from fitops.db.migrations import create_all_tables
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
 
@@ -34,8 +33,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         days: int = 180,
         sport: str = "",
     ):
-        await create_all_tables()
-
         # Resolve athlete_id
         async with get_async_session() as session:
             res = await session.execute(select(Athlete).limit(1))

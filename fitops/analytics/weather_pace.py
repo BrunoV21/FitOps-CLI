@@ -256,5 +256,7 @@ def weather_row_to_dict(w) -> dict:
         "pace_heat_factor": w.pace_heat_factor,
         "source": w.source,
         "condition": weather_condition_label(wcode) if wcode is not None else None,
-        "temp_fmt": f"{round(w.temperature_c)}°C" if w.temperature_c is not None else None,
+        "temp_fmt": f"{round(w.temperature_c)}°C"
+        if w.temperature_c is not None
+        else None,
     }

@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_laps import ActivityLap
 from fitops.db.models.activity_stream import ActivityStream
+from fitops.db.models.workout import Workout
+from fitops.db.models.workout_activity_link import WorkoutActivityLink
 from fitops.db.session import get_async_session
 
 _TAG_FILTERS: dict[str, tuple] = {
@@ -16,6 +18,8 @@ _TAG_FILTERS: dict[str, tuple] = {
     "manual": ("manual", True),
     "private": ("private", True),
 }
+
+_WORKOUT_TAG_PREFIX = "workout:"
 
 
 async def get_recent_activities(
@@ -48,6 +52,11 @@ async def get_recent_activities(
         if tag and tag in _TAG_FILTERS:
             col_name, val = _TAG_FILTERS[tag]
             q = q.where(getattr(Activity, col_name) == val)
+        elif tag and tag.startswith(_WORKOUT_TAG_PREFIX):
+            workout_name = tag[len(_WORKOUT_TAG_PREFIX):]
+            q = q.join(WorkoutActivityLink, WorkoutActivityLink.activity_id == Activity.id).join(
+                Workout, Workout.id == WorkoutActivityLink.workout_id
+            ).where(Workout.name == workout_name)
         q = q.order_by(Activity.start_date.desc()).offset(offset).limit(limit)
         result = await session.execute(q)
         return list(result.scalars().all())
@@ -78,6 +87,11 @@ async def count_activities(
         if tag and tag in _TAG_FILTERS:
             col_name, val = _TAG_FILTERS[tag]
             q = q.where(getattr(Activity, col_name) == val)
+        elif tag and tag.startswith(_WORKOUT_TAG_PREFIX):
+            workout_name = tag[len(_WORKOUT_TAG_PREFIX):]
+            q = q.join(WorkoutActivityLink, WorkoutActivityLink.activity_id == Activity.id).join(
+                Workout, Workout.id == WorkoutActivityLink.workout_id
+            ).where(Workout.name == workout_name)
         result = await session.execute(q)
         return result.scalar_one() or 0
 
@@ -151,5 +165,19 @@ async def get_distinct_sports(athlete_id: int) -> list[str]:
             .where(Activity.athlete_id == athlete_id)
             .distinct()
             .order_by(Activity.sport_type)
+        )
+        return [row[0] for row in result.all()]
+
+
+async def get_distinct_workout_names(athlete_id: int) -> list[str]:
+    """Return distinct workout names that have at least one linked activity for this athlete."""
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(Workout.name)
+            .join(WorkoutActivityLink, WorkoutActivityLink.workout_id == Workout.id)
+            .join(Activity, Activity.id == WorkoutActivityLink.activity_id)
+            .where(Workout.athlete_id == athlete_id)
+            .distinct()
+            .order_by(Workout.name)
         )
         return [row[0] for row in result.all()]

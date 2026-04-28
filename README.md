@@ -98,6 +98,8 @@ Sync your Strava activities once, then explore them however you like — visuall
 | 6 — Notes | ✅ Done | Markdown training notes with tags and activity linking |
 | 7 — Weather-Adjusted Pace | ✅ Done | WAP, True Pace, Open-Meteo historical/forecast weather |
 | 8 — Race Simulation | ✅ Done | Course import, per-split pacing, pacer strategy |
+| 9 — Training Goals | 🔜 Planned | Rule-based targets: weekly mileage, active time, activity counts, progressive overload |
+| 10 — AI Training Plans | 🔜 Planned | Race-specific periodized plans, calendar adherence, strength mesocycles — all primitives are in place |
 
 ## Quick Setup for AI Agents
 
@@ -199,6 +201,8 @@ Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
 | Authorization Callback Domain | `mclovinittt-kinetic-run-api.hf.space` |
 
 Copy your **Client ID** and **Client Secret** from the Strava API Settings page. See the [full authentication guide](https://brunov21.github.io/fitops/getting-started/authentication) for details.
+
+> **On Strava's API agreement:** FitOps is a single-user, local-only tool — your activities never leave your machine, are never used to train AI models, and are never displayed to anyone but you. This is the personal-coaching pattern Strava's [Nov 2024 API update](https://press.strava.com/articles/updates-to-stravas-api-agreement) explicitly preserved. Full breakdown: [Strava API & Data Use](https://brunov21.github.io/FitOps-CLI/concepts/strava-compliance).
 
 ### 2. Authenticate
 

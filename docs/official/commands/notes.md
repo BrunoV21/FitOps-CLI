@@ -61,7 +61,10 @@ fitops notes list [OPTIONS]
 |------|---------|-------------|
 | `--tag TAG` | — | Filter by a single tag |
 | `--activity ID` | — | Show notes linked to a specific activity |
+| `--query TEXT` / `-q` | — | Keyword search across title, body, and tags |
 | `--limit N` | 50 | Max results to return |
+
+Filters stack — you can combine `--tag`, `--query`, and `--activity` to narrow results simultaneously.
 
 **Examples:**
 
@@ -69,6 +72,9 @@ fitops notes list [OPTIONS]
 fitops notes list
 fitops notes list --tag fatigue
 fitops notes list --activity 12345678901
+fitops notes list --query "threshold"
+fitops notes list --tag race --query "nutrition"
+fitops notes list -q "tempo" --limit 10
 ```
 
 ---

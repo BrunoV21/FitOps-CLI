@@ -34,12 +34,18 @@ async def _fetch_streams_for_activities(
     """Fetch and cache streams for a list of (internal_id, strava_id) pairs."""
     from sqlalchemy import delete as sa_delete
 
+    from fitops.analytics.athlete_settings import get_athlete_settings
+    from fitops.analytics.vo2max import estimate_vo2max_from_stream_dict
     from fitops.strava.client import StravaClient
 
     client = StravaClient()
     fetched = 0
     errors = 0
     total = len(activity_ids)
+    _athlete_settings = get_athlete_settings()
+    _lthr = _athlete_settings.lthr
+    _max_hr = _athlete_settings.max_hr
+    _weight_kg = _athlete_settings.weight_kg
     for idx, (internal_id, strava_id) in enumerate(
         zip(activity_ids, strava_ids, strict=False), 1
     ):
@@ -53,6 +59,18 @@ async def _fetch_streams_for_activities(
                         )
                     )
             stream_data = await client.get_activity_streams(strava_id)
+            # Flatten {type: {"data": [...]} | [...]} → {type: [...]}
+            flat_streams = {
+                st: (so.get("data", []) if isinstance(so, dict) else so)
+                for st, so in stream_data.items()
+            }
+            # Promote grade_adjusted_speed → gap_pace so running power uses
+            # the grade-corrected velocity rather than raw velocity_smooth.
+            if "gap_pace" not in flat_streams and "grade_adjusted_speed" in flat_streams:
+                gas = flat_streams["grade_adjusted_speed"]
+                flat_streams["gap_pace"] = [
+                    round(1000.0 / v, 2) if v and v > 0.1 else None for v in gas
+                ]
             async with get_async_session() as session:
                 for stream_type, stream_obj in stream_data.items():
                     data_list = (
@@ -80,6 +98,31 @@ async def _fetch_streams_for_activities(
                 row = activity_row.scalar_one_or_none()
                 if row:
                     row.streams_fetched = True
+                    # Compute and cache VO2max from in-memory streams — avoids
+                    # N+1 DB queries on every dashboard load.
+                    vo2max_est = estimate_vo2max_from_stream_dict(
+                        row, stream_data, _lthr, _max_hr
+                    )
+                    if vo2max_est is not None:
+                        row.vo2max_estimate = vo2max_est.estimate
+                    # Compute and cache running power for run sport types.
+                    if _weight_kg:
+                        from fitops.analytics.running_power import (
+                            RUN_SPORT_TYPES,
+                            persist_power_for_activity,
+                        )
+
+                        if getattr(row, "sport_type", "") in RUN_SPORT_TYPES:
+                            await persist_power_for_activity(
+                                session, internal_id, row, flat_streams, _weight_kg
+                            )
+            # Silently try to auto-associate to a race plan
+            try:
+                from fitops.analytics.race_plan import match_activity_to_plans
+
+                await match_activity_to_plans(internal_id)
+            except Exception:
+                pass
             fetched += 1
         except Exception as e:
             typer.echo(f"    error: {e}", err=True)
@@ -206,12 +249,23 @@ def run(
             new_ids = asyncio.run(_get_new_ids())
             weather_result = asyncio.run(_fetch_weather_for_strava_ids(new_ids))
 
+        # Always sweep unlinked race plans — catches plans saved after their
+        # matching activity was already synced.
+        plans_linked = 0
+        try:
+            from fitops.analytics.race_plan import sweep_unlinked_plans
+
+            plans_linked = asyncio.run(sweep_unlinked_plans())
+        except Exception:
+            pass
+
         out: dict = {
             "sync_type": sync_type,
             "activities_created": result.activities_created,
             "activities_updated": result.activities_updated,
             "pages_fetched": result.pages_fetched,
             "duration_s": round(result.duration_s, 2),
+            "plans_linked": plans_linked,
             "synced_at": datetime.now(UTC).isoformat(),
         }
         if streams_result:

@@ -225,6 +225,123 @@ def _estimate_from_activity(activity: Activity) -> VO2MaxResult | None:
     )
 
 
+def estimate_vo2max_from_stream_dict(
+    activity: Activity,
+    stream_data: dict,
+    lthr: int | None,
+    max_hr: int | None,
+) -> VO2MaxResult | None:
+    """Estimate VO2max from in-memory stream data — no DB queries required.
+
+    ``stream_data`` is the raw dict returned by ``StravaClient.get_activity_streams``:
+    each key maps to either ``{"data": [...], ...}`` or a plain list.
+
+    Only run-type activities that qualify on effort (avg HR near threshold) are
+    estimated; all others return ``None``.
+    """
+    if activity.sport_type not in RUN_TYPES:
+        return None
+    qualifies, _ = _effort_qualifies(activity.average_heartrate, lthr, max_hr)
+    if not qualifies:
+        return None
+
+    def _get(key: str) -> list | None:
+        obj = stream_data.get(key)
+        if obj is None:
+            return None
+        return obj.get("data", []) if isinstance(obj, dict) else list(obj)
+
+    hr_data = _get("heartrate")
+    if not hr_data:
+        return None
+    speed_data = _get("grade_adjusted_speed") or _get("velocity_smooth")
+    if not speed_data:
+        return None
+    time_data = _get("time")
+    if not time_data:
+        return None
+
+    n = min(len(hr_data), len(speed_data), len(time_data))
+    hr_data = hr_data[:n]
+    speed_data = speed_data[:n]
+    time_data = time_data[:n]
+
+    if lthr is not None:
+        min_hr = lthr * _EFFORT_LTHR_RATIO
+        lt2_hr_floor = lthr * 0.97
+    elif max_hr is not None:
+        min_hr = max_hr * _EFFORT_MAXHR_RATIO
+        lt2_hr_floor = max_hr * 0.85
+    else:
+        return None
+
+    _LT_MIN_SAMPLES = 20
+    lt2_speeds = [
+        spd
+        for hr, spd in zip(hr_data, speed_data, strict=False)
+        if hr is not None
+        and spd is not None
+        and spd >= _LT2_MIN_SPEED_MS
+        and hr >= lt2_hr_floor
+    ]
+
+    def _median_pace_s(speeds: list[float]) -> float | None:
+        if len(speeds) < _LT_MIN_SAMPLES:
+            return None
+        sv = sorted(speeds)
+        return round(1000.0 / sv[len(sv) // 2], 1)
+
+    measured_lt2 = _median_pace_s(lt2_speeds)
+
+    segments = _extract_high_intensity_segments(hr_data, time_data, speed_data, min_hr)
+    if not segments:
+        return None
+
+    total_duration = sum(s.duration_s for s in segments)
+    total_distance = sum(s.distance_m for s in segments)
+    if total_distance < 1500:
+        return None
+
+    d_est = _daniels_vdot(total_distance, total_duration)
+    c_est = _cooper_vo2max(total_distance, total_duration)
+
+    if total_distance >= 5000:
+        estimates = [e for e in [d_est, c_est] if e is not None]
+        pairs: list[tuple] = [(d_est, 0.60), (c_est, 0.40)]
+    else:
+        estimates = [e for e in [d_est] if e is not None]
+        pairs = [(d_est, 1.0)]
+
+    if not estimates:
+        return None
+
+    weighted = total_w = 0.0
+    for est, w in pairs:
+        if est is not None:
+            weighted += est * w
+            total_w += w
+    if total_w == 0:
+        return None
+
+    avg_v = total_distance / total_duration
+    return VO2MaxResult(
+        estimate=round(weighted / total_w, 1),
+        confidence=round(_confidence(total_distance, estimates), 2),
+        vdot=round(d_est, 1) if d_est is not None else None,
+        cooper=round(c_est, 1) if c_est is not None else None,
+        activity_strava_id=activity.strava_id,
+        activity_name=activity.name,
+        activity_date=activity.start_date.date().isoformat()
+        if activity.start_date
+        else "unknown",
+        distance_km=round(total_distance / 1000, 2),
+        pace_per_km=_fmt_pace(avg_v),
+        best_time_s=float(total_duration),
+        estimation_method="streams",
+        measured_lt2_pace_s=measured_lt2,
+    )
+
+
 def _extract_high_intensity_segments(
     hr_data: list,
     time_data: list,
@@ -604,21 +721,32 @@ def compute_vo2max_rolling(
 # Race Predictions
 # ---------------------------------------------------------------------------
 #
-# Industry standard (Jack Daniels VDOT system, Pfitzinger):
-#   Everything derives from ONE consistent effort.  When a measured LT2 pace
-#   is available it is the most reliable anchor because it reflects how the
-#   individual athlete's aerobic system actually performs, not a theoretical
-#   estimate from a training run.
+# Primary method: Jack Daniels VDOT fractional utilization.
+#   Derives race pace by solving the VO2 demand quadratic at the fraction of
+#   VO2max that an athlete can sustain at each race distance.  This is the
+#   same model used in the Daniels VDOT tables and is the most internally
+#   consistent approach — it only requires a single VDOT estimate as input.
 #
-# LT2 → race pace ratios from Daniels VDOT tables (averaged VDOT 40–65):
-#   5K ≈ 7.6% faster than LT2 pace/km
-#   10K ≈ 3.8% faster
-#   Half ≈ 2.0% slower
-#   Marathon ≈ 7.0% slower
+# Fractional utilization by distance (Daniels VDOT tables, averaged VDOT 40–65):
+#   5K  → 97.9% of VO2max
+#   10K → 93.9%
+#   Half → 87.9%
+#   Marathon → 83.8%
 #
-# Riegel (T2 = T1 × (D2/D1)^1.06) is shown alongside for reference but is
-# only reliable when the source effort was near-maximal (race or time-trial).
-# It is NOT reliable from easy or moderate training runs.
+# LT2-anchored (secondary, when a measured threshold pace is available):
+#   Derives race paces from the measured threshold pace via Daniels VDOT
+#   table ratios.  Shown as a reference alongside the primary VDOT prediction.
+#
+# Riegel (T2 = T1 × (D2/D1)^1.06) is computed as tertiary reference but is
+# only accurate when the source effort was near-maximal (race or time-trial).
+
+# Daniels VDOT fractional utilization per race distance
+VDOT_RACE_FRACS: dict[str, float] = {
+    "5K": 0.979,
+    "10K": 0.939,
+    "Half": 0.879,
+    "Marathon": 0.838,
+}
 
 _LT2_RACE_PACE_RATIOS: dict[str, float] = {
     "5K": 0.924,
@@ -626,6 +754,20 @@ _LT2_RACE_PACE_RATIOS: dict[str, float] = {
     "Half": 1.020,
     "Marathon": 1.070,
 }
+
+
+def _vdot_to_race_entry(vdot: float, frac: float, d2_m: float) -> dict:
+    """Predict race time/pace using Daniels VDOT fractional utilization.
+
+    Solves the VO2 demand quadratic for the speed at which the athlete uses
+    ``frac * vdot`` of their aerobic capacity over distance ``d2_m``.
+    """
+    demand = vdot * frac
+    a, b, c = 0.000104, 0.182258, -(demand + 4.6)
+    v_mpm = (-b + (b**2 - 4 * a * c) ** 0.5) / (2 * a)  # m/min
+    v_ms = v_mpm / 60  # m/s
+    pred_s = d2_m / v_ms
+    return _pred_entry(pred_s, d2_m)
 
 
 def vo2max_from_lt2_pace(lt2_pace_s: float) -> float:
@@ -654,20 +796,33 @@ def compute_race_predictions(
     lt2_pace_s: float | None = None,
 ) -> dict:
     """
-    Predict race times using two complementary methods.
+    Predict race times using three complementary methods.
 
-    LT2-anchored (primary when lt2_pace_s is set):
+    VDOT-anchored (primary, always computed when vdot is available):
+        Uses Daniels VDOT fractional utilization — solves the VO2 demand
+        quadratic at the fraction of VO2max sustainable at each race distance.
+        This is the same model as the Daniels VDOT tables and is the most
+        internally consistent method.
+
+    LT2-anchored (secondary when lt2_pace_s is set):
         Derives race paces from the measured threshold pace via Daniels VDOT
-        table ratios.  This is internally consistent — if your LT2 pace hasn't
-        changed, your race predictions won't change either, regardless of what
-        any individual training run suggests about your VO2max.
+        table ratios.  Shown as a reference alongside the VDOT prediction.
 
-    Riegel (always computed as secondary / reference):
+    Riegel (tertiary reference):
         T2 = T1 × (D2/D1)^1.06 from the best recorded effort.
-        Only accurate when the source effort was near-maximal.  Shown dimmed
-        in the UI so the user can compare.
+        Only accurate when the source effort was near-maximal.
     """
     out: dict = {}
+
+    # --- VDOT-anchored predictions (primary) ---
+    if vo2_result.vdot is not None:
+        vdot_preds = {}
+        for label, d2_m in RACE_DISTANCES.items():
+            vdot_preds[label] = _vdot_to_race_entry(
+                vo2_result.vdot, VDOT_RACE_FRACS[label], d2_m
+            )
+        out["vdot_predictions"] = vdot_preds
+        out["vdot_source"] = round(vo2_result.vdot, 1)
 
     # --- LT2-anchored predictions ---
     if lt2_pace_s is not None:
@@ -691,8 +846,12 @@ def compute_race_predictions(
         out["riegel_source_pace"] = vo2_result.pace_per_km
         out["riegel_source_confidence"] = vo2_result.confidence_label
 
-    # Back-compat: expose ``predictions`` pointing at the most reliable method
-    if "lt2_predictions" in out:
+    # Expose ``predictions`` pointing at the most reliable method:
+    # VDOT > LT2 > Riegel
+    if "vdot_predictions" in out:
+        out["predictions"] = out["vdot_predictions"]
+        out["method"] = "vdot"
+    elif "lt2_predictions" in out:
         out["predictions"] = out["lt2_predictions"]
         out["method"] = "lt2"
     elif "riegel_predictions" in out:

@@ -6,17 +6,63 @@
 <div class="page-header">
   <div>
     <p class="page-title">Performance</p>
-    <p class="page-subtitle">VO₂max estimates from recent runs</p>
+    <p class="page-subtitle">
+      {% if selected_sport == "Ride" %}
+      Recent ride-derived metrics and profile context
+      {% else %}
+      VO₂max estimates from recent runs and profile-linked thresholds
+      {% endif %}
+    </p>
   </div>
-  <form method="get" class="filter-bar" style="margin-bottom:0;">
-    <select name="days" class="select-ctrl">
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div class="period-tabs">
       {% for d in [90, 180, 365] %}
-      <option value="{{ d }}" {% if d == selected_days %}selected{% endif %}>Last {{ d }} days</option>
+      <a href="/analytics/performance?sport={{ selected_sport }}&days={{ d }}" class="period-tab {% if d == selected_days %}active{% endif %}">{{ d }}d</a>
       {% endfor %}
-    </select>
-    <button type="submit" class="btn btn-primary">Update</button>
-  </form>
+    </div>
+    <div class="period-tabs">
+      <a href="/analytics/performance?sport=Run&days={{ selected_days }}" class="period-tab {% if selected_sport == 'Run' %}active{% endif %}">Run</a>
+      <a href="/analytics/performance?sport=Ride&days={{ selected_days }}" class="period-tab {% if selected_sport == 'Ride' %}active{% endif %}">Ride</a>
+    </div>
+  </div>
 </div>
+
+{% if perf_metrics %}
+<div class="grid-3" style="margin-bottom:1px;">
+  <div class="panel panel--accent-blue" style="--delay:0ms">
+    <p class="panel-label">Current Load</p>
+    {% if current_load %}
+    <p class="panel-metric c-blue">{{ current_load.ctl }}</p>
+    <p class="panel-sub">CTL · ATL {{ current_load.atl }} · TSB {{ current_load.tsb }} · {{ current_load.form_label }}</p>
+    {% else %}
+    <p class="panel-sub">No cached load snapshot yet.</p>
+    {% endif %}
+  </div>
+  <div class="panel panel--accent-green" style="--delay:40ms">
+    <p class="panel-label">Trend Snapshot</p>
+    {% if trends %}
+    <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-top:10px;">{{ trends.summary_label }}</p>
+    <p class="panel-sub" style="margin-top:6px;">
+      {% if trends.performance_trend and trends.performance_trend.pace_direction %}
+      Pace {{ trends.performance_trend.pace_direction }}
+      {% endif %}
+      {% if trends.performance_trend and trends.performance_trend.hr_direction %}
+      {% if trends.performance_trend.pace_direction %} · {% endif %}
+      HR {{ trends.performance_trend.hr_direction }}
+      {% endif %}
+    </p>
+    {% else %}
+    <p class="panel-sub">Not enough activity to compute trends.</p>
+    {% endif %}
+  </div>
+  <div class="panel" style="--delay:80ms">
+    <p class="panel-label">Profile Link</p>
+    <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-top:10px;">Controlled in Profile</p>
+    <p class="panel-sub" style="margin-top:6px;">LTHR, threshold pace, VO₂max override, and zone boundaries all feed this page.</p>
+    <p style="margin-top:10px;"><a href="/profile" class="panel-link">Open Profile →</a></p>
+  </div>
+</div>
+{% endif %}
 
 {% if best_vo2max %}
 <!-- Best estimate panels -->
@@ -123,6 +169,41 @@
 
 {% endif %}
 
+{% if perf_metrics and perf_metrics.running %}
+{% set run = perf_metrics.running %}
+<div class="panel" style="margin-top:1px;--delay:125ms">
+  <p class="panel-label">Running Efficiency
+    {% if perf_metrics.overall_reliability is not none %}
+    <span class="panel-sub" style="margin-left:8px;">{{ perf_metrics.activity_count }} runs · reliability {{ (perf_metrics.overall_reliability * 100) | round(1) }}%</span>
+    {% endif %}
+  </p>
+  <div style="display:flex;gap:32px;margin-top:12px;flex-wrap:wrap;">
+    {% if run.running_economy_ml_kg_km %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Running Economy</p>
+      <p style="font-size:22px;font-weight:700;color:var(--accent-green);">{{ run.running_economy_ml_kg_km }}</p>
+      <p class="panel-sub">ml/kg/km</p>
+    </div>
+    {% endif %}
+    {% if run.pace_efficiency_score is not none %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Pace Efficiency</p>
+      <p style="font-size:22px;font-weight:700;color:{% if run.pace_efficiency_score >= 85 %}var(--accent-green){% elif run.pace_efficiency_score >= 70 %}var(--accent-amber){% else %}var(--accent-red){% endif %};">{{ run.pace_efficiency_score }}</p>
+      <p class="panel-sub">/ 100</p>
+    </div>
+    {% endif %}
+    {% if run.variability_index is not none %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Pace Variability</p>
+      <p style="font-size:22px;font-weight:700;color:var(--text-primary);">{{ run.variability_index }}</p>
+      <p class="panel-sub">CV — lower = more consistent</p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="panel-sub" style="margin-top:10px;">Economy from Daniels VO₂ demand model &middot; efficiency and variability from last {{ perf_metrics.activity_count }} runs</p>
+</div>
+{% endif %}
+
 {% if lt1_pace_fmt or lt2_pace_fmt or vo2max_pace_fmt %}
 <div class="panel" style="margin-top:1px;--delay:120ms">
   <p class="panel-label">Running Intensity Thresholds
@@ -159,6 +240,28 @@
     </div>
     {% endif %}
   </div>
+  {% if perf_metrics and perf_metrics.running and perf_metrics.running.max_hr_estimate %}
+  {% set run = perf_metrics.running %}
+  <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:32px;flex-wrap:wrap;">
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Max HR estimate</p>
+      <p style="font-size:18px;font-weight:700;color:var(--text-primary);">{{ run.max_hr_estimate }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm</span></p>
+    </div>
+    {% if run.aerobic_threshold_hr %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Aerobic Threshold HR</p>
+      <p style="font-size:18px;font-weight:700;color:var(--accent-green);">{{ run.aerobic_threshold_hr }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm &middot; 75% HRmax</span></p>
+    </div>
+    {% endif %}
+    {% if run.anaerobic_threshold_hr %}
+    <div>
+      <p class="panel-sub" style="margin-bottom:4px;">Anaerobic Threshold HR</p>
+      <p style="font-size:18px;font-weight:700;color:var(--accent-amber);">{{ run.anaerobic_threshold_hr }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm &middot; 85% HRmax</span></p>
+    </div>
+    {% endif %}
+  </div>
+  <p class="panel-sub" style="margin-top:6px;">HR thresholds from 98th-percentile peak HR across last {{ perf_metrics.activity_count }} runs</p>
+  {% endif %}
   <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces from HR streams &middot; run <code>fitops analytics zones --infer</code> to update</p>
 </div>
 {% endif %}
@@ -207,6 +310,14 @@
     </div>
   </div>
   {% endif %}
+</div>
+{% endif %}
+
+{% if selected_sport == "Ride" %}
+<div class="panel" style="margin-top:1px;--delay:135ms">
+  <p class="panel-label">Run Profile Context</p>
+  <p class="panel-sub" style="margin-top:8px;">VO₂max, LT1, LT2, and race predictions remain run-derived. Switch back to Run to see the full physiology history.</p>
+  <p style="margin-top:10px;"><a href="/analytics/performance?sport=Run&days={{ selected_days }}" class="panel-link">View run physiology →</a></p>
 </div>
 {% endif %}
 

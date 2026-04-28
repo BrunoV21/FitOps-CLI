@@ -20,6 +20,7 @@ def create_app(port: int = 8888) -> FastAPI:
         activities,
         analytics,
         api,
+        auto_sync,
         backup,
         notes,
         overview,
@@ -29,20 +30,27 @@ def create_app(port: int = 8888) -> FastAPI:
         weather,
         workouts,
     )
+    from fitops.db.migrations import create_all_tables
 
     _scheduler_task: asyncio.Task | None = None
+    _auto_sync_task: asyncio.Task | None = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        nonlocal _scheduler_task
+        nonlocal _scheduler_task, _auto_sync_task
+        # Run schema creation + migrations once at startup so request handlers
+        # don't open a write transaction on every page load.
+        await create_all_tables()
         _scheduler_task = asyncio.create_task(backup.run_scheduler())
+        _auto_sync_task = asyncio.create_task(auto_sync.run_auto_sync_scheduler())
         yield
-        if _scheduler_task:
-            _scheduler_task.cancel()
-            try:
-                await _scheduler_task
-            except asyncio.CancelledError:
-                pass
+        for task in (_scheduler_task, _auto_sync_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     app = FastAPI(
         title="FitOps Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan
@@ -121,6 +129,27 @@ def create_app(port: int = 8888) -> FastAPI:
         return _SPORT_ICONS.get(sport, Markup(_DEFAULT))
 
     templates.env.globals["sport_icon"] = sport_icon
+
+    from urllib.parse import quote as _url_quote
+    templates.env.filters["urlencode_value"] = lambda s: _url_quote(str(s), safe="")
+
+    def _fmt_time(seconds: float | None) -> str:
+        if not seconds:
+            return "—"
+        s = int(seconds)
+        h, rem = divmod(s, 3600)
+        m, sec = divmod(rem, 60)
+        return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+
+    def _fmt_pace(s_per_km: float | None) -> str:
+        if not s_per_km or s_per_km <= 0:
+            return "—"
+        m, s = divmod(int(s_per_km), 60)
+        return f"{m}:{s:02d} /km"
+
+    templates.env.globals["_fmt_time"] = _fmt_time
+    templates.env.globals["_fmt_pace"] = _fmt_pace
+
     templates.env.filters["render_md"] = lambda text: Markup(
         md_lib.markdown(text or "", extensions=["nl2br", "fenced_code"])
     )

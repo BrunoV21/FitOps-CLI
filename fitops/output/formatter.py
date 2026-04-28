@@ -118,6 +118,14 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
             "max_watts": row.get("max_watts"),
             "weighted_average_watts": _round2(row.get("weighted_average_watts")),
         }
+    elif sport_type in RUN_SPORT_TYPES and row.get("est_power_avg_w"):
+        power = {
+            "avg_w": round(row["est_power_avg_w"]),
+            "max_w": round(row["est_power_max_w"]) if row.get("est_power_max_w") else None,
+            "np_w": round(row["est_power_np_w"]) if row.get("est_power_np_w") else None,
+            "est_kcal": row.get("est_kcal_model"),
+            "source": row.get("est_power_source"),
+        }
 
     avg_hr = row.get("average_heartrate")
     heart_rate = None
@@ -144,10 +152,10 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
             "moving_time_formatted": _fmt_seconds(row.get("moving_time_s")),
             "elapsed_time_seconds": row.get("elapsed_time_s"),
             "elapsed_time_formatted": _fmt_seconds(row.get("elapsed_time_s")),
-            "efficiency_pct": round(
-                row["moving_time_s"] / row["elapsed_time_s"] * 100
-            )
-            if row.get("moving_time_s") and row.get("elapsed_time_s") and row["elapsed_time_s"] > 0
+            "efficiency_pct": round(row["moving_time_s"] / row["elapsed_time_s"] * 100)
+            if row.get("moving_time_s")
+            and row.get("elapsed_time_s")
+            and row["elapsed_time_s"] > 0
             else None,
         },
         "distance": {

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Race Analysis — FitOps{% endblock %}
+{% block page_name %}race_sessions{% endblock %}
+
+{% block head_extra %}
+<style>
+  .race-session-link {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .race-session-open-btn {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.78rem;
+  }
+  .race-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(225, 6, 0, 0.12), transparent 32%),
+      radial-gradient(circle at 80% 78%, rgba(59, 130, 246, 0.1), transparent 28%),
+      rgba(7, 7, 8, 0.84);
+    backdrop-filter: blur(10px);
+  }
+  .race-loading-overlay.visible {
+    display: flex;
+  }
+  .race-loading-card {
+    width: min(420px, calc(100vw - 2rem));
+    padding: 1.15rem 1.15rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(19, 19, 22, 0.96), rgba(11, 11, 13, 0.96));
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  }
+  .race-loading-head {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.7rem;
+  }
+  .race-loading-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(225, 6, 0, 0.28), rgba(251, 191, 36, 0.18));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .race-loading-mark::before,
+  .race-loading-mark::after {
+    content: "";
+    position: absolute;
+    inset: auto 6px 7px 6px;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .race-loading-mark::after {
+    width: 42%;
+    background: linear-gradient(90deg, #e10600, #f59e0b);
+    box-shadow: 0 0 16px rgba(225, 6, 0, 0.45);
+    animation: race-loading-scan 1.15s ease-in-out infinite;
+  }
+  .race-loading-title {
+    font-size: 0.98rem;
+    font-weight: 650;
+    color: #f5f5f5;
+  }
+  .race-loading-subtitle {
+    margin-top: 0.18rem;
+    font-size: 0.8rem;
+    color: #8b949e;
+    line-height: 1.45;
+  }
+  .race-loading-bars {
+    display: grid;
+    gap: 0.42rem;
+    margin-top: 0.85rem;
+  }
+  .race-loading-bar {
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+  }
+  .race-loading-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(225, 6, 0, 0.92), rgba(96, 165, 250, 0.75), transparent);
+    animation: race-loading-shimmer 1.2s linear infinite;
+  }
+  .race-loading-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.8rem;
+    font-size: 0.72rem;
+    color: #737b85;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  @keyframes race-loading-scan {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(115%); }
+    100% { transform: translateX(0); }
+  }
+  @keyframes race-loading-shimmer {
+    100% { transform: translateX(100%); }
+  }
+  @media (max-width: 720px) {
+    .race-loading-card {
+      padding: 1rem 0.95rem 0.95rem;
+      border-radius: 14px;
+    }
+    .race-loading-title {
+      font-size: 0.93rem;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Race Analysis</h1>
+    <p class="page-subtitle">Multi-athlete race sessions — replay, gap analysis, and segment breakdown</p>
+  </div>
+  <a href="/race/sessions/create" class="btn btn-primary">+ New Session</a>
+</div>
+
+{% if not sessions %}
+<div class="panel" style="text-align:center; padding:3rem 1.5rem; color:#666;">
+  <p style="font-size:1.1rem; margin-bottom:0.5rem;">No race sessions yet.</p>
+  <p style="font-size:0.88rem; margin-bottom:1rem;">Create your first session to analyse a race with gap charts, route replay, and segment breakdown.</p>
+  <a href="/race/sessions/create" class="btn btn-primary">Create Session</a>
+</div>
+{% else %}
+<div id="race-loading-overlay" class="race-loading-overlay" aria-hidden="true">
+  <div class="race-loading-card" role="status" aria-live="polite">
+    <div class="race-loading-head">
+      <div class="race-loading-mark"></div>
+      <div>
+        <div class="race-loading-title">Opening race analysis</div>
+        <div class="race-loading-subtitle" id="race-loading-subtitle">
+          Building replay, gaps, segments, and tactical events.
+        </div>
+      </div>
+    </div>
+    <div class="race-loading-bars" aria-hidden="true">
+      <div class="race-loading-bar"></div>
+      <div class="race-loading-bar" style="opacity:0.82;"></div>
+      <div class="race-loading-bar" style="opacity:0.64;"></div>
+    </div>
+    <div class="race-loading-meta">
+      <span>Replay</span>
+      <span>Standings</span>
+      <span>Events</span>
+    </div>
+  </div>
+</div>
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">All Sessions</span>
+    <span class="panel-meta">{{ sessions | length }} session{% if sessions | length != 1 %}s{% endif %}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Primary Activity</th>
+          <th>Athletes</th>
+          <th>Course</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>
+            <a href="/race/sessions/{{ s.id }}" class="race-session-link" data-race-session-link data-session-name="{{ s.name }}">
+              {{ s.name }}
+            </a>
+          </td>
+          <td>
+            <a href="/activities/{{ s.primary_activity_id }}" style="color:#888; font-size:0.88rem;">#{{ s.primary_activity_id }}</a>
+          </td>
+          <td style="font-size:0.88rem;">{{ s.athlete_count or '—' }}</td>
+          <td>
+            {% if s.course_id %}
+            <a href="/race/{{ s.course_id }}" style="font-size:0.82rem; color:#888;">Course #{{ s.course_id }}</a>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-muted" style="font-size:0.8rem;">
+            {% if s.created_at %}{{ s.created_at[:10] }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="/race/sessions/{{ s.id }}" class="btn race-session-open-btn" data-race-session-link data-session-name="{{ s.name }}">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showRaceSessionLoading(sessionName) {
+  const overlay = document.getElementById('race-loading-overlay');
+  const subtitle = document.getElementById('race-loading-subtitle');
+  if (!overlay) return;
+  if (subtitle && sessionName) {
+    subtitle.textContent = `Loading ${sessionName} — replay, gaps, segments, and tactical events.`;
+  }
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function hideRaceSessionLoading() {
+  const overlay = document.getElementById('race-loading-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('visible');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  hideRaceSessionLoading();
+  document.querySelectorAll('[data-race-session-link]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      showRaceSessionLoading(link.dataset.sessionName || 'race session');
+    });
+  });
+});
+
+window.addEventListener('pageshow', () => {
+  hideRaceSessionLoading();
+});
+</script>
+{% endblock %}

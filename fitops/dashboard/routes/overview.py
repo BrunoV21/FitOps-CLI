@@ -23,7 +23,8 @@ from fitops.dashboard.queries.activities import (
 from fitops.dashboard.queries.analytics import (
     RIDING_SPORTS,
     RUNNING_SPORTS,
-    get_training_load_data,
+    get_current_training_load,
+    get_trends_data,
 )
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.profile import get_activity_heatmap_data
@@ -197,7 +198,7 @@ def _period_since(period: str) -> datetime | None:
 
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
-    async def overview(request: Request, period: str = "week", view: str = "run"):
+    async def overview(request: Request, period: str = "week", view: str = "total"):
         settings = get_settings()
         if not settings.is_authenticated:
             return RedirectResponse("/setup")
@@ -205,7 +206,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if period not in _PERIOD_LABELS:
             period = "week"
         if view not in _VIEW_SPORT_TYPES:
-            view = "run"
+            view = "total"
         since = _period_since(period)
         sport_types = _VIEW_SPORT_TYPES[view]
 
@@ -224,11 +225,19 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if athlete_id
             else {}
         )
-        tl = (
-            await get_training_load_data(athlete_id, days=1)
+        current_load = (
+            await get_current_training_load(athlete_id)
             if athlete_id and period == "week"
             else None
         )
+        trend_signals = None
+        if athlete_id and period == "week":
+            _tr = await get_trends_data(athlete_id, days=90, sport_types=sport_types or None)
+            if _tr:
+                trend_signals = {
+                    "volume": (_tr.volume_trend or {}).get("direction"),
+                    "perf": (_tr.performance_trend or {}).get("pace_trend"),
+                }
         heatmap_data = (
             await get_activity_heatmap_data(athlete_id, since=None)
             if athlete_id
@@ -238,16 +247,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
             await _get_today_weather(athlete_id) if period == "week" else None
         )
         rolling = _compute_rolling(period, since, stats)
-
-        current_load = None
-        if tl and tl.current:
-            c = tl.current
-            current_load = {
-                "ctl": round(c.ctl, 1),
-                "atl": round(c.atl, 1),
-                "tsb": round(c.tsb, 1),
-                "form_label": tl.form_label(c.tsb),
-            }
 
         return templates.TemplateResponse(
             request,
@@ -265,6 +264,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "rolling": rolling,
                 "active_page": "overview",
                 "view": view,
+                "trend_signals": trend_signals,
             },
         )
 

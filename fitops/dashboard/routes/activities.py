@@ -38,9 +38,11 @@ from fitops.dashboard.queries.activities import (
     get_activity_laps,
     get_activity_streams,
     get_distinct_sports,
+    get_distinct_workout_names,
     get_recent_activities,
 )
 from fitops.dashboard.queries.athlete import get_athlete
+from fitops.dashboard.queries.race import get_race_plan_for_activity
 from fitops.dashboard.queries.weather import get_weather_for_activities
 from fitops.dashboard.queries.workouts import (
     get_all_workouts,
@@ -91,8 +93,8 @@ def _activity_row(a) -> dict:
         efficiency_pct = round(a.moving_time_s / a.elapsed_time_s * 100)
 
     _settings = get_athlete_settings()
-    aerobic_score = compute_aerobic_score(a, _settings)
-    anaerobic_score = compute_anaerobic_score(a, _settings)
+    aerobic_score = a.aerobic_score if a.aerobic_score is not None else compute_aerobic_score(a, _settings)
+    anaerobic_score = a.anaerobic_score if a.anaerobic_score is not None else compute_anaerobic_score(a, _settings)
 
     return {
         "strava_id": a.strava_id,
@@ -135,6 +137,11 @@ def _activity_row(a) -> dict:
         "anaerobic_score_int": int(anaerobic_score),
         "aerobic_label": _aerobic_label(aerobic_score),
         "anaerobic_label": _anaerobic_label(anaerobic_score),
+        "est_power_avg_w": round(a.est_power_avg_w) if getattr(a, "est_power_avg_w", None) else None,
+        "est_power_max_w": round(a.est_power_max_w) if getattr(a, "est_power_max_w", None) else None,
+        "est_power_np_w": round(a.est_power_np_w) if getattr(a, "est_power_np_w", None) else None,
+        "est_kcal_model": getattr(a, "est_kcal_model", None),
+        "est_power_source": getattr(a, "est_power_source", None),
     }
 
 
@@ -243,8 +250,6 @@ def _compute_wap_stream(streams: dict, weather) -> list | None:
     return wap if any(x is not None for x in wap) else None
 
 
-
-
 def _downsample_streams(streams: dict, target: int = 500) -> dict:
     n = max((len(v) for v in streams.values()), default=0)
     if n <= target:
@@ -286,6 +291,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         activities = []
         sports = []
+        workout_tags = []
         total = 0
         if athlete_id:
             activities = await get_recent_activities(
@@ -299,6 +305,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 tag=tag,
             )
             sports = await get_distinct_sports(athlete_id)
+            workout_tags = await get_distinct_workout_names(athlete_id)
             total = await count_activities(
                 athlete_id,
                 sport=sport,
@@ -335,6 +342,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "request": request,
                 "activities": rows,
                 "sports": sports,
+                "workout_tags": workout_tags,
                 "selected_sport": sport,
                 "selected_after": after,
                 "selected_before": before,
@@ -392,6 +400,35 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
                 ]
 
+        # Running power — compute + persist when streams are available
+        if activity and streams and activity.est_power_avg_w is None:
+            from fitops.analytics.athlete_settings import (
+                get_athlete_settings as _get_athlete_settings_pw,
+            )
+            from fitops.analytics.running_power import persist_power_for_activity
+            from fitops.db.models.activity import Activity as _Activity
+            from fitops.db.session import get_async_session
+
+            _pw_settings = _get_athlete_settings_pw()
+            _weight_kg = _pw_settings.weight_kg
+            if _weight_kg:
+                async with get_async_session() as _pw_session:
+                    from sqlalchemy import select as _select
+
+                    _pw_result = await _pw_session.execute(
+                        _select(_Activity).where(_Activity.id == activity.id)
+                    )
+                    _pw_row = _pw_result.scalar_one_or_none()
+                    if _pw_row:
+                        await persist_power_for_activity(
+                            _pw_session, _pw_row.id, _pw_row, streams, _weight_kg
+                        )
+                        activity.est_power_avg_w = _pw_row.est_power_avg_w
+                        activity.est_power_max_w = _pw_row.est_power_max_w
+                        activity.est_power_np_w = _pw_row.est_power_np_w
+                        activity.est_kcal_model = _pw_row.est_kcal_model
+                        activity.est_power_source = _pw_row.est_power_source
+
         if activity and streams:
             analytics = compute_activity_analytics(activity, streams)
 
@@ -439,7 +476,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
-        km_splits = compute_km_splits(streams, activity.sport_type)
+        km_splits = compute_km_splits(
+            streams, activity.sport_type, true_pace=streams.get("true_pace")
+        )
         avg_gap = compute_avg_gap(streams, activity.sport_type)
 
         # Fetch all workouts for the assign selector
@@ -452,7 +491,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if activity.id:
             linked = await get_workout_for_activity(activity.id)
             if linked:
-                w, segs = linked
+                w, lnk, segs = linked
 
                 def _fmt_pace_local(pace_s):
                     if pace_s is None:
@@ -478,9 +517,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 workout_data = {
                     "id": w.id,
                     "name": w.name,
-                    "compliance_score": w.compliance_score,
-                    "compliance_pct": round(w.compliance_score * 100)
-                    if w.compliance_score is not None
+                    "compliance_score": lnk.compliance_score,
+                    "compliance_pct": round(lnk.compliance_score * 100)
+                    if lnk.compliance_score is not None
                     else None,
                     "segments": [
                         {
@@ -501,6 +540,19 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         }
                         for s in segs
                     ],
+                }
+
+        # Look up linked race plan (if this activity is a planned race)
+        linked_race_plan: dict | None = None
+        if activity.id:
+            rp = await get_race_plan_for_activity(activity.id)
+            if rp is not None:
+                from fitops.dashboard.queries.race import get_course
+
+                rp_course = await get_course(rp.course_id)
+                linked_race_plan = {
+                    **rp.to_summary_dict(),
+                    "course_name": rp_course.name if rp_course else None,
                 }
 
         # Build weather panel (weather already loaded above)
@@ -566,11 +618,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 if p and p > 0 and v and v > 0.1
             ]
             if tp_pairs:
-                paces, vels = zip(*tp_pairs)
+                paces, vels = zip(*tp_pairs, strict=False)
                 total_w = sum(vels)
-                mean_tp = sum(p * v for p, v in zip(paces, vels)) / total_w
-                m_tp, s_tp = divmod(int(round(mean_tp)), 60)
-                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                mean_tp = (
+                    sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
+                )
+                if is_run:
+                    m_tp, s_tp = divmod(int(round(mean_tp)), 60)
+                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                else:
+                    true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
             else:
                 vel_raw = streams.get("velocity_smooth", [])
                 grade_raw = streams.get("grade_smooth", [])
@@ -583,17 +640,25 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 else:
                     wt_pairs = [(v, v) for v in vel_raw if v and v > 0.1]
                 if wt_pairs:
-                    gap_speeds, weights = zip(*wt_pairs)
+                    gap_speeds, weights = zip(*wt_pairs, strict=False)
                     total_w = sum(weights)
-                    mean_gap_ms = sum(gs * wt for gs, wt in zip(gap_speeds, weights)) / total_w
-                    gap_pace_s = 1000.0 / mean_gap_ms
+                    mean_gap_ms = (
+                        sum(
+                            gs * wt for gs, wt in zip(gap_speeds, weights, strict=False)
+                        )
+                        / total_w
+                    )
                     heat_f = (
                         _pace_heat_factor(w.temperature_c, w.humidity_pct)
                         if w.temperature_c is not None and w.humidity_pct is not None
                         else 1.0
                     )
-                    m_tp, s_tp = divmod(int(round(gap_pace_s / heat_f)), 60)
-                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                    if is_run:
+                        gap_pace_s = 1000.0 / mean_gap_ms
+                        m_tp, s_tp = divmod(int(round(gap_pace_s / heat_f)), 60)
+                        true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                    else:
+                        true_pace_fmt = f"{mean_gap_ms * heat_f * 3.6:.1f} km/h"
 
             weather_panel = {
                 **ws,
@@ -630,6 +695,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     {"id": w.id, "name": w.name, "sport_type": w.sport_type}
                     for w in all_workouts
                 ],
+                "linked_race_plan": linked_race_plan,
                 "weather": weather_panel,
                 "insights": insights,
                 "lt2_hr": get_athlete_settings().lthr,
@@ -743,7 +809,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if activity.id:
             linked = await get_workout_for_activity(activity.id)
             if linked:
-                w, segs = linked
+                w, lnk, segs = linked
 
                 def _fmt_pace_local(pace_s_val):
                     if pace_s_val is None:
@@ -769,9 +835,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 workout_data = {
                     "id": w.id,
                     "name": w.name,
-                    "compliance_score": w.compliance_score,
-                    "compliance_pct": round(w.compliance_score * 100)
-                    if w.compliance_score is not None
+                    "compliance_score": lnk.compliance_score,
+                    "compliance_pct": round(lnk.compliance_score * 100)
+                    if lnk.compliance_score is not None
                     else None,
                     "segments": [
                         {

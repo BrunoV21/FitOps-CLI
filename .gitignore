@@ -220,3 +220,4 @@ docs/official/.vitepress/cache/*
 
 .DS_Store
 **/.DS_Store 
+.agents/skills/commit_skill

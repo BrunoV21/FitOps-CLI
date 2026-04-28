@@ -15,6 +15,7 @@ BASE_URL = "https://www.strava.com/api/v3"
 
 STREAM_KEYS = [
     "time",
+    "distance",
     "latlng",
     "altitude",
     "heartrate",

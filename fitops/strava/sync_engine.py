@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+from fitops.analytics.athlete_settings import AthleteSettings
+from fitops.analytics.training_scores import compute_aerobic_score, compute_anaerobic_score
 from fitops.config.settings import get_settings
 from fitops.config.state import get_sync_state
 from fitops.db.models.activity import Activity
@@ -91,6 +93,7 @@ class SyncEngine:
         after: int | None,
         before: int | None,
         result: SyncResult,
+        settings: AthleteSettings,
     ) -> None:
         for page in range(1, MAX_PAGES + 1):
             activities = await self._client.list_athlete_activities(
@@ -117,10 +120,14 @@ class SyncEngine:
 
                     if existing_row is None:
                         activity = Activity.from_strava_data(item, athlete_id)
+                        activity.aerobic_score = compute_aerobic_score(activity, settings)
+                        activity.anaerobic_score = compute_anaerobic_score(activity, settings)
                         session.add(activity)
                         result.activities_created += 1
                     else:
                         existing_row.update_from_strava_data(item)
+                        existing_row.aerobic_score = compute_aerobic_score(existing_row, settings)
+                        existing_row.anaerobic_score = compute_anaerobic_score(existing_row, settings)
                         result.activities_updated += 1
 
             if len(activities) < PER_PAGE:
@@ -143,7 +150,8 @@ class SyncEngine:
         )
 
         athlete_id = await self._upsert_athlete()
-        await self._sync_activities_paginated(athlete_id, after, before, result)
+        athlete_settings = AthleteSettings()
+        await self._sync_activities_paginated(athlete_id, after, before, result, athlete_settings)
 
         result.duration_s = time.monotonic() - start_time
 
@@ -154,5 +162,14 @@ class SyncEngine:
             activities_updated=result.activities_updated,
             duration_s=result.duration_s,
         )
+
+        # Persist today's CTL/ATL/TSB snapshot so dashboard reads a cached row
+        # instead of recomputing the full 84-day EWMA warmup on every page load.
+        try:
+            from fitops.analytics.training_load import persist_training_load_snapshot
+
+            await persist_training_load_snapshot(athlete_id)
+        except Exception:
+            pass  # Never fail a sync over a snapshot write error
 
         return result

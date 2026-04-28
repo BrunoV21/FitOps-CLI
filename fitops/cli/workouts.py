@@ -12,6 +12,7 @@ from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.models.workout import Workout
+from fitops.db.models.workout_activity_link import WorkoutActivityLink
 from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
 from fitops.output.formatter import make_meta
@@ -216,44 +217,61 @@ def link_workout(
             # Compute physiology snapshot
             snapshot = await _build_physiology_snapshot(settings.athlete_id)
 
-            # Check for an existing link for this activity
-            res2 = await session.execute(
-                select(Workout).where(Workout.activity_id == activity.id)
-            )
-            existing = res2.scalar_one_or_none()
-
             now = datetime.now(UTC)
 
-            if existing:
-                # Update the existing link
-                existing.name = w.name
-                existing.sport_type = w.sport or activity.sport_type or "unknown"
-                existing.athlete_id = settings.athlete_id
-                existing.workout_file_name = w.file_name
-                existing.workout_markdown = w.raw
-                existing.workout_meta = json.dumps(w.meta)
-                existing.physiology_snapshot = json.dumps(snapshot)
-                existing.linked_at = now
-                existing.status = "completed"
-                if notes:
-                    existing.notes = notes
-                existing.updated_at = now
-                workout = existing
+            # Find or create the Workout definition row (keyed on file_name + athlete_id)
+            res_wkt = await session.execute(
+                select(Workout).where(
+                    Workout.workout_file_name == w.file_name,
+                    Workout.athlete_id == settings.athlete_id,
+                )
+            )
+            workout = res_wkt.scalar_one_or_none()
+
+            if workout:
+                # Refresh definition metadata in case the file changed
+                workout.name = w.name
+                workout.sport_type = w.sport or activity.sport_type or "unknown"
+                workout.workout_markdown = w.raw
+                workout.workout_meta = json.dumps(w.meta)
+                workout.updated_at = now
             else:
                 workout = Workout(
                     name=w.name,
                     sport_type=w.sport or activity.sport_type or "unknown",
                     athlete_id=settings.athlete_id,
-                    activity_id=activity.id,
                     workout_file_name=w.file_name,
                     workout_markdown=w.raw,
                     workout_meta=json.dumps(w.meta),
-                    physiology_snapshot=json.dumps(snapshot),
-                    linked_at=now,
-                    status="completed",
-                    notes=notes,
                 )
                 session.add(workout)
+            # Flush so workout.id is available for the link row
+            await session.flush()
+
+            # Find or create the WorkoutActivityLink row for this (workout, activity) pair
+            res_link = await session.execute(
+                select(WorkoutActivityLink).where(
+                    WorkoutActivityLink.workout_id == workout.id,
+                    WorkoutActivityLink.activity_id == activity.id,
+                )
+            )
+            link = res_link.scalar_one_or_none()
+
+            if notes:
+                workout.notes = notes
+            if link:
+                link.linked_at = now
+                link.status = "completed"
+                link.physiology_snapshot = json.dumps(snapshot)
+            else:
+                link = WorkoutActivityLink(
+                    workout_id=workout.id,
+                    activity_id=activity.id,
+                    linked_at=now,
+                    status="completed",
+                    physiology_snapshot=json.dumps(snapshot),
+                )
+                session.add(link)
 
         return {
             "workout_name": w.name,
@@ -289,18 +307,27 @@ def get_workout(
             )
             activity = res.scalar_one_or_none()
             if activity is None:
-                return None, "activity_not_found"
+                return None, None, "activity_not_found"
 
-            res2 = await session.execute(
-                select(Workout).where(Workout.activity_id == activity.id)
+            link_res = await session.execute(
+                select(WorkoutActivityLink).where(
+                    WorkoutActivityLink.activity_id == activity.id
+                )
             )
-            workout = res2.scalar_one_or_none()
+            lnk = link_res.scalar_one_or_none()
+            if lnk is None:
+                return None, None, "no_workout_linked"
+
+            workout_res = await session.execute(
+                select(Workout).where(Workout.id == lnk.workout_id)
+            )
+            workout = workout_res.scalar_one_or_none()
             if workout is None:
-                return None, "no_workout_linked"
+                return None, None, "no_workout_linked"
 
-            return workout, None
+            return workout, lnk, None
 
-    workout, err = asyncio.run(_fetch())
+    workout, lnk, err = asyncio.run(_fetch())
 
     if err == "activity_not_found":
         typer.echo(
@@ -335,12 +362,12 @@ def get_workout(
                     "name": workout.name,
                     "sport_type": workout.sport_type,
                     "file_name": workout.workout_file_name,
-                    "linked_at": str(workout.linked_at),
-                    "status": workout.status,
+                    "linked_at": str(lnk.linked_at),
+                    "status": lnk.status,
                     "notes": workout.notes,
-                    "compliance_score": workout.compliance_score,
+                    "compliance_score": lnk.compliance_score,
                     "meta": workout.get_workout_meta(),
-                    "physiology_snapshot": workout.get_physiology_snapshot(),
+                    "physiology_snapshot": lnk.get_physiology_snapshot(),
                     "body": workout.workout_markdown,
                 },
             },
@@ -366,15 +393,28 @@ def history(
     async def _fetch():
         async with get_async_session() as session:
             stmt = (
-                select(Workout)
-                .where(Workout.activity_id.isnot(None))
-                .order_by(desc(Workout.linked_at))
+                select(WorkoutActivityLink, Workout)
+                .join(Workout, Workout.id == WorkoutActivityLink.workout_id)
+                .order_by(desc(WorkoutActivityLink.linked_at))
                 .limit(limit)
             )
             if sport:
                 stmt = stmt.where(Workout.sport_type == sport)
             res = await session.execute(stmt)
-            return res.scalars().all()
+            rows = res.all()
+            return [
+                {
+                    "id": wkt.id,
+                    "name": wkt.name,
+                    "sport_type": wkt.sport_type,
+                    "workout_file": wkt.workout_file_name,
+                    "activity_id": lnk.activity_id,
+                    "linked_at": str(lnk.linked_at) if lnk.linked_at else None,
+                    "compliance_score": lnk.compliance_score,
+                    "status": lnk.status,
+                }
+                for lnk, wkt in rows
+            ]
 
     workouts = asyncio.run(_fetch())
 
@@ -384,7 +424,7 @@ def history(
 
     out = {
         "_meta": make_meta(total_count=len(workouts), filters_applied=filters),
-        "workouts": [w.to_summary_dict() for w in workouts],
+        "workouts": workouts,
     }
     if json_output:
         typer.echo(json.dumps(out, indent=2, default=str))
@@ -422,9 +462,18 @@ def compliance(
             if activity is None:
                 return None, "activity_not_found"
 
-            # 2. Resolve linked workout
+            # 2. Resolve linked workout via WorkoutActivityLink
+            link_res = await session.execute(
+                select(WorkoutActivityLink).where(
+                    WorkoutActivityLink.activity_id == activity.id
+                )
+            )
+            lnk = link_res.scalar_one_or_none()
+            if lnk is None:
+                return None, "no_workout_linked"
+
             res2 = await session.execute(
-                select(Workout).where(Workout.activity_id == activity.id)
+                select(Workout).where(Workout.id == lnk.workout_id)
             )
             workout = res2.scalar_one_or_none()
             if workout is None:
@@ -434,13 +483,17 @@ def compliance(
             if not recalculate:
                 res3 = await session.execute(
                     select(WorkoutSegment)
-                    .where(WorkoutSegment.workout_id == workout.id)
+                    .where(
+                        WorkoutSegment.workout_id == workout.id,
+                        WorkoutSegment.activity_id == activity.id,
+                    )
                     .order_by(WorkoutSegment.segment_index)
                 )
                 cached = res3.scalars().all()
                 if cached:
                     return {
                         "workout": workout,
+                        "lnk": lnk,
                         "segments": cached,
                         "cached": True,
                     }, None
@@ -500,6 +553,14 @@ def compliance(
         elif isinstance(workout_json_raw, dict):
             workout_json = workout_json_raw
 
+        # Fallback: workout_meta may be the JSON itself (dashboard-created workouts
+        # store the structure directly, not wrapped under a "workout_meta" key).
+        if workout_json is None and workout.workout_meta:
+            try:
+                workout_json = json.loads(workout.workout_meta)
+            except json.JSONDecodeError:
+                pass
+
         if workout_json and workout_json.get("training"):
             segments = parse_segments_from_json(workout_json)
         else:
@@ -539,18 +600,20 @@ def compliance(
         )
         overall = overall_compliance_score(results)
 
-        # 6. Persist segment rows (upsert by workout_id + segment_index)
+        # 6. Persist segment rows (upsert by workout_id + activity_id + segment_index)
+        activity_internal_id = activity.id
         async with get_async_session() as session:
             for r in results:
                 existing = await session.execute(
                     select(WorkoutSegment).where(
                         WorkoutSegment.workout_id == workout.id,
+                        WorkoutSegment.activity_id == activity_internal_id,
                         WorkoutSegment.segment_index == r.segment.index,
                     )
                 )
                 existing_row = existing.scalar_one_or_none()
                 new_row = WorkoutSegment.from_compliance_result(
-                    workout.id, activity.id, r
+                    workout.id, activity_internal_id, r
                 )
                 if existing_row:
                     for col in WorkoutSegment.__table__.columns:
@@ -559,18 +622,21 @@ def compliance(
                 else:
                     session.add(new_row)
 
-            # Update overall compliance score on workout
-            res_w = await session.execute(
-                select(Workout).where(Workout.id == workout.id)
+            # Update compliance score on the WorkoutActivityLink row
+            lnk_res = await session.execute(
+                select(WorkoutActivityLink).where(
+                    WorkoutActivityLink.workout_id == workout.id,
+                    WorkoutActivityLink.activity_id == activity_internal_id,
+                )
             )
-            w = res_w.scalar_one_or_none()
-            if w and overall is not None:
-                w.compliance_score = overall
+            lnk_row = lnk_res.scalar_one_or_none()
+            if lnk_row and overall is not None:
+                lnk_row.compliance_score = overall
 
         return {
             "workout": workout,
-            "results": results,
             "overall": overall,
+            "results": results,
             "cached": False,
         }, None
 
@@ -624,9 +690,8 @@ def compliance(
 
     if data.get("cached"):
         segments_out = [s.to_dict() for s in data["segments"]]
-        overall_score = (
-            workout.compliance_score if hasattr(workout, "compliance_score") else None
-        )
+        cached_lnk = data.get("lnk")
+        overall_score = cached_lnk.compliance_score if cached_lnk else None
     else:
 
         def _fmt_pace(pace_s):
@@ -1158,8 +1223,6 @@ def unlink_workout(
     init_db()
 
     async def _unlink():
-        from datetime import datetime
-
         async with get_async_session() as session:
             # Resolve strava_id → internal activity_id
             res = await session.execute(
@@ -1169,32 +1232,33 @@ def unlink_workout(
             if activity is None:
                 return None, "activity_not_found"
 
-            res2 = await session.execute(
-                select(Workout).where(Workout.activity_id == activity.id)
+            link_res = await session.execute(
+                select(WorkoutActivityLink).where(
+                    WorkoutActivityLink.activity_id == activity.id
+                )
             )
-            workout = res2.scalar_one_or_none()
-            if workout is None:
+            lnk = link_res.scalar_one_or_none()
+            if lnk is None:
                 return None, "no_workout_linked"
 
-            workout_name = workout.name
-
-            # Delete all segment rows for this workout
-            res3 = await session.execute(
-                select(WorkoutSegment).where(WorkoutSegment.workout_id == workout.id)
+            workout_res = await session.execute(
+                select(Workout).where(Workout.id == lnk.workout_id)
             )
-            old_segments = res3.scalars().all()
-            for seg in old_segments:
+            workout = workout_res.scalar_one_or_none()
+            workout_name = workout.name if workout else "unknown"
+
+            # Delete segment rows for this specific (workout, activity) pair
+            seg_res = await session.execute(
+                select(WorkoutSegment).where(
+                    WorkoutSegment.workout_id == lnk.workout_id,
+                    WorkoutSegment.activity_id == activity.id,
+                )
+            )
+            for seg in seg_res.scalars().all():
                 await session.delete(seg)
 
-            # Clear the link fields
-            workout.activity_id = None
-            workout.linked_at = None
-            workout.status = "planned"
-            workout.compliance_score = None
-            workout.physiology_snapshot = None
-            from datetime import datetime
-
-            workout.updated_at = datetime.now(UTC)
+            # Delete the link row
+            await session.delete(lnk)
 
             return workout_name, None
 

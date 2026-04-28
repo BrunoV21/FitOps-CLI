@@ -91,7 +91,7 @@
 </div>
 
 {# ── Secondary metrics ───────────────────────────────────────── #}
-{% set has_secondary = activity.avg_hr or avg_gap or activity.avg_cadence or activity.avg_watts or activity.calories or activity.suffer_score %}
+{% set has_secondary = activity.avg_hr or avg_gap or activity.avg_cadence or activity.avg_watts or activity.calories or activity.suffer_score or activity.est_power_avg_w %}
 {% if has_secondary %}
 <div class="metric-row" style="margin-bottom:1px;">
   {% if activity.avg_hr %}
@@ -133,6 +133,16 @@
     <p class="panel-metric--md">{{ activity.suffer_score }}</p>
   </div>
   {% endif %}
+  {% if activity.est_power_avg_w %}
+  <div class="panel panel--accent-amber" style="--delay:440ms">
+    <p class="panel-label">Est. Running Power</p>
+    <p class="panel-metric--md c-amber">{{ activity.est_power_avg_w }}<span class="panel-unit">W avg</span></p>
+    <p class="panel-sub">
+      {% if activity.est_power_np_w %}NP {{ activity.est_power_np_w }} W · {% endif %}Max {{ activity.est_power_max_w }} W
+      {% if activity.est_kcal_model %} · ~{{ activity.est_kcal_model }} kcal{% endif %}
+    </p>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -147,7 +157,7 @@
     {% if weather.true_pace_fmt or weather.wap_fmt %}
     <span style="font-size:11px;color:var(--text-dim);">
       {% if weather.true_pace_fmt %}
-      True Pace
+      {% if is_run %}True Pace{% else %}True Speed{% endif %}
       <span style="color:var(--accent-primary);font-weight:700;margin-left:4px;">{{ weather.true_pace_fmt }}</span>
       {% else %}
       WAP
@@ -246,8 +256,8 @@
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <div id="metric-toggles" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
       <div class="xaxis-toggle">
-        <button id="xaxis-distance" class="xaxis-btn active" onclick="setXAxis('distance')">Distance</button>
-        <button id="xaxis-time"     class="xaxis-btn"        onclick="setXAxis('time')">Time</button>
+        <button id="xaxis-distance" class="xaxis-btn"        onclick="setXAxis('distance')">Distance</button>
+        <button id="xaxis-time"     class="xaxis-btn active" onclick="setXAxis('time')">Time</button>
       </div>
       <a href="/activities/{{ activity.strava_id }}/analysis"
          style="font-size:10px;padding:4px 11px;border:1px solid var(--border-hover);border-radius:4px;
@@ -430,9 +440,11 @@
 {% endfor %}
 {% set pace_range = ns.max_s - ns.min_s %}
 
-{% set show_hr  = km_splits | selectattr('avg_hr')   | list | length > 0 %}
-{% set show_cad = km_splits | selectattr('avg_cad')  | list | length > 0 %}
-{% set show_alt = km_splits | selectattr('elev_gain') | list | length > 0 %}
+{% set show_hr         = km_splits | selectattr('avg_hr')        | list | length > 0 %}
+{% set show_cad        = km_splits | selectattr('avg_cad')       | list | length > 0 %}
+{% set show_alt        = km_splits | selectattr('elev_gain')     | list | length > 0 %}
+{% set show_elev_loss  = km_splits | selectattr('elev_loss')     | list | length > 0 %}
+{% set show_true_pace  = km_splits | selectattr('avg_true_pace') | list | length > 0 %}
 <div class="table-wrap" style="--delay:600ms;margin-bottom:1px;">
   <div class="splits-header">
     <p class="panel-label" style="margin:0;">Per-km Splits</p>
@@ -443,9 +455,11 @@
       <tr>
         <th>km</th>
         <th class="r">Pace</th>
+        {% if show_true_pace %}<th class="r">True Pace</th>{% endif %}
         {% if show_hr  %}<th class="r">Avg HR</th>{% endif %}
         {% if show_cad %}<th class="r">Cadence</th>{% endif %}
         {% if show_alt %}<th class="r">Elev +</th>{% endif %}
+        {% if show_elev_loss %}<th class="r">Elev −</th>{% endif %}
         <th></th>
       </tr>
     </thead>
@@ -464,9 +478,11 @@
       <tr{% if sp.partial %} style="opacity:0.65;"{% endif %}>
         <td style="color:var(--text-dim);">{{ sp.label }}</td>
         <td class="r" style="color:var(--text-primary);font-weight:600;">{{ sp.pace }}</td>
+        {% if show_true_pace %}<td class="r" style="color:var(--text-dim);">{% if sp.avg_true_pace %}{{ sp.avg_true_pace }}{% else %}—{% endif %}</td>{% endif %}
         {% if show_hr  %}<td class="r">{% if sp.avg_hr %}{{ sp.avg_hr }} bpm{% else %}—{% endif %}</td>{% endif %}
         {% if show_cad %}<td class="r">{% if sp.avg_cad %}{{ sp.avg_cad }} spm{% else %}—{% endif %}</td>{% endif %}
         {% if show_alt %}<td class="r">{% if sp.elev_gain %}+{{ sp.elev_gain }} m{% else %}—{% endif %}</td>{% endif %}
+        {% if show_elev_loss %}<td class="r" style="color:var(--accent-red);">{% if sp.elev_loss %}−{{ sp.elev_loss }} m{% else %}—{% endif %}</td>{% endif %}
         <td style="width:80px;">
           <div class="pace-bar {{ bar_cls }}" style="width:{{ bar_w }}px;"></div>
         </td>
@@ -474,6 +490,32 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+{% endif %}
+
+{# ── Linked Race Plan ─────────────────────────────────────────── #}
+{% if linked_race_plan %}
+<div class="table-wrap" style="--delay:618ms;margin-bottom:1px;">
+  <div class="splits-header">
+    <p class="panel-label" style="margin:0;">
+      Race Plan — <a href="/race/plans/{{ linked_race_plan.id }}" class="panel-link">{{ linked_race_plan.name }}</a>
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:11px;color:var(--text-dim);">{{ linked_race_plan.course_name or "—" }}</span>
+      {% if linked_race_plan.target_time %}
+      <span style="font-size:12px;font-weight:600;color:var(--accent-primary);">Target {{ linked_race_plan.target_time }}</span>
+      {% endif %}
+      {% if linked_race_plan.strategy %}
+      <span style="font-size:11px;color:var(--text-dim);background:var(--bg-hover);padding:2px 6px;border-radius:4px;">{{ linked_race_plan.strategy }}</span>
+      {% endif %}
+      <a href="/race/plans/{{ linked_race_plan.id }}" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid var(--border-color);color:var(--text-dim);text-decoration:none;">View comparison →</a>
+    </div>
+  </div>
+  <div style="padding:8px 16px;font-size:12px;color:var(--text-dim);">
+    This activity was auto-matched to a saved race plan. View the
+    <a href="/race/plans/{{ linked_race_plan.id }}" style="color:var(--accent-primary);">plan detail page</a>
+    for a full split-by-split comparison of predicted vs actual pace.
+  </div>
 </div>
 {% endif %}
 
@@ -505,6 +547,8 @@
         <th>Segment</th>
         <th>Type</th>
         <th>Target</th>
+        <th class="r">Time</th>
+        <th class="r">Distance</th>
         <th class="r">Avg Pace</th>
         <th class="r">Avg HR</th>
         <th class="r">Avg GAP</th>
@@ -515,10 +559,12 @@
     </thead>
     <tbody>
       {% for seg in workout.segments %}
-      <tr>
+      <tr style="{% if seg.step_type == 'interval' and seg.target_label != '—' %}background-color:rgba(66,153,225,0.09);{% elif seg.step_type in ('warmup','cooldown','recovery','rest') %}background-color:rgba(160,174,192,0.06);{% endif %}">
         <td style="font-weight:600;">{{ seg.segment_name or ("Segment " ~ seg.segment_index) }}</td>
         <td style="color:var(--text-dim);font-size:11px;">{{ seg.step_type or "—" }}</td>
         <td style="font-size:11px;color:var(--text-muted);">{{ seg.target_label }}</td>
+        <td class="r" style="font-size:12px;">{% if seg.actuals.duration_formatted %}{{ seg.actuals.duration_formatted }}{% else %}—{% endif %}</td>
+        <td class="r" style="font-size:12px;">{% if seg.actuals.distance_formatted %}{{ seg.actuals.distance_formatted }}{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_gap_formatted %}{{ seg.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}</td>
@@ -551,10 +597,10 @@
 {% endif %}
 
 {# ── Assign Workout (shown when none is linked) ───────────────── #}
-{% if all_workouts %}
-<div id="assign-workout-panel" class="panel" style="--delay:625ms;margin-bottom:1px;{% if workout %}display:none;{% endif %}">
+<div id="assign-workout-panel" class="panel" style="--delay:625ms;margin-bottom:1px;{% if workout or linked_race_plan %}display:none;{% endif %}">
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <p class="panel-label" style="margin:0;flex-shrink:0;">Assign Workout</p>
+    {% if all_workouts %}
     <select id="workout-select" style="flex:1;min-width:160px;max-width:340px;font-size:12px;padding:4px 8px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-panel);color:var(--text-primary);cursor:pointer;">
       <option value="">— select workout —</option>
       {% for w in all_workouts %}
@@ -562,10 +608,12 @@
       {% endfor %}
     </select>
     <button onclick="assignWorkout()" style="font-size:12px;padding:4px 12px;border-radius:4px;border:1px solid var(--accent-primary);background:transparent;color:var(--accent-primary);cursor:pointer;font-weight:600;">Assign</button>
+    {% else %}
+    <span style="font-size:12px;color:var(--text-dim);">No workouts yet — <a href="/workouts/create" style="color:var(--accent-primary);">create one first</a>.</span>
+    {% endif %}
   </div>
   <p id="assign-msg" style="margin:6px 0 0;font-size:11px;color:var(--text-dim);display:none;"></p>
 </div>
-{% endif %}
 
 {# ── Lap Splits ───────────────────────────────────────────────── #}
 {% if laps %}
@@ -704,22 +752,17 @@ async function applyInsight(settingKey, value, btn) {
     tp:   (STREAMS.true_pace || []).length > 0,
     alt:  (STREAMS.altitude || []).length > 0,
     cad:  (STREAMS.cadence || []).length > 0,
-    pwr:  (STREAMS.watts || []).length > 0,
+    pwr:  (STREAMS.watts || STREAMS.power || []).length > 0,
   }, SPORT_TYPE);
 
   // Sync x-axis toggle buttons to the chart's actual initial state.
-  // The HTML defaults "Distance" to active, but the chart uses time labels
-  // when no distance stream is available.
+  // Default is time mode; dim the Distance button when no distance stream exists.
   if (chart) {
     const btnDist = document.getElementById('xaxis-distance');
     const btnTime = document.getElementById('xaxis-time');
     if (btnDist && btnTime) {
-      const hasDistLabels = !!chart._distLabels;
-      const hasTimeLabels = !!chart._timeLabels;
-      btnDist.classList.toggle('active', hasDistLabels);
-      btnTime.classList.toggle('active', !hasDistLabels && hasTimeLabels);
-      if (!hasDistLabels) btnDist.style.opacity = '0.35';
-      if (!hasTimeLabels) btnTime.style.opacity = '0.35';
+      if (!chart._distLabels) btnDist.style.opacity = '0.35';
+      if (!chart._timeLabels) btnTime.style.opacity = '0.35';
     }
   }
 })();

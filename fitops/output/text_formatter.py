@@ -67,6 +67,8 @@ def print_activity_detail(activity: dict) -> None:
     training = activity.get("training_metrics") or {}
     flags = activity.get("flags") or {}
     insights = activity.get("insights") or {}
+    _sport = activity.get("sport_type") or ""
+    _is_run = _sport in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
 
     date_str = (activity.get("start_date_local") or "")[:10]
     console.print(
@@ -124,7 +126,76 @@ def print_activity_detail(activity: dict) -> None:
                 f"  HR Drift   {drift['drift_bpm']:+.1f} bpm  ({drift.get('label', '')})"
             )
 
+    # Avg GAP / True Pace (top-level fields from stream analytics)
+    avg_gap = activity.get("avg_gap")
+    weather = activity.get("weather") or {}
+    true_pace_fmt = weather.get("true_pace_fmt")
+    if avg_gap or true_pace_fmt:
+        parts = []
+        if avg_gap:
+            parts.append(f"GAP {avg_gap}")
+        if true_pace_fmt:
+            _tp_label = "True Pace" if _is_run else "True Speed"
+            parts.append(f"{_tp_label} {true_pace_fmt}")
+        console.print(f"  Effort     {'  |  '.join(parts)}")
+
+    # Weather conditions
+    if weather:
+        temp = weather.get("temp_fmt")
+        condition = weather.get("condition")
+        wbgt_flag = weather.get("wbgt_flag")
+        wind_kmh = weather.get("wind_speed_kmh")
+        wind_dir = weather.get("wind_dir_compass")
+        precip = weather.get("precipitation_mm")
+
+        weather_parts = []
+        if temp:
+            weather_parts.append(temp)
+        if condition:
+            weather_parts.append(condition)
+        if wind_kmh is not None:
+            wind_str = f"{wind_kmh} km/h"
+            if wind_dir:
+                wind_str += f" {wind_dir}"
+            weather_parts.append(f"wind {wind_str}")
+        if precip:
+            weather_parts.append(f"{precip} mm rain")
+
+        flag_colour = {
+            "green": "green",
+            "yellow": "yellow",
+            "red": "red",
+            "black": "white on black",
+        }.get(wbgt_flag or "green", "green")
+        flag_str = f" [{flag_colour}]●[/{flag_colour}]" if wbgt_flag else ""
+        if weather_parts:
+            console.print(f"  Weather{flag_str}   {',  '.join(weather_parts)}")
+
+        wap_fmt = weather.get("wap_fmt")
+        wap_pct = weather.get("wap_factor_pct")
+        if wap_fmt and wap_pct is not None:
+            direction = "harder" if wap_pct > 0 else "easier"
+            console.print(
+                f"  Adj Pace   {wap_fmt}  [dim]({wap_pct:+.1f}% conditions {direction})[/dim]"
+            )
+
     console.print()
+
+    # Tip footer — show available sub-commands
+    sport = activity.get("sport_type") or ""
+    is_run = sport in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
+    tips = []
+    if is_run and activity.get("km_splits"):
+        tips.append("--splits")
+    if activity.get("workout"):
+        tips.append("--workout")
+    if activity.get("analytics") or activity.get("km_splits"):
+        tips.append("--chart")
+    if tips:
+        aid = activity.get("strava_activity_id") or ""
+        tip_flags = "  ·  ".join(f"fitops activities get {aid} {f}" for f in tips)
+        console.print(f"[dim]  tip: {tip_flags}[/dim]")
+        console.print()
 
 
 def print_laps_table(laps: list[dict], activity_id: int) -> None:
@@ -173,8 +244,178 @@ def print_streams_summary(streams: dict, activity_id: int) -> None:
     console.print()
 
 
+def print_splits_table(splits: list[dict], activity_id: int) -> None:
+    """Print per-km splits as a Rich table."""
+    if not splits:
+        console.print(
+            "[dim]No splits available (requires streams for a running activity).[/dim]"
+        )
+        return
+
+    has_true_pace = any(s.get("avg_true_pace") for s in splits)
+    has_hr = any(s.get("avg_hr") for s in splits)
+    has_cad = any(s.get("avg_cad") for s in splits)
+    has_elev = any(
+        s.get("elev_gain") is not None or s.get("elev_loss") is not None for s in splits
+    )
+
+    console.print(f"\n[bold]Km Splits[/bold]  (activity {activity_id})\n")
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Km", justify="right")
+    table.add_column("Pace", justify="right")
+    if has_true_pace:
+        table.add_column("True Pace", justify="right")
+    if has_hr:
+        table.add_column("HR", justify="right")
+    if has_cad:
+        table.add_column("Cad", justify="right")
+    if has_elev:
+        table.add_column("Elev+", justify="right")
+        table.add_column("Elev−", justify="right")
+
+    for s in splits:
+        label = s.get("label") or str(s.get("km", ""))
+        pace = s.get("pace") or "-"
+        row = [label, pace]
+        if has_true_pace:
+            tp = s.get("avg_true_pace") or "-"
+            row.append(tp)
+        if has_hr:
+            hr = str(s["avg_hr"]) if s.get("avg_hr") is not None else "-"
+            row.append(hr)
+        if has_cad:
+            cad = str(s["avg_cad"]) if s.get("avg_cad") is not None else "-"
+            row.append(cad)
+        if has_elev:
+            gain = f"+{s['elev_gain']}m" if s.get("elev_gain") is not None else "-"
+            loss = f"-{s['elev_loss']}m" if s.get("elev_loss") is not None else "-"
+            row.extend([gain, loss])
+        table.add_row(*row)
+
+    console.print(table)
+
+
+def print_activity_workout_compliance(activity: dict) -> None:
+    """Print linked workout plan and compliance summary."""
+    workout = activity.get("workout")
+    if not workout:
+        console.print("[dim]No linked workout for this activity.[/dim]")
+        return
+
+    compliance_pct = workout.get("compliance_pct")
+    pct_str = f"{compliance_pct}%" if compliance_pct is not None else "-"
+    console.print(
+        f"\n[bold]{workout.get('name', 'Workout')}[/bold]  compliance: {pct_str}\n"
+    )
+
+    segs = workout.get("segments") or []
+    if not segs:
+        console.print("[dim]No segments.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Segment")
+    table.add_column("Target", justify="right")
+    table.add_column("Actual Pace", justify="right")
+    table.add_column("Actual HR", justify="right")
+    table.add_column("Compliance", justify="right")
+
+    for seg in segs:
+        name = seg.get("name") or "-"
+        target = seg.get("target_description") or seg.get("target_pace") or "-"
+        actuals = seg.get("actuals") or {}
+        actual_pace = (
+            actuals.get("avg_pace_formatted") or seg.get("avg_pace_per_km") or "-"
+        )
+        avg_hr = actuals.get("avg_heartrate")
+        hr_str = str(round(avg_hr)) if avg_hr else "-"
+        seg_compliance = seg.get("compliance_pct")
+        compliance_str = f"{seg_compliance}%" if seg_compliance is not None else "-"
+        table.add_row(name, str(target), str(actual_pace), hr_str, compliance_str)
+
+    console.print(table)
+
+
+def print_workout_splits(activity: dict) -> None:
+    """Print km splits segmented by workout plan intervals."""
+    workout = activity.get("workout")
+    km_splits = activity.get("km_splits") or []
+
+    if not workout:
+        console.print("[dim]No linked workout — showing standard km splits.[/dim]")
+        print_splits_table(km_splits, activity.get("strava_activity_id", 0))
+        return
+
+    if not km_splits:
+        console.print("[dim]No km splits available (requires streams).[/dim]")
+        return
+
+    segs = workout.get("segments") or []
+    if not segs:
+        print_splits_table(km_splits, activity.get("strava_activity_id", 0))
+        return
+
+    has_true_pace = any(s.get("avg_true_pace") for s in km_splits)
+    has_hr = any(s.get("avg_hr") for s in km_splits)
+
+    console.print(
+        f"\n[bold]{workout.get('name', 'Workout')}[/bold] — km splits by interval\n"
+    )
+
+    for seg in segs:
+        seg_name = seg.get("name") or "Segment"
+        start_km = seg.get("start_index")
+        end_km = seg.get("end_index")
+
+        actuals = seg.get("actuals") or {}
+        actual_pace = (
+            actuals.get("avg_pace_formatted") or seg.get("avg_pace_per_km") or "-"
+        )
+        compliance_pct = seg.get("compliance_pct")
+        pct_str = (
+            f" | compliance: {compliance_pct}%" if compliance_pct is not None else ""
+        )
+
+        console.print(f"  [bold]{seg_name}[/bold]  avg pace: {actual_pace}{pct_str}")
+
+        # Filter km splits that fall within this segment's stream index range
+        if start_km is not None and end_km is not None:
+            # km_splits are 1-indexed; start_index/end_index are stream array indices
+            # Map stream indices to approximate km numbers
+            seg_splits = [
+                s
+                for s in km_splits
+                if start_km <= (s.get("km", 0) - 1) * 1000 <= end_km
+            ]
+        else:
+            seg_splits = km_splits
+
+        if seg_splits:
+            table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
+            table.add_column("Km", justify="right")
+            table.add_column("Pace", justify="right")
+            if has_true_pace:
+                table.add_column("True Pace", justify="right")
+            if has_hr:
+                table.add_column("HR", justify="right")
+
+            for s in seg_splits:
+                label = s.get("label") or str(s.get("km", ""))
+                pace = s.get("pace") or "-"
+                row = [label, pace]
+                if has_true_pace:
+                    row.append(s.get("avg_true_pace") or "-")
+                if has_hr:
+                    hr = str(s["avg_hr"]) if s.get("avg_hr") is not None else "-"
+                    row.append(hr)
+                table.add_row(*row)
+            console.print(table)
+
+    console.print()
+
+
 def print_stream_chart(
-    activity_id: int,
+    _activity_id: int,
     stream_type: str,
     data: list[float],
     x_values: list[float],
@@ -221,6 +462,55 @@ def print_athlete_profile(athlete: dict) -> None:
     shoes = equip.get("shoes") or []
     console.print(f"  Bikes      {len(bikes)}")
     console.print(f"  Shoes      {len(shoes)}")
+
+    phys = athlete.get("physiology") or {}
+    has_phys = any(
+        phys.get(k)
+        for k in (
+            "max_hr",
+            "resting_hr",
+            "lthr",
+            "ftp",
+            "lt1_pace",
+            "lt2_pace",
+            "vo2max",
+        )
+    )
+    if has_phys:
+        console.print()
+        console.print("[bold]Physiology[/bold]")
+        if phys.get("max_hr"):
+            console.print(f"  Max HR         {phys['max_hr']} bpm")
+        if phys.get("lthr"):
+            console.print(f"  LTHR           {phys['lthr']} bpm")
+        if phys.get("resting_hr"):
+            console.print(f"  Resting HR     {phys['resting_hr']} bpm")
+        if phys.get("ftp"):
+            console.print(f"  FTP            {phys['ftp']} W")
+        if phys.get("lt1_pace"):
+            console.print(
+                f"  LT1 pace       {phys['lt1_pace']}  [dim](aerobic threshold)[/dim]"
+            )
+        if phys.get("lt2_pace"):
+            console.print(
+                f"  LT2 pace       {phys['lt2_pace']}  [dim](lactate threshold)[/dim]"
+            )
+        if phys.get("vo2max_pace"):
+            console.print(
+                f"  vVO2max        {phys['vo2max_pace']}  [dim](from VDOT)[/dim]"
+            )
+        vo2max = phys.get("vo2max") or {}
+        if vo2max.get("estimate"):
+            conf = vo2max.get("confidence_label") or ""
+            console.print(
+                f"  VO2max         {vo2max['estimate']:.1f} ml/kg/min  [dim][{conf}][/dim]"
+            )
+            based = vo2max.get("based_on_activity") or {}
+            if based.get("name"):
+                console.print(
+                    f"                 based on: {based['name']}  ({based.get('date') or ''})"
+                )
+
     console.print()
 
 
@@ -287,6 +577,68 @@ def print_athlete_zones(zones: dict) -> None:
 
     if not hr_zone_list and not pz_list:
         console.print("[dim]No zones configured in Strava.[/dim]")
+    console.print()
+
+
+def print_athlete_computed_zones(data: dict) -> None:
+    """Display computed HR + pace zones from local physiology settings."""
+    zones = data.get("zones") or {}
+    method = zones.get("method") or ""
+    zone_list = zones.get("heart_rate_zones") or []
+    thresholds = zones.get("thresholds") or {}
+    pace_zones = data.get("pace_zones") or []
+
+    console.print()
+    console.print(f"[bold]HR Zones[/bold]  [dim]method: {method}[/dim]")
+    if zones.get("lthr_bpm"):
+        parts = [f"LTHR {zones['lthr_bpm']} bpm"]
+        if zones.get("max_hr_bpm"):
+            parts.append(f"Max HR {zones['max_hr_bpm']} bpm")
+        if zones.get("resting_hr_bpm"):
+            parts.append(f"Resting HR {zones['resting_hr_bpm']} bpm")
+        console.print(f"  {' | '.join(parts)}")
+    th = zones.get("thresholds") or {}
+    if th.get("lt1_bpm"):
+        console.print(f"  LT1  {th['lt1_bpm']} bpm")
+    if th.get("lt2_bpm"):
+        console.print(f"  LT2  {th['lt2_bpm']} bpm")
+    if thresholds.get("lt1_pace_fmt"):
+        console.print(f"  LT1 pace   {thresholds['lt1_pace_fmt']}  [dim](GAP)[/dim]")
+    if thresholds.get("lt2_pace_fmt"):
+        console.print(f"  LT2 pace   {thresholds['lt2_pace_fmt']}  [dim](GAP)[/dim]")
+    if thresholds.get("vo2max_pace_fmt"):
+        console.print(
+            f"  vVO2max    {thresholds['vo2max_pace_fmt']}  [dim](from VDOT)[/dim]"
+        )
+    console.print()
+    if zone_list:
+        hr_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        hr_table.add_column("Zone", justify="right")
+        hr_table.add_column("Name")
+        hr_table.add_column("Min bpm", justify="right")
+        hr_table.add_column("Max bpm", justify="right")
+        for z in zone_list:
+            mn = str(z.get("min_bpm") or "-")
+            mx_raw = z.get("max_bpm")
+            mx = str(mx_raw) if mx_raw and mx_raw < 999 else "-"
+            hr_table.add_row(str(z.get("zone") or ""), z.get("name") or "", mn, mx)
+        console.print(hr_table)
+
+    if pace_zones:
+        console.print()
+        console.print("[bold]Pace Zones[/bold]")
+        console.print()
+        pz_table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        pz_table.add_column("Zone", justify="right")
+        pz_table.add_column("Name")
+        pz_table.add_column("Min pace", justify="right")
+        pz_table.add_column("Max pace", justify="right")
+        for z in pace_zones:
+            mn = z.get("min_pace_fmt") or "-"
+            mx = z.get("max_pace_fmt") or "-"
+            pz_table.add_row(str(z.get("zone") or ""), z.get("name") or "", mn, mx)
+        console.print(pz_table)
+
     console.print()
 
 
@@ -490,8 +842,15 @@ def print_vo2max(data: dict) -> None:
     preds = race.get("predictions") or {}
     if preds:
         console.print()
+        method = race.get("method", "vdot").upper()
+        if method == "VDOT":
+            source_info = f"VDOT {race.get('vdot_source', '?')}"
+        elif method == "LT2":
+            source_info = f"LT2 @ {race.get('lt2_source_pace', '?')}/km"
+        else:
+            source_info = f"from {race.get('riegel_source_distance_km', '?')} km @ {race.get('riegel_source_pace', '?')}/km"
         console.print(
-            f"  [bold]Race Predictions[/bold]  [dim]{race.get('method', 'riegel').upper()} · from {race.get('source_distance_km', '?')} km @ {race.get('source_pace', '?')}/km[/dim]"
+            f"  [bold]Race Predictions[/bold]  [dim]{method} · {source_info}[/dim]"
         )
         for label, pred in preds.items():
             console.print(
@@ -520,13 +879,16 @@ def print_analytics_zones(data: dict) -> None:
 
     zones = data.get("zones") or {}
     method = zones.get("method") or ""
-    zone_list = zones.get("zones") or []
+    zone_list = zones.get("heart_rate_zones") or []
     console.print()
     console.print(f"[bold]HR Zones[/bold]  [dim]method: {method}[/dim]")
-    if zones.get("lthr"):
-        console.print(
-            f"  LTHR {zones['lthr']} bpm  |  Max HR {zones.get('max_hr') or '-'} bpm"
-        )
+    if zones.get("lthr_bpm"):
+        parts = [f"LTHR {zones['lthr_bpm']} bpm"]
+        if zones.get("max_hr_bpm"):
+            parts.append(f"Max HR {zones['max_hr_bpm']} bpm")
+        if zones.get("resting_hr_bpm"):
+            parts.append(f"Resting HR {zones['resting_hr_bpm']} bpm")
+        console.print(f"  {' | '.join(parts)}")
     thresholds = zones.get("thresholds") or {}
     if thresholds.get("lt1_pace_fmt"):
         console.print(f"  LT1 pace   {thresholds['lt1_pace_fmt']}  [dim](GAP)[/dim]")
@@ -558,17 +920,44 @@ def print_trends(data: dict) -> None:
         f"[bold]Training Trends[/bold]  [dim]{t.get('summary_label') or ''}[/dim]"
     )
     console.print(f"  Activities     {t.get('activity_count') or 0}")
-    vol = t.get("volume_trend") or {}
-    if vol.get("weekly_avg_km"):
-        console.print(f"  Weekly avg     {vol['weekly_avg_km']} km")
-    if vol.get("trend_label"):
-        console.print(f"  Volume trend   {vol['trend_label']}")
+
     cons = t.get("consistency") or {}
-    if cons.get("active_weeks_pct"):
-        console.print(f"  Consistency    {cons['active_weeks_pct']}% active weeks")
+    if cons.get("activities_per_week") is not None:
+        reg = cons.get("regularity_score") or cons.get("weekly_consistency")
+        reg_str = (
+            f"  [dim](regularity {reg * 100:.0f}%)[/dim]" if reg is not None else ""
+        )
+        console.print(f"  Per week       {cons['activities_per_week']}{reg_str}")
+    if cons.get("avg_days_between_activities") is not None:
+        console.print(f"  Avg rest days  {cons['avg_days_between_activities']}")
+
+    vol = t.get("volume_trend") or {}
+    if vol.get("direction"):
+        strength = vol.get("strength", "")
+        console.print(f"  Volume trend   {vol['direction']}  [dim]({strength})[/dim]")
+
+    perf = t.get("performance_trend") or {}
+    if perf.get("pace_direction") and perf["pace_direction"] != "insufficient_data":
+        strength = perf.get("pace_strength", "")
+        console.print(
+            f"  Pace trend     {perf['pace_direction']}  [dim]({strength})[/dim]"
+        )
+    if perf.get("improvement_rate_pct_per_month") is not None:
+        rate = perf["improvement_rate_pct_per_month"]
+        sign = "+" if rate > 0 else ""
+        console.print(f"  Pace change    {sign}{rate:.2f}% / month")
+    if perf.get("hr_direction") and perf["hr_direction"] != "insufficient_data":
+        console.print(f"  HR trend       {perf['hr_direction']}")
+
+    seasonal = t.get("seasonal") or {}
+    if seasonal.get("peak_season"):
+        console.print(f"  Peak season    {seasonal['peak_season']}")
+
     ot = t.get("overtraining_indicators") or {}
-    if ot.get("risk_label"):
-        console.print(f"  OT Risk        {ot['risk_label']}")
+    if ot.get("acwr_label"):
+        console.print(f"  Load (ACWR)    {ot['acwr_label']}")
+    if ot.get("monotony_label"):
+        console.print(f"  Monotony       {ot['monotony_label']}")
     console.print()
 
 
@@ -578,18 +967,54 @@ def print_performance(data: dict) -> None:
     console.print(
         f"[bold]Performance Metrics[/bold]  [dim]{p.get('sport') or ''}[/dim]"
     )
+    if p.get("days"):
+        console.print(f"  Window         last {p['days']} days")
     console.print(f"  Activities     {p.get('activity_count') or 0}")
     console.print(f"  Reliability    {p.get('overall_reliability') or '-'}")
+
+    label_map = {
+        "running_economy_ml_kg_km": "Running economy",
+        "pace_efficiency_score": "Pace efficiency",
+        "variability_index": "Pace variability",
+        "max_hr_estimate": "Max HR estimate",
+        "aerobic_threshold_hr": "Aerobic threshold HR",
+        "anaerobic_threshold_hr": "Anaerobic threshold HR",
+        "ftp_estimate_watts": "FTP estimate",
+        "power_to_weight_w_kg": "Power-to-weight",
+        "normalized_power_ratio": "Normalized power ratio",
+        "power_consistency": "Power consistency",
+    }
+
     running = p.get("running") or {}
     if running:
         for k, v in running.items():
             if v is not None:
-                console.print(f"  {k:<20} {v}")
+                console.print(f"  {label_map.get(k, k):<20} {v}")
     cycling = p.get("cycling") or {}
     if cycling:
         for k, v in cycling.items():
             if v is not None:
-                console.print(f"  {k:<20} {v}")
+                console.print(f"  {label_map.get(k, k):<20} {v}")
+    load = p.get("current_load") or {}
+    if load:
+        ctl = load.get("ctl", "-")
+        atl = load.get("atl", "-")
+        tsb = load.get("tsb", "-")
+        console.print(f"  Load           CTL {ctl}  ATL {atl}  TSB {tsb}")
+        if load.get("form_label"):
+            console.print(f"  Form           {load['form_label']}")
+    trends = p.get("trends") or {}
+    if trends:
+        summary = trends.get("summary_label")
+        perf = trends.get("performance_trend") or {}
+        if summary:
+            console.print(f"  Trend          {summary}")
+        if perf.get("pace_direction") and perf["pace_direction"] != "insufficient_data":
+            console.print(
+                f"  Pace trend     {perf['pace_direction']}  ({perf.get('pace_strength', 'weak')})"
+            )
+        if perf.get("hr_direction") and perf["hr_direction"] != "insufficient_data":
+            console.print(f"  HR trend       {perf['hr_direction']}")
     console.print()
 
 
@@ -626,6 +1051,12 @@ def print_pace_zones(data: dict) -> None:
     console.print(
         f"[bold]Pace Zones[/bold]  [dim]threshold: {pz.get('threshold_pace') or '-'}  ({pz.get('source') or ''})[/dim]"
     )
+    if pz.get("lt1_pace"):
+        console.print(f"  LT1 (aerobic)   {pz['lt1_pace']}  [dim](from profile)[/dim]")
+    if pz.get("vo2max_pace"):
+        console.print(
+            f"  VO2max pace     {pz['vo2max_pace']}  [dim](from profile)[/dim]"
+        )
     zone_list = pz.get("zones") or []
     if zone_list:
         table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -1201,6 +1632,157 @@ def print_weather_fetch_all(data: dict) -> None:
             console.print(f"    {e.get('activity_id')}  {e['result'].get('error')}")
 
 
+def print_race_plans_list(data: dict) -> None:
+    plans = data.get("plans") or []
+    if not plans:
+        console.print("[dim]No race plans saved yet.[/dim]")
+        console.print(
+            "  Simulate a course and save it: fitops race plan-save <course_id> --name <name> --target-time H:MM:SS"
+        )
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("ID", justify="right", style="dim", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("Course", justify="right", style="dim", no_wrap=True)
+    table.add_column("Date", no_wrap=True)
+    table.add_column("Target", justify="right", no_wrap=True)
+    table.add_column("Strategy", no_wrap=True)
+    table.add_column("Activity", justify="right", no_wrap=True)
+
+    for p in plans:
+        act_id = p.get("activity_id")
+        act_str = f"[green]#{act_id}[/green]" if act_id else "[dim]pending[/dim]"
+        table.add_row(
+            str(p.get("id") or ""),
+            p.get("name") or "",
+            str(p.get("course_id") or ""),
+            p.get("race_date") or "—",
+            p.get("target_time") or "—",
+            p.get("strategy") or "even",
+            act_str,
+        )
+
+    console.print(table)
+
+
+def print_race_plan_detail(data: dict) -> None:
+    plan = data.get("plan") or {}
+    splits = plan.get("splits") or []
+
+    console.print()
+    console.print(
+        f"[bold]{plan.get('name') or 'Race Plan'}[/bold]  [dim]ID {plan.get('id')}[/dim]"
+    )
+    console.print(f"  Course      #{plan.get('course_id')}")
+    console.print(f"  Target      {plan.get('target_time') or '—'}")
+    console.print(f"  Strategy    {plan.get('strategy') or 'even'}")
+    if plan.get("race_date"):
+        console.print(
+            f"  Date        {plan['race_date']}  hour {plan.get('race_hour', 9)}"
+        )
+    if plan.get("weather_temp_c") is not None:
+        console.print(
+            f"  Weather     {plan['weather_temp_c']}°C  "
+            f"{plan.get('weather_humidity_pct', '?')}% RH  "
+            f"wind {plan.get('weather_wind_ms', 0):.1f} m/s  "
+            f"[dim]{plan.get('weather_source') or 'manual'}[/dim]"
+        )
+    if plan.get("activity_id"):
+        console.print(f"  Activity    [green]#{plan['activity_id']} linked[/green]")
+    else:
+        console.print("  Activity    [dim]pending[/dim]")
+    console.print()
+
+    if not splits:
+        console.print("[dim]No simulated splits stored.[/dim]")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right")
+    table.add_column("Pace", justify="right", no_wrap=True)
+    table.add_column("Elapsed", justify="right", no_wrap=True)
+    table.add_column("Elev Δ", justify="right", no_wrap=True)
+    table.add_column("Adj Factor", justify="right", no_wrap=True)
+
+    for s in splits:
+        km = s.get("km_marker") or s.get("km") or ""
+        pace = s.get("adjusted_pace_fmt") or s.get("pace_fmt") or s.get("pace") or "-"
+        elapsed = s.get("elapsed_fmt") or s.get("elapsed") or "-"
+        elev = s.get("elevation_delta_m") or s.get("elev_delta_m")
+        elev_str = f"{elev:+.1f} m" if elev is not None else "-"
+        factor = s.get("total_adjustment_factor") or s.get("adj_factor")
+        factor_str = f"{factor:.3f}" if factor is not None else "-"
+        table.add_row(str(km), pace, elapsed, elev_str, factor_str)
+
+    console.print(table)
+    console.print()
+
+
+def print_race_plan_compare(data: dict) -> None:
+    plan = data.get("plan") or {}
+    actual_splits = data.get("actual_splits") or []
+    sim_splits = plan.get("splits") or []
+
+    console.print()
+    console.print(f"[bold]{plan.get('name') or 'Race Plan'}[/bold]  comparison")
+    if data.get("actual_finish_fmt"):
+        console.print(f"  Actual finish    [green]{data['actual_finish_fmt']}[/green]")
+    if plan.get("target_time"):
+        console.print(f"  Simulated target [dim]{plan['target_time']}[/dim]")
+    if data.get("actual_avg_pace_fmt"):
+        console.print(f"  Actual avg pace  {data['actual_avg_pace_fmt']}")
+    console.print()
+
+    n = min(len(sim_splits), len(actual_splits))
+    if n == 0:
+        console.print("[dim]No splits available for comparison.[/dim]")
+        return
+
+    from fitops.race.course_parser import _fmt_duration
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right")
+    table.add_column("Sim Pace", justify="right", no_wrap=True)
+    table.add_column("Actual Pace", justify="right", no_wrap=True)
+    table.add_column("Δ", justify="right", no_wrap=True)
+    table.add_column("HR", justify="right", no_wrap=True)
+    table.add_column("Cadence", justify="right", no_wrap=True)
+
+    for i in range(n):
+        sim = sim_splits[i]
+        act = actual_splits[i]
+        km = sim.get("km_marker") or sim.get("km") or str(i + 1)
+        sim_pace_s = sim.get("target_pace_s") or sim.get("pace_s") or 0
+        act_pace_s = act.get("pace_s") or 0
+        sim_pace_fmt = (
+            sim.get("adjusted_pace_fmt")
+            or sim.get("pace_fmt")
+            or (_fmt_duration(sim_pace_s) if sim_pace_s else "-")
+        )
+        act_pace_fmt = _fmt_duration(act_pace_s) if act_pace_s else "-"
+
+        delta_s = act_pace_s - sim_pace_s if (act_pace_s and sim_pace_s) else None
+        if delta_s is None:
+            delta_str = "-"
+        elif delta_s > 5:
+            delta_str = f"[red]+{_fmt_duration(delta_s)}[/red]"
+        elif delta_s < -5:
+            delta_str = f"[green]{_fmt_duration(delta_s)}[/green]"
+        else:
+            delta_str = f"[dim]{_fmt_duration(abs(delta_s))}[/dim]"
+
+        hr = act.get("avg_hr")
+        hr_str = str(int(hr)) if hr else "-"
+        cad = act.get("avg_cadence")
+        cad_str = str(int(cad * 2)) if cad else "-"
+
+        table.add_row(str(km), sim_pace_fmt, act_pace_fmt, delta_str, hr_str, cad_str)
+
+    console.print(table)
+    console.print()
+
+
 def print_snapshot(data: dict) -> None:
     s = data.get("snapshot") or {}
     console.print()
@@ -1213,4 +1795,275 @@ def print_snapshot(data: dict) -> None:
         console.print(f"  TSB     {s['tsb']:.1f}")
     if s.get("vo2max_estimate") is not None:
         console.print(f"  VO2max  {s['vo2max_estimate']:.1f} ml/kg/min")
+    console.print()
+
+
+# ---------------------------------------------------------------------------
+# Race Sessions (Phase 9)
+# ---------------------------------------------------------------------------
+
+
+def _fmt_pace(s_per_km: float | None) -> str:
+    if s_per_km is None:
+        return "-"
+    mins = int(s_per_km // 60)
+    secs = int(s_per_km % 60)
+    return f"{mins}:{secs:02d}/km"
+
+
+def _fmt_time(seconds: float | None) -> str:
+    if seconds is None:
+        return "-"
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def print_race_sessions_list(data: dict) -> None:
+    sessions = data.get("sessions") or []
+    if not sessions:
+        console.print("[dim]No race sessions found.[/dim]")
+        console.print("  Create one with: fitops race session-create --activity <id> --name <name>")
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("ID", justify="right", style="dim", no_wrap=True)
+    table.add_column("Name")
+    table.add_column("Primary Activity", justify="right", no_wrap=True)
+    table.add_column("Athletes", justify="right", no_wrap=True)
+    table.add_column("Course ID", justify="right", no_wrap=True)
+    table.add_column("Created", no_wrap=True)
+
+    for s in sessions:
+        table.add_row(
+            str(s.get("id") or ""),
+            s.get("name") or "",
+            str(s.get("primary_activity_id") or "-"),
+            str(s.get("athlete_count") or "-"),
+            str(s.get("course_id") or "-"),
+            str(s.get("created_at") or "")[:10],
+        )
+
+    console.print(table)
+
+
+def print_race_session_detail(data: dict) -> None:
+    sess = data.get("session") or {}
+    athletes = data.get("athletes") or []
+    events = data.get("events") or []
+    segments = data.get("segments") or []
+
+    console.print()
+    console.print(
+        f"[bold]{sess.get('name') or 'Race Session'}[/bold]  [dim]ID {sess.get('id')}[/dim]"
+    )
+    console.print(f"  Primary activity  {sess.get('primary_activity_id') or '-'}")
+    if sess.get("course_id"):
+        console.print(f"  Course            {sess['course_id']}")
+    console.print(f"  Created           {str(sess.get('created_at') or '')[:10]}")
+    console.print()
+
+    if athletes:
+        console.print("[bold]Athletes[/bold]")
+        table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        table.add_column("Label")
+        table.add_column("Activity ID", justify="right")
+        table.add_column("Primary", justify="center")
+        table.add_column("Total Time", justify="right")
+        table.add_column("Avg Pace", justify="right")
+        table.add_column("Avg HR", justify="right")
+
+        for a in athletes:
+            m = a.get("metrics") or {}
+            total_time = _fmt_time(m.get("total_time_s"))
+            avg_pace = _fmt_pace(m.get("avg_pace_s_per_km"))
+            avg_hr = f"{int(m['avg_hr_bpm'])} bpm" if m.get("avg_hr_bpm") else "-"
+            table.add_row(
+                a.get("athlete_label") or "",
+                str(a.get("activity_id") or "-"),
+                "Y" if a.get("is_primary") else "",
+                total_time,
+                avg_pace,
+                avg_hr,
+            )
+        console.print(table)
+        console.print()
+
+    if events:
+        console.print(f"[bold]Key Events[/bold]  ({len(events)} detected)")
+        for ev in events[:5]:
+            impact = ev.get("impact_s") or 0
+            sign = "+" if impact > 0 else ""
+            console.print(
+                f"  km {ev.get('distance_km', 0):.1f}  [{ev.get('event_type')}]  "
+                f"{ev.get('athlete_label')}  {sign}{impact:.0f}s  — {ev.get('description') or ''}"
+            )
+        if len(events) > 5:
+            console.print(f"  … and {len(events) - 5} more. Use 'fitops race session {sess.get('id')} events' for full list.")
+        console.print()
+
+    if segments:
+        console.print(f"[bold]Segments[/bold]  ({len(segments)} detected)")
+        console.print("  Use 'fitops race session <id> segments' for per-athlete breakdown.")
+        console.print()
+
+
+def print_race_session_gaps(data: dict) -> None:
+    gap_data = data.get("gap_data") or []
+    if not gap_data:
+        console.print("[dim]No gap data available.[/dim]")
+        return
+
+    console.print()
+    for athlete_data in gap_data:
+        label = athlete_data.get("athlete_label") or "?"
+        series = athlete_data.get("gap_series") or []
+        if not series:
+            continue
+        console.print(f"[bold]{label}[/bold]")
+
+        table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+        table.add_column("km", justify="right", no_wrap=True)
+        table.add_column("Elapsed", justify="right", no_wrap=True)
+        table.add_column("Gap to Leader", justify="right", no_wrap=True)
+        table.add_column("Pos", justify="right", no_wrap=True)
+
+        # Sample every ~10 points to avoid wall of text
+        step = max(1, len(series) // 30)
+        for point in series[::step]:
+            gap_s = point.get("gap_to_leader_s") or 0
+            gap_str = f"+{gap_s:.0f}s" if gap_s > 0 else "leader"
+            table.add_row(
+                f"{point.get('distance_km', 0):.1f}",
+                _fmt_time(point.get("time_s")),
+                gap_str,
+                str(point.get("position") or ""),
+            )
+        console.print(table)
+        console.print()
+
+
+def print_race_session_segments(data: dict) -> None:
+    segments = data.get("segments") or []
+    athletes = data.get("athletes") or []
+    if not segments:
+        console.print("[dim]No segments detected.[/dim]")
+        return
+
+    athlete_labels = [a.get("athlete_label") for a in athletes]
+
+    console.print()
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Segment")
+    table.add_column("km", justify="right", no_wrap=True)
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Grade", justify="right", no_wrap=True)
+
+    for label in athlete_labels:
+        table.add_column(f"{label} Time", justify="right", no_wrap=True)
+        table.add_column(f"{label} Rank", justify="center", no_wrap=True)
+
+    for seg in segments:
+        metrics = seg.get("athlete_metrics") or {}
+        km_range = f"{seg.get('start_km', 0):.1f}–{seg.get('end_km', 0):.1f}"
+        grade = seg.get("avg_grade_pct")
+        grade_str = f"{grade:+.1f}%" if grade is not None else "-"
+
+        row: list[str] = [
+            seg.get("segment_label") or "",
+            km_range,
+            seg.get("gradient_type") or "-",
+            grade_str,
+        ]
+
+        for label in athlete_labels:
+            m = metrics.get(label) or {}
+            row.append(_fmt_time(m.get("time_s")))
+            rank = m.get("rank")
+            row.append(str(rank) if rank else "-")
+
+        table.add_row(*row)
+
+    console.print(table)
+    console.print()
+
+
+def print_race_session_events(data: dict) -> None:
+    events = data.get("events") or []
+    summary = data.get("events_summary") or {}
+    if not events:
+        console.print("[dim]No events detected.[/dim]")
+        return
+
+    console.print()
+    headline = summary.get("headline")
+    decisive = summary.get("decisive_point")
+    if headline or decisive:
+        console.print("[bold]Race Story[/bold]")
+        if headline:
+            console.print(
+                f"  Headline: {headline.get('athlete_label')} [{headline.get('event_type')}] at km {headline.get('distance_km', 0):.1f}"
+            )
+        if decisive:
+            console.print(
+                f"  Decisive point: km {decisive.get('distance_km', 0):.1f} — {decisive.get('description')}"
+            )
+        console.print()
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("km", justify="right", no_wrap=True)
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Athlete")
+    table.add_column("Rival")
+    table.add_column("Rank", justify="center", no_wrap=True)
+    table.add_column("Impact", justify="right", no_wrap=True)
+    table.add_column("Description")
+
+    event_colors = {
+        "surge": "green",
+        "drop": "red",
+        "bridge": "cyan",
+        "fade": "yellow",
+        "final_sprint": "magenta",
+        "separation": "red",
+        "pass": "blue",
+        "caught": "cyan",
+        "breakaway": "magenta",
+        "pack_split": "yellow",
+        "decisive_move": "red",
+        "recovery": "green",
+    }
+
+    for ev in events:
+        impact = ev.get("impact_s") or 0
+        sign = "+" if impact > 0 else ""
+        impact_str = f"{sign}{impact:.0f}s" if impact != 0 else "—"
+        etype = ev.get("event_type") or ""
+        color = event_colors.get(etype, "white")
+        ctx = ev.get("context") or {}
+        rank_before = ctx.get("rank_before")
+        rank_after = ctx.get("rank_after")
+        rank_str = (
+            f"P{rank_before}->P{rank_after}"
+            if rank_before and rank_after
+            else (f"P{rank_after}" if rank_after else "-")
+        )
+        desc = ev.get("description") or ""
+        seg = ctx.get("segment_label")
+        if seg:
+            desc = f"{desc} [{seg}]"
+        table.add_row(
+            f"{ev.get('distance_km', 0):.1f}",
+            f"[{color}]{etype}[/{color}]",
+            ev.get("athlete_label") or "",
+            ctx.get("rival_label") or "-",
+            rank_str,
+            impact_str,
+            desc,
+        )
+
+    console.print(table)
     console.print()

@@ -36,6 +36,10 @@ class PaceZoneResult:
     threshold_pace_fmt: str
     source: str
     zones: list[dict]
+    lt1_pace_s: float | None = None
+    lt1_pace_fmt: str | None = None
+    vo2max_pace_s: float | None = None
+    vo2max_pace_fmt: str | None = None
 
 
 def compute_pace_zones(threshold_pace_s: int, source: str = "manual") -> PaceZoneResult:
@@ -75,9 +79,16 @@ def get_pace_zones() -> PaceZoneResult | None:
     threshold_s = data.get("threshold_pace_per_km_s")
     if threshold_s is None:
         return None
-    return compute_pace_zones(
+    result = compute_pace_zones(
         threshold_s, source=data.get("pace_zones_source", "manual")
     )
+    lt1_s = data.get("lt1_pace_s")
+    vo2max_s = data.get("vo2max_pace_s")
+    result.lt1_pace_s = lt1_s
+    result.lt1_pace_fmt = _fmt_pace(int(lt1_s)) if lt1_s is not None else None
+    result.vo2max_pace_s = vo2max_s
+    result.vo2max_pace_fmt = _fmt_pace(int(vo2max_s)) if vo2max_s is not None else None
+    return result
 
 
 def set_threshold_pace(pace_str: str) -> PaceZoneResult:

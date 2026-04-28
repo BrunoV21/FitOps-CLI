@@ -141,6 +141,9 @@ def list_notes(
     activity: int | None = typer.Option(
         None, "--activity", "-a", help="Filter by activity ID."
     ),
+    query: str | None = typer.Option(
+        None, "--query", "-q", help="Keyword search across title, body, and tags."
+    ),
     limit: int = typer.Option(50, "--limit", help="Max results."),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
@@ -159,6 +162,15 @@ def list_notes(
         notes = [n for n in notes if tag.lower() in [t.lower() for t in n.tags]]
     if activity:
         notes = [n for n in notes if n.activity_id == activity]
+    if query:
+        q_lower = query.lower()
+        notes = [
+            n
+            for n in notes
+            if q_lower in n.title.lower()
+            or q_lower in (n.body or "").lower()
+            or any(q_lower in t.lower() for t in n.tags)
+        ]
 
     notes = notes[:limit]
 
@@ -167,6 +179,8 @@ def list_notes(
         filters["tag"] = tag
     if activity:
         filters["activity_id"] = activity
+    if query:
+        filters["query"] = query
 
     notes_data = [
         {

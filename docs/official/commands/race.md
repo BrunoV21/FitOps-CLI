@@ -189,6 +189,276 @@ fitops race delete 1
 
 ---
 
+### `fitops race plan-save <course_id>`
+
+Save a simulation as a named Race Plan. Runs the full simulation at save time and caches the per-km splits. Weather and strategy can be updated later with `plan-save` run again.
+
+```bash
+fitops race plan-save <course_id> --name "Berlin 2026 Sub-3" --target-time 3:00:00 [OPTIONS]
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name TEXT` | — | Plan display name (required) |
+| `--target-time HH:MM:SS` | — | Target finish time |
+| `--target-pace MM:SS` | — | Target average pace per km |
+| `--strategy STRATEGY` | `even` | Pacing strategy: `even`, `negative`, or `positive` |
+| `--pacer-pace MM:SS` | — | Pacer pace per km |
+| `--drop-at-km N` | — | Km to break from pacer |
+| `--date YYYY-MM-DD` | — | Race date (used for weather fetch) |
+| `--hour N` | `9` | Race start hour for weather fetch |
+| `--temp C` | — | Manual temperature override °C |
+| `--humidity PCT` | — | Manual humidity override % |
+| `--wind MS` | — | Wind speed m/s |
+| `--wind-dir DEG` | — | Wind direction degrees (0=N) |
+| `--json` | — | Output raw JSON |
+
+**Examples:**
+
+```bash
+# Save a plan for Berlin with auto-fetched weather
+fitops race plan-save 1 --name "Berlin 2026 Sub-3" --target-time 3:00:00 --date 2026-09-29 --hour 9
+
+# Negative split plan with manual weather
+fitops race plan-save 1 --name "Berlin Negative" --target-time 3:05:00 --strategy negative --temp 18 --humidity 60
+```
+
+---
+
+### `fitops race plans`
+
+List all saved race plans.
+
+```bash
+fitops race plans [--json]
+```
+
+**Output:**
+
+```
+  ID   Name                  Course  Date        Target    Strategy  Activity
+ ───────────────────────────────────────────────────────────────────────────────
+   1   Berlin 2026 Sub-3     1       2026-09-29  3:00:00   even      pending
+   2   Local 10K A-race      2       2026-06-15  42:00     negative  linked
+```
+
+---
+
+### `fitops race plan <plan_id>`
+
+Show the detail view of a saved plan: summary, weather conditions at save time, and the full per-km simulation splits.
+
+```bash
+fitops race plan 1 [--json]
+```
+
+---
+
+### `fitops race plan-compare <plan_id>`
+
+Compare the simulated per-km splits against the actual splits from the linked activity. Requires the plan to have an associated activity (`activity_id` set by auto-matching during `fitops sync`).
+
+```bash
+fitops race plan-compare 1 [--json]
+```
+
+**Output:**
+
+```
+  km   Sim Pace   Actual Pace   Δ       HR    Cadence
+ ──────────────────────────────────────────────────────
+   1   4:15       4:18          +3s     152   172
+   2   4:13       4:10          -3s     155   174
+  ...
+Actual finish: 3:01:24   Avg pace: 4:18/km
+```
+
+Delta is colour-coded: green when you ran faster than plan, red when slower.
+
+---
+
+### `fitops race plan-delete <plan_id>`
+
+Delete a saved race plan.
+
+```bash
+fitops race plan-delete 1
+```
+
+---
+
+---
+
+## Race Analysis — Multi-Athlete Sessions
+
+Race Analysis lets you replay a race with one or more athletes side by side, computing gap trends, segment breakdowns, and a richer tactical event timeline (surges, passes, breakaways, decisive moves, and more).
+
+### `fitops race session-create`
+
+Create a race analysis session from a primary Strava activity. Streams are fetched, normalised onto a 10 m grid, and the full analysis pipeline runs immediately (gap series, segments, event detection).
+
+```bash
+fitops race session-create --activity <strava_id> --name "Session Name" [--course <id>] [--json]
+```
+
+**Options:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--activity INT` | Yes | Primary Strava activity ID |
+| `--name TEXT` | Yes | Session display name |
+| `--course INT` | No | Optional course ID — uses course km-segments for segment detection instead of altitude-based fallback |
+| `--json` | No | Output raw JSON |
+
+**Example:**
+
+```bash
+fitops race session-create --activity 12345678901 --name "Berlin 2026" --course 1
+```
+
+**Output:** Full session detail (same as `fitops race session <id>`).
+
+> **Note:** The primary activity must have streams synced. Run `fitops sync streams` if you see a "No streams found" error.
+
+---
+
+### `fitops race session-add-athlete`
+
+Add a comparison athlete to an existing session. Accepts a Strava activity ID (public activity) **or** a GPX file. All analysis (gap series, events, segment rankings) is fully recomputed with the new athlete included.
+
+```bash
+fitops race session-add-athlete <session_id> --label "Name" [--activity <id> | --gpx <file>] [--json]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `SESSION_ID` | ID of the existing session |
+
+**Options:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--label TEXT` | Yes | Display label for this athlete |
+| `--activity INT` | No* | Strava activity ID (public activity) |
+| `--gpx PATH` | No* | Path to a GPX file |
+| `--json` | No | Output raw JSON |
+
+*One of `--activity` or `--gpx` is required.
+
+**Example:**
+
+```bash
+# Add from Strava activity
+fitops race session-add-athlete 1 --label "Alex" --activity 98765432100
+
+# Add from GPX
+fitops race session-add-athlete 1 --label "Sam" --gpx /path/to/sam.gpx
+```
+
+---
+
+### `fitops race sessions`
+
+List all race analysis sessions.
+
+```bash
+fitops race sessions [--json]
+```
+
+**Output:**
+
+```
+  ID   Name          Primary Activity  Athletes  Course  Created
+ ─────────────────────────────────────────────────────────────────
+   1   Berlin 2026   12345678901       3         1       2026-09-29
+   2   Local 10K     98765432100       2         —       2026-06-15
+```
+
+---
+
+### `fitops race session <id>`
+
+Show the full detail view for a session: summary cards, athletes, and all computed analytics.
+
+```bash
+fitops race session <id> [--json]
+```
+
+---
+
+### `fitops race session-gaps <id>`
+
+Show the gap-to-leader series — time gap (in seconds) and distance gap (in metres) per athlete at every 50 m point along the race.
+
+```bash
+fitops race session-gaps <id> [--json]
+```
+
+The leader at each point is the athlete with the minimum elapsed time. Leader gap is always 0. Positive gap = behind the leader.
+
+---
+
+### `fitops race session-segments <id>`
+
+Show the segment breakdown — course divided into climbing, flat, and descending sections with per-athlete time, pace, and rank within each segment.
+
+```bash
+fitops race session-segments <id> [--json]
+```
+
+Segments are detected from the linked course's km-segments (grade-based merging) if a course is linked, or from the primary athlete's altitude stream using a rolling-window fallback.
+
+---
+
+### `fitops race session-events <id>`
+
+Show automatically detected tactical events. The JSON payload and terminal view now include structured context for each event: rival, rank before/after, move window, gap before/after, segment label, confidence, and tags.
+
+| Type | Detection rule |
+|------|---------------|
+| `surge` | Velocity >15% above 60 s rolling baseline, sustained for ≥20 s |
+| `fade` | Second-half average velocity <90% of first-half average |
+| `final_sprint` | Last 400 m average velocity >10% above race average |
+| `drop` | Gap to leader grows by >10 s over any 500 m window |
+| `bridge` | Gap to leader shrinks by >10 s over any 500 m window |
+| `separation` | Athlete first falls 30 s behind the leader |
+| `pass` | Athlete improves race position and overtakes the runner ahead |
+| `caught` | Athlete closes a meaningful gap and makes contact with the runner ahead |
+| `breakaway` | Athlete opens a sustained gap on the runner behind |
+| `pack_split` | A field-separating gap opens between adjacent race positions |
+| `decisive_move` | Eventual top finisher moves into their final place and keeps it |
+| `recovery` | Athlete regains lost ground after a difficult patch |
+
+```bash
+fitops race session-events <id> [--json]
+```
+
+`--json` includes an `events_summary` block with the headline move, decisive point, biggest gain, lead-change count, and notable finish kicks.
+
+---
+
+### `fitops race session-delete <id>`
+
+Delete a race session and all associated data (athletes, gap series, segments, events).
+
+```bash
+fitops race session-delete <id>
+```
+
+---
+
+## Activity Auto-Matching
+
+When `fitops sync` fetches activity streams, it automatically checks all unlinked plans whose `race_date` is within ±1 day of the activity's start date. If the activity's GPS start point is within 500 m of the course start coordinates, the plan's `activity_id` is set automatically.
+
+Once linked, `plan-compare` and the dashboard plan detail page show side-by-side split comparison.
+
+---
+
 ## Weather Auto-Fetch
 
 When `--date` is provided and the course has GPS coordinates (start lat/lng), FitOps automatically fetches weather from Open-Meteo:
@@ -201,6 +471,8 @@ Manual `--temp` + `--humidity` always override auto-fetched weather. If weather 
 ## See Also
 
 - [Concepts → Weather & Pace](../concepts/weather-pace.md) — WAP and GAP adjustment models
+- [Dashboard → Race Plans](../dashboard/race-plans.md) — visual split comparison and plan management
+- [Dashboard → Race Analysis](../dashboard/race-analysis.md) — multi-athlete replay, gap chart, segment rankings, event timeline
 - [`fitops workouts simulate`](./workouts.md) — simulate a structured workout on a course
 - [`fitops weather forecast`](./weather.md) — standalone race-day forecast
 

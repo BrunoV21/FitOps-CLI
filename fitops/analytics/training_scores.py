@@ -66,13 +66,17 @@ def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> fl
     """
     Anaerobic training score (unbounded, typically 0–6+).
 
-    Sport-specific power-law models calibrated against Huawei watch reference values.
+    Sport-specific models calibrated against Huawei watch reference values.
 
-    Running: score = 4.77 × IF^1.59 × duration_h^0.24
-      Calibration: 0.98h run IF=0.811 → 3.4, 0.78h threshold run IF=1.002 → 4.5
+    Running: threshold-gated HR model.
+      score = 11.1 × max(0, IF_hr − 0.806)^0.52 × duration_h^0.24
+      where IF_hr = avg_hr / LTHR (HR directly reflects zone penetration).
+      Calibration: 0.98h run IF_hr=0.903 → 3.3, 0.78h IF_hr=0.995 → 4.4,
+        1.65h aerobic run IF_hr=0.811 → <1 (didn't enter high-intensity zones).
+      Falls back to pace-based IF when no HR data is available.
 
-    Cycling: score = 4.7 × IF^5.8 × duration_h^0.24
-      Calibration: 2.22h ride IF=0.812 → 1.7
+    Cycling: score = 3.65 × IF^5.8 × duration_h^0.24
+      Calibration: 2.65h ride IF=0.813 (HR-based) → 1.4.
       The steep IF exponent captures how cycling anaerobic stress ramps sharply
       above threshold.
     """
@@ -80,14 +84,33 @@ def compute_anaerobic_score(activity: Activity, settings: AthleteSettings) -> fl
     if duration_h <= 0:
         return 0.0
 
+    sport = activity.sport_type or ""
+
+    if sport in RUN_TYPES:
+        # Use HR-based intensity for running anaerobic: directly reflects zone penetration.
+        hr_if: float | None = None
+        if activity.average_heartrate:
+            if settings.lthr:
+                hr_if = min(activity.average_heartrate / settings.lthr, 2.0)
+            elif settings.max_hr:
+                hr_if = min(activity.average_heartrate / (settings.max_hr * 0.88), 2.0)
+
+        if hr_if is not None:
+            delta = max(0.0, hr_if - 0.806)
+            if delta <= 0:
+                return 0.0
+            return round(11.1 * (delta**0.52) * (duration_h**0.24), 1)
+
+        # Fallback to pace-based IF when no HR data.
+        intensity = _intensity_factor(activity, settings)
+        if intensity <= 0:
+            return 0.0
+        return round(4.77 * (intensity**1.59) * (duration_h**0.24), 1)
+
     intensity = _intensity_factor(activity, settings)
     if intensity <= 0:
         return 0.0
-
-    sport = activity.sport_type or ""
-    if sport in RUN_TYPES:
-        return round(4.77 * (intensity**1.59) * (duration_h**0.24), 1)
-    return round(4.7 * (intensity**5.8) * (duration_h**0.24), 1)
+    return round(3.65 * (intensity**5.8) * (duration_h**0.24), 1)
 
 
 def aerobic_label(score: float) -> str:

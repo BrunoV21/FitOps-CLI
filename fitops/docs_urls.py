@@ -21,7 +21,8 @@ CLI_DOCS: dict[str, str] = {
     "race": f"{DOC_BASE}/commands/race",
     "notes": f"{DOC_BASE}/commands/notes",
     "backup": f"{DOC_BASE}/commands/backup",
-    "dashboard": f"{DOC_BASE}/getting-started/",
+    "admin": f"{DOC_BASE}/commands/admin",
+    "dashboard": f"{DOC_BASE}/dashboard/",
     # top-level fitops command
     "main": f"{DOC_BASE}/getting-started/",
 }
@@ -29,15 +30,16 @@ CLI_DOCS: dict[str, str] = {
 # Dashboard page docs — keyed by active_page value used in route context
 # Mapped to the nearest matching page on the live docs site
 DASHBOARD_DOCS: dict[str, str] = {
-    "overview": f"{DOC_BASE}/getting-started/",
-    "activities": f"{DOC_BASE}/commands/activities",
-    "analytics": f"{DOC_BASE}/concepts/training-load",
-    "performance": f"{DOC_BASE}/concepts/training-load",
-    "workouts": f"{DOC_BASE}/commands/workouts",
-    "race": f"{DOC_BASE}/commands/race",
-    "notes": f"{DOC_BASE}/commands/notes",
-    "weather": f"{DOC_BASE}/commands/weather",
-    "profile": f"{DOC_BASE}/commands/athlete",
-    "backup": f"{DOC_BASE}/commands/backup",
+    "overview": f"{DOC_BASE}/dashboard/overview",
+    "activities": f"{DOC_BASE}/dashboard/activities",
+    "analytics": f"{DOC_BASE}/dashboard/analytics",
+    "performance": f"{DOC_BASE}/dashboard/analytics",
+    "workouts": f"{DOC_BASE}/dashboard/workouts",
+    "race": f"{DOC_BASE}/dashboard/race",
+    "race_sessions": f"{DOC_BASE}/dashboard/race-analysis",
+    "notes": f"{DOC_BASE}/dashboard/notes",
+    "weather": f"{DOC_BASE}/dashboard/weather",
+    "profile": f"{DOC_BASE}/dashboard/profile",
+    "backup": f"{DOC_BASE}/dashboard/backup",
     "setup": f"{DOC_BASE}/getting-started/authentication",
 }

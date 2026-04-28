@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}New Race Session — FitOps{% endblock %}
+{% block page_name %}race_sessions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">New Race Session</h1>
+    <p class="page-subtitle">Analyse a race with gap analysis, replay, and segment breakdown.</p>
+  </div>
+  <a href="/race/sessions" class="btn">← Sessions</a>
+</div>
+
+{% if error %}
+<div class="alert alert-red" style="margin-bottom:1rem;">
+  <strong>Error:</strong> {{ error }}
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Session Details</span>
+  </div>
+  <form method="post" action="/race/sessions/create" style="padding:1rem 1.25rem;">
+
+    <div style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Session Name <span style="color:#ef4444;">*</span></label>
+      <input type="text" name="name" required placeholder="e.g. Amsterdam Marathon 2025"
+             style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+    </div>
+
+    <div style="margin-bottom:1rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Primary Activity ID <span style="color:#ef4444;">*</span></label>
+      <input type="number" name="activity" required placeholder="e.g. 1234567890"
+             style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;" />
+      <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Your Strava activity ID — streams must be synced first (<code>fitops sync streams</code>).</p>
+    </div>
+
+    <div style="margin-bottom:1.25rem;">
+      <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Link to Course <span style="color:#666; font-weight:400;">(optional)</span></label>
+      <select name="course"
+              style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.9rem;">
+        <option value="">— No course —</option>
+        {% for c in courses %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Linking a course enables segment detection from km markers instead of altitude.</p>
+    </div>
+
+    <div style="display:flex; gap:0.75rem; align-items:center;">
+      <button type="submit" class="btn btn-primary" id="createBtn" onclick="this.disabled=true; document.getElementById('spinner').style.display=''; this.form.submit();">Create Session</button>
+      <a href="/race/sessions" class="btn">Cancel</a>
+      <span id="spinner" style="display:none; font-size:0.8rem; color:#888;">Running analysis pipeline…</span>
+    </div>
+  </form>
+</div>
+{% endblock %}

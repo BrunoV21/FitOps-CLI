@@ -175,10 +175,11 @@ fitops analytics performance [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--days N` | 365 | Days of history to analyse |
 | `--sport TYPE` | Run | Sport type: `Run` or `Ride` |
 
 ```bash
-fitops analytics performance
+fitops analytics performance --days 180
 fitops analytics performance --sport Ride
 ```
 
@@ -202,6 +203,15 @@ fitops analytics performance --sport Ride
 | `normalized_power_ratio` | Mean NP/AP ratio across recent rides |
 | `power_consistency` | 0–100 score based on power consistency |
 | `variability_index` | Coefficient of variation across power values |
+
+**Shared context:**
+
+| Field | What it means |
+|-------|--------------|
+| `current_load` | Current CTL / ATL / TSB snapshot used by the dashboard and CLI |
+| `trends` | Training trend summary for the selected sport and time window |
+
+The dashboard performance page uses the same underlying data and adds a sport switch plus a profile link so you can compare current fitness, recent load, and threshold settings in one place.
 
 ---
 
@@ -283,6 +293,40 @@ fitops analytics pace-zones
 This hierarchy also applies to **LT2 inference**: inferred threshold estimates are significantly more reliable when computed from True Pace rather than raw pace. See [Concepts → Weather & Pace](../concepts/weather-pace.md) for details.
 
 Threshold pace is stored in `~/.fitops/athlete_settings.json`.
+
+---
+
+### `fitops analytics recalculate-scores`
+
+Recompute aerobic and anaerobic scores for all activities and persist them to the database.
+
+```bash
+fitops analytics recalculate-scores [OPTIONS]
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | false | Output raw JSON instead of the formatted summary |
+
+```bash
+fitops analytics recalculate-scores
+fitops analytics recalculate-scores --json
+```
+
+Scores are derived from each activity's pace, HR, and current physiology settings (`~/.fitops/athlete_settings.json`). Run this command after updating LTHR, max HR, or threshold pace so that historical scores reflect your current settings.
+
+**JSON output:**
+
+```json
+{
+  "_meta": { ... },
+  "recalculated": 312
+}
+```
+
+This command does not contact Strava — it only reads and writes the local database.
 
 ---
 

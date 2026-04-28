@@ -107,13 +107,13 @@ fitops analytics performance --sport Run
 
 ```
 Performance Metrics  Run
-  Activities           50
-  Reliability          0.852
+  Window         last 365 days
+  Activities     50
+  Reliability    0.852
   Running economy      174.9 ml/kg/km
   Pace efficiency      85.2
-  Max HR estimate      199 bpm
-  Aerobic threshold    149 bpm
-  Anaerobic threshold  169 bpm
+  Load           CTL 42.1  ATL 51.3  TSB -9.2
+  Trend          volume building, pace improving
 ```
 
 ---
@@ -160,5 +160,7 @@ fitops analytics training-load --today --json
   }
 }
 ```
+
+`fitops analytics performance --json` now includes the selected sport, days window, `current_load`, and `trends` fields in the `performance` block so agents can use the same context the dashboard shows.
 
 ← [Output Examples](./index.md)

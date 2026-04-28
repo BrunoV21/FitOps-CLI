@@ -48,6 +48,7 @@ export default defineConfig({
           { text: 'race', link: '/commands/race' },
           { text: 'notes', link: '/commands/notes' },
           { text: 'backup', link: '/commands/backup' },
+          { text: 'admin', link: '/commands/admin' },
         ]
       },
       {
@@ -57,11 +58,13 @@ export default defineConfig({
           { text: 'Training Load', link: '/concepts/training-load' },
           { text: 'HR Zones', link: '/concepts/zones' },
           { text: 'VO2max', link: '/concepts/vo2max' },
+          { text: 'Estimated Running Power', link: '/concepts/estimated-power' },
           { text: 'Weather & Pace', link: '/concepts/weather-pace' },
           { text: 'Workouts & Compliance', link: '/concepts/workouts' },
           { text: 'Race Simulation', link: '/concepts/race-simulation' },
           { text: 'Training Notes', link: '/concepts/notes' },
           { text: 'AI Agent Integration', link: '/concepts/llm-integration' },
+          { text: 'Strava API & Data Use', link: '/concepts/strava-compliance' },
         ]
       },
       {
@@ -86,6 +89,8 @@ export default defineConfig({
           { text: 'Analytics', link: '/dashboard/analytics' },
           { text: 'Workouts', link: '/dashboard/workouts' },
           { text: 'Race Planner', link: '/dashboard/race' },
+          { text: 'Race Plans', link: '/dashboard/race-plans' },
+          { text: 'Race Analysis', link: '/dashboard/race-analysis' },
           { text: 'Notes', link: '/dashboard/notes' },
           { text: 'Weather', link: '/dashboard/weather' },
           { text: 'Profile', link: '/dashboard/profile' },
