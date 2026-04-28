@@ -175,10 +175,11 @@ fitops analytics performance [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--days N` | 365 | Days of history to analyse |
 | `--sport TYPE` | Run | Sport type: `Run` or `Ride` |
 
 ```bash
-fitops analytics performance
+fitops analytics performance --days 180
 fitops analytics performance --sport Ride
 ```
 
@@ -202,6 +203,15 @@ fitops analytics performance --sport Ride
 | `normalized_power_ratio` | Mean NP/AP ratio across recent rides |
 | `power_consistency` | 0–100 score based on power consistency |
 | `variability_index` | Coefficient of variation across power values |
+
+**Shared context:**
+
+| Field | What it means |
+|-------|--------------|
+| `current_load` | Current CTL / ATL / TSB snapshot used by the dashboard and CLI |
+| `trends` | Training trend summary for the selected sport and time window |
+
+The dashboard performance page uses the same underlying data and adds a sport switch plus a profile link so you can compare current fitness, recent load, and threshold settings in one place.
 
 ---
 

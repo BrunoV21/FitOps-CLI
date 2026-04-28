@@ -23,7 +23,18 @@ Use this chart to understand the shape of your training blocks — a widening ga
 
 ## Performance Metrics
 
-The Performance page (`/analytics/performance`) surfaces derived numbers from your last 50 activities (up to 12 months). These complement the VO₂max and pace threshold panels at the top of the page.
+The Performance page (`/analytics/performance`) surfaces derived numbers from your last 50 activities and now lets you switch between Run and Ride views. It also shows your current load snapshot, a trend summary, and a direct link back to Profile so the page reads like a full training context, not just a metric dump.
+
+**Controls:**
+
+- **Days** - how many days of history to analyse
+- **Sport** - Run or Ride
+
+The top row on the page brings together:
+
+- **Current Load** - CTL, ATL, TSB, and form label from the cached training load snapshot
+- **Trend Snapshot** - a short summary of recent volume and pace/HR direction
+- **Profile Link** - a reminder that VO₂max override, LTHR, threshold pace, and zones all live in Profile
 
 ### Running Efficiency panel
 
@@ -44,9 +55,9 @@ The Performance page (`/analytics/performance`) surfaces derived numbers from yo
 
 These sit alongside the pace-based LT1/LT2/vVO₂max thresholds so you can cross-reference pace zones with HR zones during a run.
 
-### Cycling metrics (CLI only)
+### Cycling metrics
 
-The following are available via `fitops analytics performance --sport ride` but not yet surfaced on the dashboard:
+Ride view uses the same command and dashboard logic as the run view, but shows cycling-specific metrics instead of running economy and HR thresholds:
 
 | Metric | What it means |
 |--------|--------------|

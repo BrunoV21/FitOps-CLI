@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
+from fitops.analytics.performance_metrics import compute_performance_metrics
 from fitops.analytics.training_load import (
     TrainingLoadResult,
     compute_training_load,
@@ -19,6 +21,15 @@ from fitops.db.session import get_async_session
 
 RUNNING_SPORTS = frozenset({"Run", "TrailRun", "Walk", "Hike", "VirtualRun"})
 RIDING_SPORTS = frozenset({"Ride", "VirtualRide", "EBikeRide"})
+
+
+def _normalise_perf_sport(sport: str | None) -> tuple[str | None, frozenset | None]:
+    sport_key = sport.lower() if sport else None
+    if sport_key in {"run", "running"}:
+        return "Run", RUNNING_SPORTS
+    if sport_key in {"ride", "cycling", "bike"}:
+        return "Ride", RIDING_SPORTS
+    return None, None
 
 
 async def get_training_load_data(
@@ -97,6 +108,34 @@ async def get_trends_data(
     return await compute_trends(
         athlete_id=athlete_id, days=days, sport_filter=sport, sport_types=sport_types
     )
+
+
+async def get_performance_context(
+    athlete_id: int,
+    sport: str | None = None,
+    days: int = 365,
+) -> dict | None:
+    perf_sport, sport_types = _normalise_perf_sport(sport)
+    performance, trends, current_load = await asyncio.gather(
+        compute_performance_metrics(athlete_id=athlete_id, sport=perf_sport, days=days),
+        get_trends_data(
+            athlete_id=athlete_id,
+            days=days,
+            sport=perf_sport,
+            sport_types=sport_types,
+        ),
+        get_current_training_load(athlete_id),
+    )
+    if performance is None:
+        return None
+
+    return {
+        "performance": performance,
+        "current_load": current_load,
+        "trends": trends,
+        "sport": perf_sport or "Run",
+        "days": days,
+    }
 
 
 async def get_vo2max_history(athlete_id: int, days: int = 365) -> list[dict]:

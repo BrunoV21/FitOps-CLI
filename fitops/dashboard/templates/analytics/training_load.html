@@ -177,7 +177,17 @@ if (CHART_DATA.length > 0) {
 }
 const WEEKLY_DATA = {{ weekly_json | default('[]') | safe }};
 if (WEEKLY_DATA.length > 0) {
-  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, { metric: "{{ 'duration' if selected_view == 'total' else 'distance' }}" });
+  {% if selected_view == 'total' %}
+  const RUN_WEEKLY  = {{ run_weekly_json | default('[]') | safe }};
+  const RIDE_WEEKLY = {{ ride_weekly_json | default('[]') | safe }};
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, {
+    metric: "time",
+    runData: RUN_WEEKLY,
+    rideData: RIDE_WEEKLY,
+  });
+  {% else %}
+  renderWeeklyVolumeChart("weeklyVolumeChart", WEEKLY_DATA, { metric: "distance" });
+  {% endif %}
 }
 </script>
 {% endblock %}

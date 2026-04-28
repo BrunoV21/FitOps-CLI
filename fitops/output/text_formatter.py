@@ -967,18 +967,54 @@ def print_performance(data: dict) -> None:
     console.print(
         f"[bold]Performance Metrics[/bold]  [dim]{p.get('sport') or ''}[/dim]"
     )
+    if p.get("days"):
+        console.print(f"  Window         last {p['days']} days")
     console.print(f"  Activities     {p.get('activity_count') or 0}")
     console.print(f"  Reliability    {p.get('overall_reliability') or '-'}")
+
+    label_map = {
+        "running_economy_ml_kg_km": "Running economy",
+        "pace_efficiency_score": "Pace efficiency",
+        "variability_index": "Pace variability",
+        "max_hr_estimate": "Max HR estimate",
+        "aerobic_threshold_hr": "Aerobic threshold HR",
+        "anaerobic_threshold_hr": "Anaerobic threshold HR",
+        "ftp_estimate_watts": "FTP estimate",
+        "power_to_weight_w_kg": "Power-to-weight",
+        "normalized_power_ratio": "Normalized power ratio",
+        "power_consistency": "Power consistency",
+    }
+
     running = p.get("running") or {}
     if running:
         for k, v in running.items():
             if v is not None:
-                console.print(f"  {k:<20} {v}")
+                console.print(f"  {label_map.get(k, k):<20} {v}")
     cycling = p.get("cycling") or {}
     if cycling:
         for k, v in cycling.items():
             if v is not None:
-                console.print(f"  {k:<20} {v}")
+                console.print(f"  {label_map.get(k, k):<20} {v}")
+    load = p.get("current_load") or {}
+    if load:
+        ctl = load.get("ctl", "-")
+        atl = load.get("atl", "-")
+        tsb = load.get("tsb", "-")
+        console.print(f"  Load           CTL {ctl}  ATL {atl}  TSB {tsb}")
+        if load.get("form_label"):
+            console.print(f"  Form           {load['form_label']}")
+    trends = p.get("trends") or {}
+    if trends:
+        summary = trends.get("summary_label")
+        perf = trends.get("performance_trend") or {}
+        if summary:
+            console.print(f"  Trend          {summary}")
+        if perf.get("pace_direction") and perf["pace_direction"] != "insufficient_data":
+            console.print(
+                f"  Pace trend     {perf['pace_direction']}  ({perf.get('pace_strength', 'weak')})"
+            )
+        if perf.get("hr_direction") and perf["hr_direction"] != "insufficient_data":
+            console.print(f"  HR trend       {perf['hr_direction']}")
     console.print()
 
 

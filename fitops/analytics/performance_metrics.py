@@ -36,6 +36,7 @@ def _cv(values: list[float]) -> float:
 @dataclass
 class PerformanceMetricsResult:
     sport: str
+    days: int
     activity_count: int
     running: dict | None
     cycling: dict | None
@@ -45,14 +46,16 @@ class PerformanceMetricsResult:
 async def compute_performance_metrics(
     athlete_id: int,
     sport: str | None = None,
+    days: int = 365,
 ) -> PerformanceMetricsResult | None:
-    lookback = datetime.now(UTC) - timedelta(days=365)
+    lookback = datetime.now(UTC) - timedelta(days=days)
 
     # Normalise sport arg
-    if sport and sport.lower() in ("run", "running"):
+    sport_key = sport.lower() if sport else None
+    if sport_key in ("run", "running"):
         sport_types = list(RUN_TYPES)
         target = "Run"
-    elif sport and sport.lower() in ("ride", "cycling", "bike"):
+    elif sport_key in ("ride", "cycling", "bike"):
         sport_types = list(RIDE_TYPES)
         target = "Ride"
     else:
@@ -160,6 +163,7 @@ async def compute_performance_metrics(
 
     return PerformanceMetricsResult(
         sport=target,
+        days=days,
         activity_count=len(activities),
         running=running,
         cycling=cycling,

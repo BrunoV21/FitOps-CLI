@@ -7,7 +7,6 @@ from datetime import UTC
 import typer
 
 from fitops.analytics.athlete_settings import get_athlete_settings
-from fitops.analytics.performance_metrics import compute_performance_metrics
 from fitops.analytics.power_curves import compute_power_curve
 from fitops.analytics.training_load import (
     _compute_overtraining_indicators,
@@ -24,7 +23,10 @@ from fitops.analytics.zone_inference import (
 )
 from fitops.analytics.zones import compute_zones
 from fitops.config.settings import get_settings
-from fitops.dashboard.queries.analytics import get_volume_summary
+from fitops.dashboard.queries.analytics import (
+    get_performance_context,
+    get_volume_summary,
+)
 from fitops.db.migrations import init_db
 from fitops.output.formatter import make_meta
 from fitops.output.text_formatter import (
@@ -509,6 +511,7 @@ def trends(
 
 @app.command("performance")
 def performance(
+    days: int = typer.Option(365, "--days", help="Number of days of history to use."),
     sport: str | None = typer.Option(None, "--sport", help="Sport type: Run or Ride."),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
@@ -523,22 +526,27 @@ def performance(
         raise typer.Exit(1)
 
     init_db()
-    result = asyncio.run(
-        compute_performance_metrics(athlete_id=settings.athlete_id, sport=sport)
+    context = asyncio.run(
+        get_performance_context(settings.athlete_id, sport=sport, days=days)
     )
 
-    if result is None:
+    if context is None:
         typer.echo("No qualifying activities found.", err=True)
         return
 
+    result = context["performance"]
+
     perf_out = {
-        "_meta": make_meta(filters_applied={"sport": sport}),
+        "_meta": make_meta(filters_applied={"sport": sport, "days": days}),
         "performance": {
             "sport": result.sport,
+            "days": result.days,
             "activity_count": result.activity_count,
             "overall_reliability": result.overall_reliability,
             "running": result.running,
             "cycling": result.cycling,
+            "current_load": context["current_load"],
+            "trends": context["trends"].__dict__ if context["trends"] else None,
         },
     }
     if json_output:
