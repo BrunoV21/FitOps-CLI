@@ -24,6 +24,7 @@ from fitops.dashboard.queries.analytics import (
     RIDING_SPORTS,
     RUNNING_SPORTS,
     get_current_training_load,
+    get_trends_data,
 )
 from fitops.dashboard.queries.athlete import get_athlete
 from fitops.dashboard.queries.profile import get_activity_heatmap_data
@@ -229,6 +230,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if athlete_id and period == "week"
             else None
         )
+        trend_signals = None
+        if athlete_id and period == "week":
+            _tr = await get_trends_data(athlete_id, days=90, sport_types=sport_types or None)
+            if _tr:
+                trend_signals = {
+                    "volume": (_tr.volume_trend or {}).get("direction"),
+                    "perf": (_tr.performance_trend or {}).get("pace_trend"),
+                }
         heatmap_data = (
             await get_activity_heatmap_data(athlete_id, since=None)
             if athlete_id
@@ -255,6 +264,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "rolling": rolling,
                 "active_page": "overview",
                 "view": view,
+                "trend_signals": trend_signals,
             },
         )
 
