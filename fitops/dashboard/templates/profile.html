@@ -14,6 +14,33 @@
   {% endif %}
 </div>
 
+<!-- Performance summary card -->
+{% if current_load %}
+<div class="panel" style="margin-bottom:1px;--delay:0ms">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <p class="panel-label" style="margin-bottom:0;">Current Training Load</p>
+    <a href="/analytics/performance" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;">Performance →</a>
+  </div>
+  <div style="display:flex;gap:32px;flex-wrap:wrap;">
+    <div>
+      <p class="panel-metric--sm c-green">{{ current_load.ctl }}</p>
+      <p class="panel-sub">CTL — Fitness</p>
+    </div>
+    <div>
+      <p class="panel-metric--sm c-amber">{{ current_load.atl }}</p>
+      <p class="panel-sub">ATL — Fatigue</p>
+    </div>
+    <div>
+      <p class="panel-metric--sm {% if current_load.tsb >= 5 %}c-blue{% elif current_load.tsb <= -10 %}c-red{% else %}c-amber{% endif %}">{{ current_load.tsb }}</p>
+      <p class="panel-sub">TSB — Form</p>
+    </div>
+    <div style="display:flex;align-items:center;">
+      <span style="font-size:13px;font-weight:600;color:var(--text-muted);">{{ current_load.form_label }}</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Identity + Physiological Estimates -->
 <div class="grid-2" style="margin-bottom:1px;">
 

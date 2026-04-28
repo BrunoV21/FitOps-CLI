@@ -38,6 +38,7 @@ from fitops.dashboard.queries.activities import (
     get_activity_laps,
     get_activity_streams,
     get_distinct_sports,
+    get_distinct_workout_names,
     get_recent_activities,
 )
 from fitops.dashboard.queries.athlete import get_athlete
@@ -290,6 +291,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         activities = []
         sports = []
+        workout_tags = []
         total = 0
         if athlete_id:
             activities = await get_recent_activities(
@@ -303,6 +305,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 tag=tag,
             )
             sports = await get_distinct_sports(athlete_id)
+            workout_tags = await get_distinct_workout_names(athlete_id)
             total = await count_activities(
                 athlete_id,
                 sport=sport,
@@ -339,6 +342,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "request": request,
                 "activities": rows,
                 "sports": sports,
+                "workout_tags": workout_tags,
                 "selected_sport": sport,
                 "selected_after": after,
                 "selected_before": before,

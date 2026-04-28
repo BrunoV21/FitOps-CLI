@@ -272,6 +272,21 @@ async function triggerStreams(force) {
     }, 4000);
   }
 }
+
+// Auto-reload when a background sync brings in new data.
+(function () {
+  var _stamp = null;
+  fetch('/api/sync/stamp').then(function (r) { return r.json(); }).then(function (d) { _stamp = d.stamp; }).catch(function () {});
+  setInterval(function () {
+    if (document.hidden) return;
+    fetch('/api/sync/stamp').then(function (r) { return r.json(); }).then(function (d) {
+      if (_stamp !== null && d.stamp !== null && d.stamp !== _stamp) {
+        location.reload();
+      }
+      _stamp = d.stamp;
+    }).catch(function () {});
+  }, 15000);
+}());
 </script>
 </body>
 </html>

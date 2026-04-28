@@ -505,4 +505,12 @@ def register() -> APIRouter:
 
         return JSONResponse({"ok": True})
 
+    @router.get("/api/sync/stamp")
+    async def sync_stamp():
+        from fitops.config.state import get_sync_state
+
+        state = get_sync_state()
+        last = state.last_sync_at
+        return JSONResponse({"stamp": last.isoformat() if last else None})
+
     return router

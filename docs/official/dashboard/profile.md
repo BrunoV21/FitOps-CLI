@@ -2,6 +2,18 @@
 
 The Profile page (`/profile`) is where you configure your physiology. Set your threshold values once, and every analytics calculation across the dashboard and CLI will use them automatically.
 
+## Current Training Load
+
+At the top of the page a compact snapshot of your current training load is shown if sync data is available:
+
+| Metric | Meaning |
+|--------|---------|
+| **CTL** | Chronic Training Load — fitness built over the past 42 days |
+| **ATL** | Acute Training Load — fatigue from the past 7 days |
+| **TSB** | Training Stress Balance — form (CTL − ATL) |
+
+A form label (e.g. *Fatigued*, *Fresh*, *Optimal*) summarises where you sit right now. The **Performance →** link takes you directly to the full Performance analytics page.
+
 ## Athlete Info
 
 At the top of the page, your Strava profile data is shown: name, location, profile photo, and body weight (if synced). Body weight is used for power-to-weight calculations in cycling analytics.
@@ -43,6 +55,7 @@ If you've synced gear from Strava (bikes, shoes), it appears here with cumulativ
 
 ## See Also
 
+- [Dashboard → Analytics (Performance)](./analytics.md#performance) — full performance breakdown linked from this page
 - [Concepts → HR Zones](../concepts/zones.md)
 - [Concepts → VO2max](../concepts/vo2max.md)
 - [`fitops analytics zones`](../commands/analytics.md#fitops-analytics-zones) — CLI equivalent for zone setup

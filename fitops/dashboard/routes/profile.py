@@ -11,6 +11,7 @@ from fitops.analytics.pace_zones import compute_pace_zones
 from fitops.analytics.vo2max import compute_race_predictions, estimate_vo2max
 from fitops.analytics.zones import compute_zones
 from fitops.config.settings import get_settings
+from fitops.dashboard.queries.analytics import get_current_training_load
 from fitops.dashboard.queries.profile import get_athlete, get_equipment_with_stats
 
 router = APIRouter()
@@ -240,6 +241,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         athlete = await get_athlete(athlete_id) if athlete_id else None
         equipment = await get_equipment_with_stats(athlete_id) if athlete_id else []
         vo2max_result = await estimate_vo2max(athlete_id) if athlete_id else None
+        current_load = await get_current_training_load(athlete_id) if athlete_id else None
 
         s = get_athlete_settings()
         s.reload()
@@ -254,6 +256,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "error": error,
                 "vo2max_override_val": s.vo2max_override,
                 "vo2max_computed": vo2max_result,
+                "current_load": current_load,
             }
         )
         return templates.TemplateResponse(request, "profile.html", ctx)
