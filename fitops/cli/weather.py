@@ -83,6 +83,9 @@ async def _fetch_and_store(activity_id: int) -> dict | None:
 
     weather = await fetch_activity_weather(lat, lng, start_utc)
     if weather is None:
+        date_str = start_utc.strftime("%Y-%m-%d")
+        weather = await fetch_forecast_weather(lat, lng, date_str, start_utc.hour)
+    if weather is None:
         return {
             "error": "Failed to fetch weather from Open-Meteo.",
             "activity_id": activity_id,
@@ -112,7 +115,7 @@ def fetch_weather(
     all_activities: bool = typer.Option(
         False, "--all", help="Backfill all GPS activities missing weather."
     ),
-    limit: int = typer.Option(50, "--limit", help="Max activities when using --all."),
+    limit: int = typer.Option(0, "--limit", help="Max activities when using --all (0 = all, default: all)."),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),
@@ -139,8 +142,9 @@ def fetch_weather(
                     .where(Activity.start_latlng.isnot(None))
                     .where(Activity.strava_id.not_in(have))
                     .order_by(Activity.start_date.desc())
-                    .limit(lim)
                 )
+                if lim > 0:
+                    q = q.limit(lim)
                 res = await session.execute(q)
                 return list(res.scalars().all())
 
