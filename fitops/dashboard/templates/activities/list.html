@@ -69,7 +69,6 @@
         <th class="r">Pace / Speed</th>
         <th class="r">Avg HR</th>
         <th class="r">Watts</th>
-        <th class="r">TSS</th>
         <th class="r">Aerobic</th>
         <th class="r">Anaerob.</th>
         <th class="r">Elev</th>
@@ -103,7 +102,6 @@
         <td class="r">{{ a.pace }}</td>
         <td class="r">{% if a.avg_hr %}{{ a.avg_hr }} bpm{% else %}—{% endif %}</td>
         <td class="r">{% if a.avg_watts %}{{ a.avg_watts }} W{% else %}—{% endif %}</td>
-        <td class="r">{% if a.tss %}{{ a.tss }}{% else %}—{% endif %}</td>
         <td class="r" title="Aerobic score {{ a.aerobic_score }}/5">
           {% if a.aerobic_score > 0 %}
           <span style="font-size:11px;color:var(--accent-primary);letter-spacing:1px;">{% for pip in [1,2,3,4,5] %}{% if pip <= a.aerobic_score_int %}●{% else %}○{% endif %}{% endfor %}</span>

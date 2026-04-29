@@ -112,7 +112,9 @@ def _activity_row(a) -> dict:
         "pace": _pace_str(a.average_speed_ms, sport),
         "avg_hr": round(a.average_heartrate) if a.average_heartrate else None,
         "max_hr": a.max_heartrate,
-        "avg_watts": round(a.average_watts) if a.average_watts else None,
+        "avg_watts": round(a.average_watts) if a.average_watts else (
+            round(a.est_power_avg_w) if getattr(a, "est_power_avg_w", None) else None
+        ),
         "weighted_avg_watts": round(a.weighted_average_watts)
         if a.weighted_average_watts
         else None,
