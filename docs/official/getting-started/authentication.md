@@ -6,14 +6,16 @@ FitOps uses Strava's OAuth 2.0. Your credentials are stored locally — never se
 
 To ensure the best experience and bypass rate limits, beta users must use their own Strava API credentials. Follow the [Strava Getting Started Guide](https://developers.strava.com/docs/getting-started/) to create an app.
 
+> **Icon available:** You can download the FitOps icon [here](../assets/fitops-icon.png) for your own use.
+
 Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api) and create an application with **these exact settings**:
 
 | Field | Value |
 |-------|-------|
-| Application Name | `Surge` |
+| Application Name | `FitOps` |
 | Category | `Performance Analysis` |
-| Website | `https://brunov21.github.io/Surge/` |
-| Authorization Callback Domain | `mclovinittt-kinetic-run-api.hf.space` |
+| Website | `https://github.com/BrunoV21/FitOps-CLI` |
+| Authorization Callback Domain | `localhost` |
 
 Once created, copy your **Client ID** and **Client Secret** from the [Strava API Settings page](https://www.strava.com/settings/api).
 

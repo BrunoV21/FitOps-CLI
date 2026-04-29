@@ -66,3 +66,21 @@ features:
     link: /comparison
     linkText: "See comparison"
 ---
+
+## Install FitOps
+
+Get started in one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brunov21/fitops-cli/main/install.sh | bash
+```
+
+This installs FitOps and the AI agent skill file for Claude Code, Cursor, Codex, Windsurf, and more.
+
+**Prefer manual install?** See [Installation](./getting-started/installation.md) for `pip`, `uvx`, or from source.
+
+### Next steps
+
+1. [Connect your Strava account](./getting-started/authentication.md)
+2. [Sync your activities](./getting-started/first-sync.md)
+3. Run `fitops analytics training-load --today` or open the dashboard with `fitops dashboard serve`

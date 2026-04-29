@@ -4,6 +4,8 @@
   <img src="https://raw.githubusercontent.com/BrunoV21/FitOps-CLI/main/docs/official/assets/fitops_banner.png" alt="FitOps Banner" />
 </p>
 
+> **Icon:** Download the FitOps logo [here](docs/official/assets/fitops-icon.png)
+
 ---
 
 <p align="center">
@@ -195,10 +197,10 @@ Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
 
 | Field | Value |
 |-------|-------|
-| Application Name | `Surge` |
+| Application Name | `FitOps` |
 | Category | `Performance Analysis` |
-| Website | `https://brunov21.github.io/Surge/` |
-| Authorization Callback Domain | `mclovinittt-kinetic-run-api.hf.space` |
+| Website | `https://github.com/BrunoV21/FitOps-CLI` |
+| Authorization Callback Domain | `localhost` |
 
 Copy your **Client ID** and **Client Secret** from the Strava API Settings page. See the [full authentication guide](https://brunov21.github.io/fitops/getting-started/authentication) for details.
 
