@@ -62,6 +62,14 @@ async def _maybe_auto_sync() -> None:
 
         logger.info("auto-sync: starting background incremental sync")
         try:
+            from sqlalchemy import select
+
+            from fitops.db.models.activity import Activity
+            from fitops.db.session import get_async_session
+            from fitops.dashboard.routes.api import (
+                _fetch_streams,
+                _fetch_weather_for_new_activities,
+            )
             from fitops.strava.sync_engine import SyncEngine
 
             result = await SyncEngine().run()
@@ -71,5 +79,20 @@ async def _maybe_auto_sync() -> None:
                 result.activities_updated,
                 result.duration_s,
             )
+            if result.activities_created > 0:
+                logger.info(
+                    "auto-sync: fetching streams + weather for %d new activities",
+                    result.activities_created,
+                )
+                await _fetch_streams(limit=result.activities_created)
+                async with get_async_session() as session:
+                    newest = await session.execute(
+                        select(Activity.strava_id)
+                        .where(Activity.athlete_id == settings.athlete_id)
+                        .order_by(Activity.start_date.desc())
+                        .limit(result.activities_created)
+                    )
+                    new_strava_ids = [r[0] for r in newest.all()]
+                await _fetch_weather_for_new_activities(new_strava_ids)
         except Exception as exc:
             logger.warning("auto-sync: sync failed — %s", exc)

@@ -23,7 +23,7 @@ from fitops.output.text_formatter import (
 )
 from fitops.strava.sync_engine import SyncEngine
 from fitops.utils.exceptions import FitOpsError, NotAuthenticatedError
-from fitops.weather.client import fetch_activity_weather
+from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -154,6 +154,11 @@ async def _fetch_weather_for_strava_ids(strava_ids: list[int]) -> dict:
                 continue
             lat, lng = float(coords[0]), float(coords[1])
             weather = await fetch_activity_weather(lat, lng, act.start_date)
+            if weather is None:
+                date_str = act.start_date.strftime("%Y-%m-%d")
+                weather = await fetch_forecast_weather(
+                    lat, lng, date_str, act.start_date.hour
+                )
             if weather:
                 tc = weather.get("temperature_c")
                 hum = weather.get("humidity_pct")
@@ -181,7 +186,7 @@ def run(
         None, "--after", help="Sync from this date (YYYY-MM-DD)."
     ),
     streams: bool = typer.Option(
-        False, "--streams", help="Also fetch streams for newly synced activities."
+        True, "--streams/--no-streams", help="Fetch streams for newly synced activities (default: on)."
     ),
     force_streams: bool = typer.Option(
         False,
