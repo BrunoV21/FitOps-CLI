@@ -106,27 +106,29 @@ def compose_stamp(
         lines.append("")
         lines.append("🌤 Conditions")
 
-        # Line 1: Pace · Temp · Hum
-        row1: list[str] = []
+        # Line 1: Pace
         true_pace_fmt = weather.get("true_pace_fmt")
         true_pace_pct = weather.get("true_pace_pct")
         if true_pace_fmt:
             pct_str = f" (+{true_pace_pct:.1f}%)" if true_pace_pct and true_pace_pct > 0 else ""
-            row1.append(f"Pace {true_pace_fmt}{pct_str}")
+            lines.append(f"Pace {true_pace_fmt}{pct_str}")
+
+        # Line 2: Temp · Hum
+        row2_th: list[str] = []
         temp = weather.get("temperature_c")
         feels = weather.get("apparent_temp_c")
         if temp is not None:
             if feels is not None and abs(feels - temp) >= 1:
-                row1.append(f"Temp {temp:.0f}°C ({feels:.0f}°C)")
+                row2_th.append(f"Temp {temp:.0f}°C ({feels:.0f}°C)")
             else:
-                row1.append(f"Temp {temp:.0f}°C")
+                row2_th.append(f"Temp {temp:.0f}°C")
         hum = weather.get("humidity_pct")
         if hum is not None:
-            row1.append(f"Hum {hum:.0f}%")
-        if row1:
-            lines.append(" · ".join(row1))
+            row2_th.append(f"Hum {hum:.0f}%")
+        if row2_th:
+            lines.append(" · ".join(row2_th))
 
-        # Line 2: Wind · WBGT · HeatHR
+        # Line 2: Wind · WBGT
         row2: list[str] = []
         wind_kmh = weather.get("wind_speed_kmh")
         wind_dir = weather.get("wind_dir_compass")
@@ -136,18 +138,20 @@ def compose_stamp(
         wbgt = weather.get("wbgt_c")
         wbgt_flag_val = weather.get("wbgt_flag")
         if wbgt is not None:
-            flag_emoji = _WBGT_EMOJI.get(wbgt_flag_val or "green", "")
-            emoji_str = f" {flag_emoji}" if flag_emoji else ""
-            row2.append(f"WBGT {wbgt:.1f}°C{emoji_str}")
-        hr_heat_pct = weather.get("hr_heat_pct")
-        hr_heat_bpm = weather.get("hr_heat_bpm")
-        if hr_heat_pct is not None:
-            bpm_str = f" (~+{hr_heat_bpm} bpm)" if hr_heat_bpm else ""
-            row2.append(f"HeatHR +{hr_heat_pct:.1f}%{bpm_str}")
+            row2.append(f"WBGT {wbgt:.1f}°C")
         if row2:
             lines.append(" · ".join(row2))
 
-        # Line 3: Condition
+        # Line 3: emoji · HeatHR
+        hr_heat_pct = weather.get("hr_heat_pct")
+        hr_heat_bpm = weather.get("hr_heat_bpm")
+        flag_emoji = _WBGT_EMOJI.get(wbgt_flag_val or "green", "") if wbgt is not None else ""
+        if hr_heat_pct is not None:
+            bpm_str = f" (~+{hr_heat_bpm} bpm)" if hr_heat_bpm else ""
+            emoji_prefix = f"{flag_emoji} " if flag_emoji else ""
+            lines.append(f"{emoji_prefix}HeatHR +{hr_heat_pct:.1f}%{bpm_str}")
+
+        # Line 4: Condition
         condition = weather.get("condition")
         if condition:
             lines.append(f"Cond {condition}")
