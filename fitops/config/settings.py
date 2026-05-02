@@ -87,6 +87,10 @@ class FitOpsSettings:
         )
 
     @property
+    def has_write_scope(self) -> bool:
+        return "activity:write" in self.scopes
+
+    @property
     def is_authenticated(self) -> bool:
         return bool(self.access_token and self.refresh_token)
 

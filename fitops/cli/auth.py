@@ -5,7 +5,7 @@ import asyncio
 import typer
 
 from fitops.config.settings import get_settings
-from fitops.strava.oauth import StravaOAuth, validate_strava_token
+from fitops.strava.oauth import DEFAULT_SCOPES, StravaOAuth, validate_strava_token
 from fitops.utils.cache import clear_all_caches
 from fitops.utils.exceptions import FitOpsError
 
@@ -23,9 +23,18 @@ def login(
         envvar="STRAVA_CLIENT_SECRET",
         help="Strava Client Secret",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force re-authentication to update OAuth scopes (e.g. add activity:write).",
+    ),
 ) -> None:
     """Authenticate with Strava via OAuth."""
     settings = get_settings()
+
+    if force and settings.is_authenticated:
+        settings.clear_tokens()
+        typer.echo("Cleared existing tokens. Re-authenticating with full scopes...")
 
     if not settings.client_id:
         typer.echo("Strava client_id not configured.")
@@ -55,7 +64,7 @@ def login(
 
     oauth = StravaOAuth(settings)
     try:
-        result = asyncio.run(oauth.run_login_flow())
+        result = asyncio.run(oauth.run_login_flow(force_approval=force))
         athlete = result.get("athlete", {})
         name = f"{athlete.get('firstname', '')} {athlete.get('lastname', '')}".strip()
         typer.echo(f"\nAuthenticated as: {name} (ID: {result.get('athlete_id')})")
