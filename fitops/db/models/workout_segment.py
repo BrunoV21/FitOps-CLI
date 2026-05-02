@@ -62,7 +62,8 @@ class WorkoutSegment(Base):
     # Pace / speed actuals (extended)
     avg_speed_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_cadence: Mapped[float | None] = mapped_column(Float, nullable=True)  # spm
-    avg_gap_per_km: Mapped[float | None] = mapped_column(Float, nullable=True)  # s/km
+    avg_gap_per_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avg_true_pace_per_km: Mapped[float | None] = mapped_column(Float, nullable=True)  # s/km
 
     # Target bounds for hr_range / pace_range segments
     target_hr_min_bpm: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -142,6 +143,7 @@ class WorkoutSegment(Base):
             avg_speed_ms=result.avg_speed_ms,
             avg_cadence=result.avg_cadence,
             avg_gap_per_km=result.avg_gap_per_km,
+            avg_true_pace_per_km=result.avg_true_pace_per_km,
             # Compliance
             target_achieved=int(result.target_achieved) if scored else None,
             deviation_pct=result.deviation_pct if scored else None,
@@ -217,6 +219,8 @@ class WorkoutSegment(Base):
                 "avg_cadence": self.avg_cadence,
                 "avg_gap_per_km": self.avg_gap_per_km,
                 "avg_gap_formatted": self._fmt_pace(self.avg_gap_per_km),
+                "avg_true_pace_per_km": self.avg_true_pace_per_km,
+                "avg_true_pace_formatted": self._fmt_pace(self.avg_true_pace_per_km),
                 "hr_zone_distribution": self.get_hr_zone_distribution(),
             },
             "compliance": {

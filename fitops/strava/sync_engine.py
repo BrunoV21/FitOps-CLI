@@ -28,6 +28,7 @@ class SyncResult:
         self.activities_updated = 0
         self.pages_fetched = 0
         self.duration_s = 0.0
+        self.new_strava_ids: list[int] = []
 
     def __repr__(self) -> str:
         return (
@@ -124,6 +125,7 @@ class SyncEngine:
                         activity.anaerobic_score = compute_anaerobic_score(activity, settings)
                         session.add(activity)
                         result.activities_created += 1
+                        result.new_strava_ids.append(strava_id)
                     else:
                         existing_row.update_from_strava_data(item)
                         existing_row.aerobic_score = compute_aerobic_score(existing_row, settings)
@@ -132,6 +134,35 @@ class SyncEngine:
 
             if len(activities) < PER_PAGE:
                 break
+
+    async def _auto_stamp_new_activities(
+        self, athlete_id: int, strava_ids: list[int]
+    ) -> None:
+        """Stamp newly-synced activities whose athlete has stamp_on_sync enabled."""
+        from sqlalchemy import select
+
+        from fitops.analytics.stamp import stamp_activity
+        from fitops.db.models.athlete import Athlete
+
+        async with get_async_session() as session:
+            athlete_result = await session.execute(
+                select(Athlete).where(Athlete.strava_id == athlete_id)
+            )
+            athlete = athlete_result.scalar_one_or_none()
+            if athlete is None or not athlete.stamp_on_sync:
+                return
+
+            for strava_id in strava_ids:
+                activity_result = await session.execute(
+                    select(Activity).where(Activity.strava_id == strava_id)
+                )
+                activity = activity_result.scalar_one_or_none()
+                if activity is None:
+                    continue
+                try:
+                    await stamp_activity(self._client, session, activity)
+                except Exception:
+                    logger.warning("Failed to stamp activity %s", strava_id)
 
     async def run(
         self,
@@ -171,5 +202,11 @@ class SyncEngine:
             await persist_training_load_snapshot(athlete_id)
         except Exception:
             pass  # Never fail a sync over a snapshot write error
+
+        if result.new_strava_ids:
+            try:
+                await self._auto_stamp_new_activities(athlete_id, result.new_strava_ids)
+            except Exception:
+                pass  # Never fail a sync over stamp errors
 
         return result
