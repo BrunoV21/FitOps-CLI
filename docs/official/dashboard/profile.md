@@ -53,6 +53,33 @@ Your current VO2max estimate is shown on the profile page. You can:
 
 If you've synced gear from Strava (bikes, shoes), it appears here with cumulative usage.
 
+## Strava Activity Stamp
+
+The stamp panel lets you embed FitOps analytics into your Strava activity descriptions automatically.
+
+**Requires `activity:write` scope.** If you haven't granted it, a **Grant Write Access** button is shown — clicking it redirects you through Strava OAuth to expand your permissions. Once granted, the badge `activity:write ✓` appears at the top of the panel.
+
+### Controls
+
+| Control | What it does |
+|---------|-------------|
+| **Auto-stamp on sync** | When enabled, every newly synced activity is automatically stamped |
+| **Stamp All Activities** | Backfills the stamp to all previously synced activities |
+
+### What the stamp contains
+
+Each stamp footer includes:
+
+- Sport, distance, duration, and average pace
+- Aerobic and anaerobic scores
+- Heart rate (avg and max)
+- Power — real watts if available, otherwise estimated power with source label
+- VO2max estimate
+- Suffer score and calories
+- A link to the FitOps GitHub repo
+
+The stamp is appended after any existing description you've written. Re-stamping replaces only the FitOps footer — your own text is preserved.
+
 ## See Also
 
 - [Dashboard → Analytics (Performance)](./analytics.md#performance) — full performance breakdown linked from this page
@@ -60,5 +87,6 @@ If you've synced gear from Strava (bikes, shoes), it appears here with cumulativ
 - [Concepts → VO2max](../concepts/vo2max.md)
 - [`fitops analytics zones`](../commands/analytics.md#fitops-analytics-zones) — CLI equivalent for zone setup
 - [`fitops analytics vo2max`](../commands/analytics.md#fitops-analytics-vo2max) — CLI equivalent for VO2max
+- [`fitops activities stamp`](../commands/activities.md#fitops-activities-stamp) — CLI equivalent for stamping activities
 
 ← [Dashboard Overview](./index.md)

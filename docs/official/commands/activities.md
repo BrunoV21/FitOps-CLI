@@ -325,6 +325,59 @@ Present only when a workout plan was linked to this activity via `fitops workout
 
 ---
 
+### `fitops activities stamp`
+
+Embed FitOps analytics into Strava activity descriptions as a formatted footer.
+
+```bash
+fitops activities stamp [OPTIONS]
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--id STRAVA_ID` | — | Stamp a single activity by Strava ID |
+| `--all` | false | Stamp all activities that haven't been stamped yet |
+| `--force` | false | Re-stamp even if already stamped (fetches fresh description from Strava) |
+| `--json` | false | Output result as JSON |
+
+**Requirements:** `activity:write` OAuth scope. If missing, run `fitops auth login --force` or use the **Grant Write Access** button on the Profile page in the dashboard.
+
+**JSON output shape:**
+
+```json
+{
+  "stamped": [12345678, 12345679],
+  "skipped": [],
+  "failed": []
+}
+```
+
+- `stamped` — Strava IDs of activities successfully updated
+- `skipped` — IDs skipped because they were already stamped (without `--force`)
+- `failed` — IDs that failed (e.g. Strava API error)
+
+**Examples:**
+
+```bash
+# Stamp a single activity
+fitops activities stamp --id 12345678
+
+# Backfill all unstamped activities
+fitops activities stamp --all
+
+# Re-stamp everything (refresh all footers)
+fitops activities stamp --all --force
+
+# Machine-readable output
+fitops activities stamp --all --json
+```
+
+The stamp footer contains: sport, distance, duration, pace, aerobic/anaerobic scores, HR, power (real or estimated), VO2max estimate, suffer score, calories, and a link back to FitOps. If the activity already has a FitOps stamp, it is replaced — user-written description above the stamp is preserved.
+
+---
+
 ## Sport Type Values
 
 Common Strava sport types: `Run`, `TrailRun`, `Ride`, `VirtualRide`, `Swim`, `Walk`, `Hike`, `WeightTraining`, `Yoga`, `Workout`
