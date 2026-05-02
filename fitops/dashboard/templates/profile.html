@@ -269,6 +269,46 @@
   </form>
 </div>
 
+<!-- Strava Activity Stamp -->
+<div class="panel" style="margin-top:1px;--delay:100ms">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <p class="panel-label" style="margin-bottom:0;">Strava Activity Stamp</p>
+    {% if has_write_scope %}
+    <span style="font-size:9px;font-weight:700;letter-spacing:0.08em;background:rgba(var(--accent-primary-rgb,74,222,128),0.12);color:var(--accent-primary);padding:2px 7px;border-radius:4px;">activity:write ✓</span>
+    {% endif %}
+  </div>
+  <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+    Embed FitOps analytics into Strava activity descriptions automatically on sync.
+  </p>
+  {% if has_write_scope %}
+  {% if scopes_updated %}
+  <p style="font-size:12px;color:var(--accent-primary);margin-bottom:10px;">Write access granted — you can now stamp activities.</p>
+  {% endif %}
+  <form method="POST" action="/profile/stamp-toggle">
+    <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--text-primary);">
+      <input type="checkbox" name="stamp_on_sync" value="1"
+             {% if stamp_on_sync %}checked{% endif %}
+             onchange="this.form.submit()"
+             style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent-primary);">
+      Auto-stamp new activities on sync
+    </label>
+  </form>
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <p style="font-size:11px;color:var(--text-dim);flex:1;margin:0;">Backfill stamp to all previously synced activities.</p>
+    <button id="stamp-all-btn" onclick="stampAll()" class="btn btn-ghost" style="font-size:12px;flex-shrink:0;">Stamp All Activities</button>
+  </div>
+  <p id="stamp-all-msg" style="font-size:11px;margin-top:8px;display:none;"></p>
+  {% else %}
+  <a href="/api/auth/reauth" class="btn btn-primary" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+    </svg>
+    Grant Write Access
+  </a>
+  {% endif %}
+</div>
+
 <!-- HR Zones + Pace Zones -->
 <div class="grid-2" style="margin-top:1px;">
 
@@ -551,6 +591,33 @@
 function toggleZoneEdit(type) {
   const el = document.getElementById(type + '-edit');
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function stampAll() {
+  const btn = document.getElementById('stamp-all-btn');
+  const msg = document.getElementById('stamp-all-msg');
+  btn.disabled = true;
+  btn.textContent = 'Stamping…';
+  msg.style.display = 'none';
+
+  try {
+    const res  = await fetch('/api/activities/stamp-all', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    const n = (data.stamped || []).length;
+    const f = (data.failed || []).length;
+    msg.textContent = `Stamped ${n} activit${n === 1 ? 'y' : 'ies'}${f ? ` · ${f} failed` : ''}.`;
+    msg.style.color  = f ? 'var(--accent-amber)' : 'var(--accent-primary)';
+    msg.style.display = 'block';
+    btn.textContent = 'Stamp All Activities';
+    btn.disabled = false;
+  } catch (err) {
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--accent-red)';
+    msg.style.display = 'block';
+    btn.textContent = 'Stamp All Activities';
+    btn.disabled = false;
+  }
 }
 </script>
 {% endblock %}

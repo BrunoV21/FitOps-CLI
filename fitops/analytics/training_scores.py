@@ -141,3 +141,31 @@ def anaerobic_label(score: float) -> str:
     if score >= 0.5:
         return "Light anaerobic stimulus"
     return "Minimal anaerobic stress"
+
+
+def aerobic_short_label(score: float) -> str:
+    if score >= 4.5:
+        return "exceptional"
+    if score >= 3.5:
+        return "strong"
+    if score >= 2.5:
+        return "solid"
+    if score >= 1.5:
+        return "moderate"
+    if score >= 0.5:
+        return "light"
+    return "minimal"
+
+
+def anaerobic_short_label(score: float) -> str:
+    if score >= 4.5:
+        return "race"
+    if score >= 3.5:
+        return "hard"
+    if score >= 2.5:
+        return "threshold"
+    if score >= 1.5:
+        return "moderate"
+    if score >= 0.5:
+        return "light"
+    return "minimal"

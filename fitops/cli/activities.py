@@ -795,6 +795,91 @@ def get_activity(
         print_activity_detail(activity)
 
 
+@app.command("stamp")
+def stamp(
+    activity_id: int | None = typer.Option(
+        None, "--id", help="Strava activity ID to stamp."
+    ),
+    all_activities: bool = typer.Option(
+        False, "--all", help="Stamp all activities that have not been stamped yet."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Re-stamp even if the activity was already stamped."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output result as JSON."
+    ),
+) -> None:
+    """Embed FitOps analytics into Strava activity descriptions."""
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1)
+
+    if not settings.has_write_scope:
+        typer.echo(
+            "activity:write scope is required. Run: fitops auth login --force",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if activity_id is None and not all_activities:
+        typer.echo("Provide --id <strava_id> or --all.", err=True)
+        raise typer.Exit(1)
+
+    init_db()
+
+    async def _run():
+        from fitops.analytics.stamp import stamp_activity
+        from fitops.strava.client import StravaClient as _Client
+
+        client = _Client()
+        stamped: list[int] = []
+        skipped: list[int] = []
+        failed: list[int] = []
+
+        async with get_async_session() as session:
+            if activity_id is not None:
+                result = await session.execute(
+                    select(Activity).where(Activity.strava_id == activity_id)
+                )
+                activities = [result.scalar_one_or_none()]
+                activities = [a for a in activities if a is not None]
+            else:
+                q = select(Activity)
+                if not force:
+                    q = q.where(Activity.stamped_at.is_(None))
+                result = await session.execute(q)
+                activities = list(result.scalars().all())
+
+            for act in activities:
+                if not force and act.stamped_at is not None:
+                    skipped.append(act.strava_id)
+                    continue
+                try:
+                    await stamp_activity(
+                        client, session, act, fetch_fresh_desc=True
+                    )
+                    stamped.append(act.strava_id)
+                except Exception as exc:
+                    typer.echo(f"Failed to stamp {act.strava_id}: {exc}", err=True)
+                    failed.append(act.strava_id)
+
+        return {"stamped": stamped, "skipped": skipped, "failed": failed}
+
+    result = asyncio.run(_run())
+    if json_output:
+        typer.echo(json.dumps(result))
+    else:
+        typer.echo(
+            f"Stamped: {len(result['stamped'])}  "
+            f"Skipped: {len(result['skipped'])}  "
+            f"Failed: {len(result['failed'])}"
+        )
+
+
 _VALID_STREAMS = frozenset(
     {
         "heartrate",

@@ -25,6 +25,7 @@ class SegmentCompliance:
     avg_speed_ms: float | None = None
     avg_cadence: float | None = None  # spm (already doubled for runs)
     avg_gap_per_km: float | None = None  # grade-adjusted pace, s/km
+    avg_true_pace_per_km: float | None = None  # weather+grade adjusted pace, s/km
     distance_actual_m: float | None = None  # meters covered in this segment
 
     # Compliance metrics
@@ -58,6 +59,7 @@ def _compute_actuals(
     gas = streams.get("grade_adjusted_speed", [])
     grade = streams.get("grade_smooth", [])
     dist = streams.get("distance", [])
+    tp_stream = streams.get("true_pace", [])
 
     vel_slice = [v for v in vel[start_idx:end_idx] if v and v > 0.1] if vel else []
     cad_slice = [c for c in cad[start_idx:end_idx] if c and c > 0] if cad else []
@@ -108,11 +110,18 @@ def _compute_actuals(
                 float(dist[safe_end]) - float(dist[safe_start]), 1
             )
 
+    avg_true_pace: float | None = None
+    if tp_stream:
+        tp_slice = [v for v in tp_stream[start_idx:end_idx] if v and v > 0]
+        if tp_slice:
+            avg_true_pace = round(sum(tp_slice) / len(tp_slice), 1)
+
     return {
         "avg_speed_ms": avg_speed,
         "avg_pace_per_km": avg_pace,
         "avg_cadence": avg_cad,
         "avg_gap_per_km": avg_gap,
+        "avg_true_pace_per_km": avg_true_pace,
         "has_pace": avg_speed is not None,
         "distance_actual_m": distance_actual_m,
     }

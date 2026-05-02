@@ -233,7 +233,7 @@ def _build_profile_context(
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/profile", response_class=HTMLResponse)
     async def profile(
-        request: Request, saved: str | None = None, error: str | None = None
+        request: Request, saved: str | None = None, error: str | None = None, scopes_updated: str | None = None
     ):
         cfg = get_settings()
         athlete_id = cfg.athlete_id
@@ -254,9 +254,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "active_page": "profile",
                 "saved": saved,
                 "error": error,
+                "scopes_updated": scopes_updated,
                 "vo2max_override_val": s.vo2max_override,
                 "vo2max_computed": vo2max_result,
                 "current_load": current_load,
+                "stamp_on_sync": bool(athlete.stamp_on_sync) if athlete else False,
+                "has_write_scope": cfg.has_write_scope,
             }
         )
         return templates.TemplateResponse(request, "profile.html", ctx)
@@ -445,6 +448,31 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         s = get_athlete_settings()
         s.set(vo2max_override=round(float(value), 1))
+        return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/stamp-toggle")
+    async def toggle_stamp_on_sync(
+        request: Request,
+        stamp_on_sync: str | None = Form(default=None),
+    ):
+        from sqlalchemy import select
+
+        from fitops.db.models.athlete import Athlete
+        from fitops.db.session import get_async_session
+
+        cfg = get_settings()
+        if not cfg.athlete_id:
+            return RedirectResponse("/profile?error=no_auth", status_code=303)
+
+        enabled = stamp_on_sync == "1"
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(Athlete).where(Athlete.strava_id == cfg.athlete_id)
+            )
+            athlete = result.scalar_one_or_none()
+            if athlete:
+                athlete.stamp_on_sync = enabled
+
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     @router.post("/profile/pace-zones")

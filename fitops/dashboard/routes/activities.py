@@ -483,6 +483,23 @@ def register(templates: Jinja2Templates) -> APIRouter:
         )
         avg_gap = compute_avg_gap(streams, activity.sport_type)
 
+        # Overall true pace (distance-weighted mean of true_pace stream)
+        true_pace_fmt = None
+        if is_run and streams:
+            _tp = streams.get("true_pace", [])
+            _vel = streams.get("velocity_smooth", [])
+            _pairs = [
+                (p, v)
+                for p, v in zip(_tp, _vel, strict=False)
+                if p and p > 0 and v and v > 0.1
+            ]
+            if _pairs:
+                _paces, _vels = zip(*_pairs, strict=False)
+                _tw = sum(_vels)
+                _mean = sum(p * v for p, v in zip(_paces, _vels, strict=False)) / _tw
+                _m, _s = divmod(int(round(_mean)), 60)
+                true_pace_fmt = f"{_m}:{_s:02d}/km"
+
         # Fetch all workouts for the assign selector
         all_workouts = []
         if athlete_id:
@@ -686,6 +703,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "km_splits": km_splits,
                 "analytics": analytics,
                 "avg_gap": avg_gap,
+                "true_pace_fmt": true_pace_fmt,
                 "has_polyline": bool(activity.map_summary_polyline),
                 "streams_json": json.dumps(_downsample_streams(streams)),
                 "has_streams": bool(streams),
@@ -704,6 +722,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "lt1_hr": round(get_athlete_settings().lthr * 0.92)
                 if get_athlete_settings().lthr
                 else None,
+                "has_write_scope": settings.has_write_scope,
                 "active_page": "activities",
             },
         )
@@ -1028,5 +1047,72 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "active_page": "activities",
             },
         )
+
+    @router.post("/api/activities/{strava_id}/stamp")
+    async def stamp_activity_api(request: Request, strava_id: int):
+        from fastapi.responses import JSONResponse
+
+        from fitops.analytics.stamp import stamp_activity
+        from fitops.config.settings import get_settings as _get_settings
+        from fitops.db.models.activity import Activity as _Activity
+        from fitops.db.session import get_async_session
+        from fitops.strava.client import StravaClient
+        from sqlalchemy import select
+
+        cfg = _get_settings()
+        if not cfg.is_authenticated:
+            return JSONResponse({"error": "not authenticated"}, status_code=401)
+        if not cfg.has_write_scope:
+            return JSONResponse({"error": "activity:write scope required — run: fitops auth login --force"}, status_code=403)
+
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        force = body.get("force", False) if isinstance(body, dict) else False
+
+        client = StravaClient()
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(_Activity).where(_Activity.strava_id == strava_id)
+            )
+            activity = result.scalar_one_or_none()
+            if activity is None:
+                return JSONResponse({"error": "activity not found"}, status_code=404)
+            try:
+                await stamp_activity(client, session, activity, fetch_fresh_desc=True)
+            except Exception as exc:
+                return JSONResponse({"error": str(exc)}, status_code=500)
+
+        return JSONResponse({"ok": True, "strava_id": strava_id})
+
+    @router.post("/api/activities/stamp-all")
+    async def stamp_all_activities_api(request: Request):
+        from fastapi.responses import JSONResponse
+
+        from fitops.analytics.stamp import stamp_activity
+        from fitops.config.settings import get_settings as _get_settings
+        from fitops.db.models.activity import Activity as _Activity
+        from fitops.db.session import get_async_session
+        from fitops.strava.client import StravaClient
+        from sqlalchemy import select
+
+        cfg = _get_settings()
+        if not cfg.is_authenticated:
+            return JSONResponse({"error": "not authenticated"}, status_code=401)
+        if not cfg.has_write_scope:
+            return JSONResponse({"error": "activity:write scope required — run: fitops auth login --force"}, status_code=403)
+
+        client = StravaClient()
+        stamped, skipped, failed = [], [], []
+
+        async with get_async_session() as session:
+            result = await session.execute(select(_Activity))
+            activities = result.scalars().all()
+            for activity in activities:
+                try:
+                    await stamp_activity(client, session, activity, fetch_fresh_desc=True)
+                    stamped.append(activity.strava_id)
+                except Exception:
+                    failed.append(activity.strava_id)
+
+        return JSONResponse({"ok": True, "stamped": stamped, "skipped": skipped, "failed": failed})
 
     return router

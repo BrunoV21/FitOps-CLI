@@ -112,3 +112,10 @@ class StravaClient:
 
     async def get_athlete_zones(self) -> dict:
         return await self._make_request("GET", "/athlete/zones")
+
+    async def update_activity(self, activity_id: int, description: str) -> dict:
+        return await self._make_request(
+            "PUT",
+            f"/activities/{activity_id}",
+            data={"description": description},
+        )

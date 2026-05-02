@@ -164,6 +164,28 @@ async def run_compliance_for_activity(
         streams_dict.get("heartrate", streams_dict.get("velocity_smooth", []))
     )
 
+    # Inject true_pace stream so actuals include weather+grade adjusted pace
+    if is_run and act is not None and "true_pace" not in streams_dict:
+        try:
+            from fitops.dashboard.queries.weather import get_weather_for_activities
+            from fitops.dashboard.routes.activities import _compute_true_pace_stream
+
+            _weather_map = await get_weather_for_activities([act.strava_id])
+            _weather_obj = _weather_map.get(act.strava_id)
+            if _weather_obj:
+                tp_s = _compute_true_pace_stream(streams_dict, _weather_obj)
+                if tp_s:
+                    streams_dict["true_pace"] = tp_s
+        except Exception:
+            pass
+        # Fallback: derive true_pace from velocity_smooth when no weather is available
+        if "true_pace" not in streams_dict:
+            vel_raw = streams_dict.get("velocity_smooth", [])
+            if vel_raw:
+                streams_dict["true_pace"] = [
+                    round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
+                ]
+
     results = compute_compliance(
         segments, streams_dict, moving_time_s, zones, is_run=is_run
     )

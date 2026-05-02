@@ -74,6 +74,29 @@ def register(templates: Jinja2Templates) -> APIRouter:
         auth_url = f"{STRAVA_AUTH_URL}?{urlencode(params)}"
         return JSONResponse({"auth_url": auth_url})
 
+    @router.get("/api/auth/reauth")
+    async def reauth_redirect(request: Request):
+        """Redirect to Strava with force approval to expand scopes (e.g. activity:write)."""
+        settings = get_settings()
+        if not settings.client_id or not settings.client_secret:
+            return RedirectResponse("/setup")
+
+        port = getattr(request.app.state, "dashboard_port", 8888)
+        state = secrets.token_urlsafe(32)
+        # Prefix state so the callback knows to return to /profile
+        tagged_state = f"reauth:{state}"
+        settings.save_pending_state(tagged_state)
+
+        params = {
+            "client_id": settings.client_id,
+            "redirect_uri": f"http://localhost:{port}/callback",
+            "response_type": "code",
+            "scope": ",".join(DEFAULT_SCOPES),
+            "state": tagged_state,
+            "approval_prompt": "force",
+        }
+        return RedirectResponse(f"{STRAVA_AUTH_URL}?{urlencode(params)}")
+
     @router.get("/callback")
     async def oauth_callback(
         request: Request,
@@ -81,7 +104,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
         code: str = "",
         state: str = "",
         error: str = "",
+        scope: str = "",
     ):
+        is_reauth = state.startswith("reauth:")
+
         if error:
             return RedirectResponse(f"/setup?error={error}")
 
@@ -97,11 +123,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
         try:
             oauth = StravaOAuth(settings)
             token_data = await oauth.exchange_code_for_token(code, port=port)
+            # Prefer the scope from the callback URL — Strava always includes it
+            # and it's more reliable than the token exchange response body.
+            if scope:
+                token_data["scopes"] = [s.strip() for s in scope.split(",") if s.strip()]
             settings.save_tokens(token_data)
-            background_tasks.add_task(_initial_sync)
+            if not is_reauth:
+                background_tasks.add_task(_initial_sync)
         except Exception:
             return RedirectResponse("/setup?error=token_exchange")
 
+        if is_reauth:
+            return RedirectResponse("/profile?scopes_updated=1")
         return RedirectResponse("/setup?connected=1")
 
     @router.get("/api/setup/status")

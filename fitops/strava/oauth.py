@@ -18,7 +18,7 @@ STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_DEAUTH_URL = "https://www.strava.com/oauth/deauthorize"
 
-DEFAULT_SCOPES = ["read", "activity:read_all", "profile:read_all"]
+DEFAULT_SCOPES = ["read", "activity:read_all", "activity:write", "profile:read_all"]
 CALLBACK_TIMEOUT_S = 120
 CALLBACK_PORTS = [8080, 8081, 8082]
 
@@ -182,6 +182,7 @@ class StravaOAuth:
         scopes: list[str] | None = None,
         state: str | None = None,
         port: int = 8080,
+        force_approval: bool = False,
     ) -> str:
         if scopes is None:
             scopes = DEFAULT_SCOPES
@@ -194,7 +195,7 @@ class StravaOAuth:
             "response_type": "code",
             "scope": ",".join(scopes),
             "state": state,
-            "approval_prompt": "auto",
+            "approval_prompt": "force" if force_approval else "auto",
         }
         return f"{STRAVA_AUTH_URL}?{urlencode(params)}"
 
@@ -260,13 +261,17 @@ class StravaOAuth:
             )
         return response.status_code == 200
 
-    async def run_login_flow(self, scopes: list[str] | None = None) -> dict:
+    async def run_login_flow(
+        self, scopes: list[str] | None = None, force_approval: bool = False
+    ) -> dict:
         """Full interactive login: open browser, capture callback, exchange token."""
         state = secrets.token_urlsafe(32)
         self.settings.save_pending_state(state)
 
         port = 8080
-        auth_url = self.get_authorization_url(scopes=scopes, state=state, port=port)
+        auth_url = self.get_authorization_url(
+            scopes=scopes, state=state, port=port, force_approval=force_approval
+        )
 
         print("\nOpening Strava authorization in your browser...")
         print(f"If the browser doesn't open, visit:\n  {auth_url}\n")

@@ -27,17 +27,56 @@
         {% if activity.trainer %}<span class="badge badge-dim">Trainer</span>{% endif %}
         {% if activity.commute %}<span class="badge badge-dim">Commute</span>{% endif %}
       </div>
-      <div class="activity-title-meta">
-        <span>{{ activity.sport_type }}</span>
-        <span style="color:var(--border-hover);">·</span>
-        <span>{{ activity.date_pretty }}</span>
-        {% if activity.device_name %}
-        <span style="color:var(--border-hover);">·</span>
-        <span>{{ activity.device_name }}</span>
+      <div class="activity-title-meta" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span>{{ activity.sport_type }}</span>
+          <span style="color:var(--border-hover);">·</span>
+          <span>{{ activity.date_pretty }}</span>
+          {% if activity.device_name %}
+          <span style="color:var(--border-hover);">·</span>
+          <span>{{ activity.device_name }}</span>
+          {% endif %}
+        </div>
+        {% if has_write_scope %}
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          {% if activity_raw and activity_raw.stamped_at %}
+          <button id="restamp-btn" onclick="restampActivity({{ activity.strava_id }})"
+                  style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid var(--border-color);background:transparent;color:var(--text-dim);cursor:pointer;">
+            Re-stamp
+          </button>
+          {% else %}
+          <button id="stamp-btn" onclick="stampActivity({{ activity.strava_id }})"
+                  class="btn btn-primary" style="font-size:11px;padding:3px 10px;">
+            <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:3px;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Stamp
+          </button>
+          {% endif %}
+          <span id="stamp-msg" style="font-size:11px;color:var(--text-dim);display:none;"></span>
+        </div>
         {% endif %}
       </div>
       {% if activity.description %}
-      <p class="activity-description">{{ activity.description }}</p>
+      <p id="activity-desc-text" class="activity-description" style="margin-top:6px;white-space:pre-line;"></p>
+      <script>
+      (function(){
+        var full = {{ activity.description | tojson }};
+        var lines = full.split('\n');
+        var first = lines[0];
+        var rest = lines.slice(1).join('\n').trim();
+        var el = document.getElementById('activity-desc-text');
+        el.textContent = first;
+        if (!rest) return;
+        var expanded = false;
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', function() {
+          expanded = !expanded;
+          el.textContent = expanded ? full : first;
+        });
+      })();
+      </script>
       {% endif %}
     </div>
   </div>
@@ -91,7 +130,7 @@
 </div>
 
 {# ── Secondary metrics ───────────────────────────────────────── #}
-{% set has_secondary = activity.avg_hr or avg_gap or activity.avg_cadence or activity.avg_watts or activity.calories or activity.suffer_score or activity.est_power_avg_w %}
+{% set has_secondary = activity.avg_hr or true_pace_fmt or activity.avg_cadence or activity.calories or activity.suffer_score or activity.est_power_avg_w %}
 {% if has_secondary %}
 <div class="metric-row" style="margin-bottom:1px;">
   {% if activity.avg_hr %}
@@ -101,10 +140,10 @@
     {% if activity.max_hr %}<p class="panel-sub">Max {{ activity.max_hr }} bpm</p>{% endif %}
   </div>
   {% endif %}
-  {% if avg_gap %}
+  {% if true_pace_fmt %}
   <div class="panel panel--accent" style="--delay:240ms">
-    <p class="panel-label">Avg Grade-Adj Pace</p>
-    <p class="panel-metric--md c-green">{{ avg_gap }}</p>
+    <p class="panel-label">True Pace</p>
+    <p class="panel-metric--md c-green">{{ true_pace_fmt }}</p>
     <p class="panel-sub">vs {{ activity.pace }} actual</p>
   </div>
   {% endif %}
@@ -112,13 +151,6 @@
   <div class="panel panel--accent-amber" style="--delay:280ms">
     <p class="panel-label">Avg Cadence</p>
     <p class="panel-metric--md c-amber">{{ activity.avg_cadence }}<span class="panel-unit">{{ activity.cadence_unit }}</span></p>
-  </div>
-  {% endif %}
-  {% if activity.avg_watts %}
-  <div class="panel panel--accent-amber" style="--delay:320ms">
-    <p class="panel-label">{% if activity.weighted_avg_watts %}Avg / NP Power{% else %}Avg Power{% endif %}</p>
-    <p class="panel-metric--md c-amber">{{ activity.avg_watts }}<span class="panel-unit">W</span></p>
-    {% if activity.weighted_avg_watts %}<p class="panel-sub">NP {{ activity.weighted_avg_watts }} W</p>{% endif %}
   </div>
   {% endif %}
   {% if activity.calories %}
@@ -551,7 +583,7 @@
         <th class="r">Distance</th>
         <th class="r">Avg Pace</th>
         <th class="r">Avg HR</th>
-        <th class="r">Avg GAP</th>
+        <th class="r">Avg True Pace</th>
         <th class="r">Avg Cadence</th>
         <th class="r">In Target</th>
         <th class="r">Score</th>
@@ -567,7 +599,7 @@
         <td class="r" style="font-size:12px;">{% if seg.actuals.distance_formatted %}{{ seg.actuals.distance_formatted }}{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}</td>
-        <td class="r">{% if seg.actuals.avg_gap_formatted %}{{ seg.actuals.avg_gap_formatted }}/km{% else %}—{% endif %}</td>
+        <td class="r">{% if seg.actuals.avg_true_pace_formatted %}{{ seg.actuals.avg_true_pace_formatted }}/km{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_cadence %}{{ "%.0f" | format(seg.actuals.avg_cadence) }} spm{% else %}—{% endif %}</td>
         <td class="r">
           {% if seg.compliance.time_in_target_pct is not none %}
@@ -847,6 +879,53 @@ async function fetchActivityWeather(stravaId) {
       btn.textContent = 'Fetch Conditions';
       btn.style.background = '';
     }, 4000);
+  }
+}
+
+async function stampActivity(stravaId) {
+  const btn = document.getElementById('stamp-btn');
+  const msg = document.getElementById('stamp-msg');
+  btn.disabled = true;
+  btn.textContent = 'Stamping…';
+  msg.style.display = 'none';
+
+  try {
+    const res  = await fetch(`/api/activities/${stravaId}/stamp`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    btn.textContent = 'Done — reloading…';
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Stamp Activity';
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--accent-red)';
+    msg.style.display = 'inline';
+  }
+}
+
+async function restampActivity(stravaId) {
+  const btn = document.getElementById('restamp-btn');
+  const msg = document.getElementById('stamp-msg');
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    const res  = await fetch(`/api/activities/${stravaId}/stamp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    btn.textContent = 'Done — reloading…';
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Re-stamp';
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--accent-red)';
+    msg.style.display = 'inline';
   }
 }
 </script>
