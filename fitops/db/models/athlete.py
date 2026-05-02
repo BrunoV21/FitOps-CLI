@@ -26,6 +26,7 @@ class Athlete(Base):
     profile_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     premium: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     birthday: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stamp_on_sync: Mapped[bool] = mapped_column(Boolean, default=False)
     bikes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     shoes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

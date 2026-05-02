@@ -83,6 +83,10 @@ class Activity(Base):
     upload_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    stamped_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     detail_fetched: Mapped[bool] = mapped_column(Boolean, default=False)
     streams_fetched: Mapped[bool] = mapped_column(Boolean, default=False)
     laps_fetched: Mapped[bool] = mapped_column(Boolean, default=False)

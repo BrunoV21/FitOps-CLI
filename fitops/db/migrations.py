@@ -33,6 +33,7 @@ from fitops.db.session import get_engine
 # Columns added to `athletes` after the initial schema.
 _ATHLETE_NEW_COLUMNS: list[tuple[str, str]] = [
     ("birthday", "TEXT"),
+    ("stamp_on_sync", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -58,6 +59,7 @@ _ACTIVITY_NEW_COLUMNS: list[tuple[str, str]] = [
     ("est_power_np_w", "REAL"),
     ("est_kcal_model", "INTEGER"),
     ("est_power_source", "TEXT"),
+    ("stamped_at", "DATETIME"),
 ]
 
 
@@ -100,6 +102,7 @@ _WORKOUT_SEGMENT_NEW_COLUMNS: list[tuple[str, str]] = [
     ("avg_speed_ms", "REAL"),
     ("avg_cadence", "REAL"),
     ("avg_gap_per_km", "REAL"),
+    ("avg_true_pace_per_km", "REAL"),
     ("target_hr_min_bpm", "REAL"),
     ("target_hr_max_bpm", "REAL"),
     ("target_pace_min_s_per_km", "REAL"),
