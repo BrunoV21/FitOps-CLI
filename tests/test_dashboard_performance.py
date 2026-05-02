@@ -22,6 +22,7 @@ def _fake_settings():
     return SimpleNamespace(
         athlete_id=42,
         is_authenticated=True,
+        has_write_scope=False,
     )
 
 
