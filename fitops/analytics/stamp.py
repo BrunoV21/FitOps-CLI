@@ -220,12 +220,22 @@ def compose_stamp(
     return "\n".join(lines)
 
 
+_STAMP_ANCHOR = "📊 FitOps Analytics"
+
+
 def apply_stamp(current_desc: str | None, new_stamp: str) -> str:
-    """Return the description with the FitOps stamp applied (or replaced)."""
-    base = (current_desc or "").split(STAMP_SENTINEL)[0].rstrip()
+    """Replace any existing FitOps stamp block and insert the new one.
+
+    Finds the first occurrence of the emoji header and treats everything
+    before it as the user's own description.  Works whether the stamp was
+    originally inserted with or without prior user text.
+    """
+    text = current_desc or ""
+    pos = text.find(_STAMP_ANCHOR)
+    base = text[:pos].rstrip() if pos != -1 else text.rstrip()
     if base:
         return f"{base}{STAMP_SENTINEL}{new_stamp}"
-    return f"📊 FitOps Analytics\n{new_stamp}"
+    return f"{_STAMP_ANCHOR}\n{new_stamp}"
 
 
 async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
