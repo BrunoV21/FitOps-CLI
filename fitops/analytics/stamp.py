@@ -228,6 +228,46 @@ def apply_stamp(current_desc: str | None, new_stamp: str) -> str:
     return f"📊 FitOps Analytics\n{new_stamp}"
 
 
+async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
+    """Stamp newly-synced activities when stamp_on_sync is enabled.
+
+    Intended to be called *after* weather has been fetched so the stamp
+    contains full weather data.  Safe to call from any async context.
+    """
+    from sqlalchemy import select
+
+    from fitops.config.settings import get_settings
+    from fitops.db.models.activity import Activity as ActivityModel
+    from fitops.db.models.athlete import Athlete
+    from fitops.db.session import get_async_session
+    from fitops.strava.client import StravaClient
+
+    settings = get_settings()
+    if not settings.athlete_id:
+        return
+
+    async with get_async_session() as session:
+        athlete_result = await session.execute(
+            select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+        )
+        athlete = athlete_result.scalar_one_or_none()
+        if athlete is None or not athlete.stamp_on_sync:
+            return
+
+        client = StravaClient()
+        for strava_id in strava_ids:
+            activity_result = await session.execute(
+                select(ActivityModel).where(ActivityModel.strava_id == strava_id)
+            )
+            activity = activity_result.scalar_one_or_none()
+            if activity is None:
+                continue
+            try:
+                await stamp_activity(client, session, activity)
+            except Exception:
+                pass
+
+
 async def stamp_activity(
     strava_client: "StravaClient",
     session: "AsyncSession",

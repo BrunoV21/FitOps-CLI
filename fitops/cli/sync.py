@@ -253,6 +253,12 @@ def run(
 
             new_ids = asyncio.run(_get_new_ids())
             weather_result = asyncio.run(_fetch_weather_for_strava_ids(new_ids))
+            try:
+                from fitops.analytics.stamp import auto_stamp_new_activities
+
+                asyncio.run(auto_stamp_new_activities(new_ids))
+            except Exception:
+                pass
 
         # Always sweep unlinked race plans — catches plans saved after their
         # matching activity was already synced.

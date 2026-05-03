@@ -94,5 +94,11 @@ async def _maybe_auto_sync() -> None:
                     )
                     new_strava_ids = [r[0] for r in newest.all()]
                 await _fetch_weather_for_new_activities(new_strava_ids)
+                try:
+                    from fitops.analytics.stamp import auto_stamp_new_activities
+
+                    await auto_stamp_new_activities(new_strava_ids)
+                except Exception:
+                    pass
         except Exception as exc:
             logger.warning("auto-sync: sync failed — %s", exc)

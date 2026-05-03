@@ -203,10 +203,4 @@ class SyncEngine:
         except Exception:
             pass  # Never fail a sync over a snapshot write error
 
-        if result.new_strava_ids:
-            try:
-                await self._auto_stamp_new_activities(athlete_id, result.new_strava_ids)
-            except Exception:
-                pass  # Never fail a sync over stamp errors
-
         return result
