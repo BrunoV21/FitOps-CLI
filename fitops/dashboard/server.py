@@ -131,6 +131,7 @@ def create_app(port: int = 8888) -> FastAPI:
     templates.env.globals["sport_icon"] = sport_icon
 
     from urllib.parse import quote as _url_quote
+
     templates.env.filters["urlencode_value"] = lambda s: _url_quote(str(s), safe="")
 
     def _fmt_time(seconds: float | None) -> str:

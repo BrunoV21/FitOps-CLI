@@ -69,8 +69,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
             )
             if view == "total":
                 run_weekly, ride_weekly = await asyncio.gather(
-                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS),
-                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS),
+                    get_weekly_volume(
+                        athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS
+                    ),
+                    get_weekly_volume(
+                        athlete_id, weeks=weeks, sport_types=RIDING_SPORTS
+                    ),
                 )
 
         if tl:
@@ -139,7 +143,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if athlete_id:
             if hr_configured and selected_sport == "Run":
                 perf_context, best_vo2max, history = await asyncio.gather(
-                    get_performance_context(athlete_id, sport=selected_sport, days=days),
+                    get_performance_context(
+                        athlete_id, sport=selected_sport, days=days
+                    ),
                     estimate_vo2max(athlete_id),
                     get_vo2max_history(athlete_id, days=days),
                 )

@@ -169,9 +169,7 @@ async def get_vo2max_history(athlete_id: int, days: int = 365) -> list[dict]:
 
     rows = []
     for a in activities:
-        qualifies, effort_reason = _effort_qualifies(
-            a.average_heartrate, lthr, max_hr
-        )
+        qualifies, effort_reason = _effort_qualifies(a.average_heartrate, lthr, max_hr)
         if not qualifies:
             continue
 

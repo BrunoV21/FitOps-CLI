@@ -1,4 +1,5 @@
 """Strava activity description stamping — embed FitOps analytics as a footprint."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -75,9 +76,13 @@ def compose_stamp(
     # ── Scores (compact single line) ─────────────────────
     score_parts: list[str] = []
     if activity.aerobic_score is not None:
-        score_parts.append(f"Aer {activity.aerobic_score:.1f} ({aerobic_short_label(activity.aerobic_score)})")
+        score_parts.append(
+            f"Aer {activity.aerobic_score:.1f} ({aerobic_short_label(activity.aerobic_score)})"
+        )
     if activity.anaerobic_score is not None:
-        score_parts.append(f"Ana {activity.anaerobic_score:.1f} ({anaerobic_short_label(activity.anaerobic_score)})")
+        score_parts.append(
+            f"Ana {activity.anaerobic_score:.1f} ({anaerobic_short_label(activity.anaerobic_score)})"
+        )
     if activity.vo2max_estimate is not None:
         score_parts.append(f"VO2 {activity.vo2max_estimate:.1f}")
     if score_parts:
@@ -113,7 +118,11 @@ def compose_stamp(
         true_pace_fmt = weather.get("true_pace_fmt")
         true_pace_pct = weather.get("true_pace_pct")
         if true_pace_fmt:
-            pct_str = f" (+{true_pace_pct:.1f}%)" if true_pace_pct and true_pace_pct > 0 else ""
+            pct_str = (
+                f" (+{true_pace_pct:.1f}%)"
+                if true_pace_pct and true_pace_pct > 0
+                else ""
+            )
             lines.append(f"Pace {true_pace_fmt}{pct_str}")
 
         # Line 2: Temp · Hum
@@ -148,7 +157,9 @@ def compose_stamp(
         # Line 3: emoji · HeatHR
         hr_heat_pct = weather.get("hr_heat_pct")
         hr_heat_bpm = weather.get("hr_heat_bpm")
-        flag_emoji = _WBGT_EMOJI.get(wbgt_flag_val or "green", "") if wbgt is not None else ""
+        flag_emoji = (
+            _WBGT_EMOJI.get(wbgt_flag_val or "green", "") if wbgt is not None else ""
+        )
         if hr_heat_pct is not None:
             bpm_str = f" (~+{hr_heat_bpm} bpm)" if hr_heat_bpm else ""
             emoji_prefix = f"{flag_emoji} " if flag_emoji else ""
@@ -198,7 +209,8 @@ def compose_stamp(
 
     # ── Performance records ──────────────────────────────
     highlight_insights = [
-        pi for pi in (performance_insights or [])
+        pi
+        for pi in (performance_insights or [])
         if pi.get("action") == "prompt_update" and pi.get("delta_pct", 0) > 0
     ]
     if highlight_insights:
@@ -313,15 +325,22 @@ async def stamp_activity(
     weather: dict | None = None
     try:
         weather_result = await session.execute(
-            select(ActivityWeather).where(ActivityWeather.activity_id == activity.strava_id)
+            select(ActivityWeather).where(
+                ActivityWeather.activity_id == activity.strava_id
+            )
         )
         weather_row = weather_result.scalar_one_or_none()
         if weather_row:
             weather = weather_row_to_dict(weather_row)
 
             # HR heat effect
-            if weather_row.temperature_c is not None and weather_row.humidity_pct is not None:
-                vo2_factor = vo2max_heat_factor(weather_row.temperature_c, weather_row.humidity_pct)
+            if (
+                weather_row.temperature_c is not None
+                and weather_row.humidity_pct is not None
+            ):
+                vo2_factor = vo2max_heat_factor(
+                    weather_row.temperature_c, weather_row.humidity_pct
+                )
                 if vo2_factor < 0.99:
                     weather["hr_heat_pct"] = round((1.0 / vo2_factor - 1.0) * 100, 1)
                     if activity.average_heartrate and activity.average_heartrate > 0:
@@ -356,7 +375,9 @@ async def stamp_activity(
                     gap_speeds, weights = zip(*wt_pairs, strict=False)
                     total_w = sum(weights)
                     mean_gap_ms = (
-                        sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False))
+                        sum(
+                            gs * wt for gs, wt in zip(gap_speeds, weights, strict=False)
+                        )
                         / total_w
                     )
                     heat_f = weather_row.pace_heat_factor or 1.0
@@ -371,7 +392,9 @@ async def stamp_activity(
                             if pct > 0.05:
                                 weather["true_pace_pct"] = round(pct, 1)
                     else:
-                        weather["true_pace_fmt"] = f"{mean_gap_ms / heat_f * 3.6:.1f} km/h"
+                        weather["true_pace_fmt"] = (
+                            f"{mean_gap_ms / heat_f * 3.6:.1f} km/h"
+                        )
     except Exception:
         pass
 
@@ -379,7 +402,9 @@ async def stamp_activity(
     if workout_data is None:
         try:
             link_result = await session.execute(
-                select(WorkoutActivityLink).where(WorkoutActivityLink.activity_id == activity.id)
+                select(WorkoutActivityLink).where(
+                    WorkoutActivityLink.activity_id == activity.id
+                )
             )
             link = link_result.scalar_one_or_none()
             if link:

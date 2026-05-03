@@ -13,8 +13,12 @@ app = typer.Typer(no_args_is_help=True)
 
 @app.command("recompute-power")
 def recompute_power(
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be computed without writing."),
-    limit: int = typer.Option(0, "--limit", help="Max activities to process (0 = all)."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be computed without writing."
+    ),
+    limit: int = typer.Option(
+        0, "--limit", help="Max activities to process (0 = all)."
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -43,7 +47,10 @@ async def _recompute_power(dry_run: bool, limit: int | None, force: bool) -> Non
     athlete_settings = get_athlete_settings()
     weight_kg = athlete_settings.weight_kg
     if not weight_kg:
-        typer.echo("Body weight not set — run `fitops athlete set weight_kg <value>` first.", err=True)
+        typer.echo(
+            "Body weight not set — run `fitops athlete set weight_kg <value>` first.",
+            err=True,
+        )
         raise typer.Exit(1)
 
     async with get_async_session() as session:
@@ -64,12 +71,18 @@ async def _recompute_power(dry_run: bool, limit: int | None, force: bool) -> Non
     total = len(candidates)
     if total == 0:
         if force:
-            typer.echo("No activities to process — no running activities with streams matched the request.")
+            typer.echo(
+                "No activities to process — no running activities with streams matched the request."
+            )
         else:
-            typer.echo("No activities to process — all runs with streams already have power estimates.")
+            typer.echo(
+                "No activities to process — all runs with streams already have power estimates."
+            )
         return
 
-    typer.echo(f"Found {total} activit{'y' if total == 1 else 'ies'} to process{' (dry run)' if dry_run else ''}.")
+    typer.echo(
+        f"Found {total} activit{'y' if total == 1 else 'ies'} to process{' (dry run)' if dry_run else ''}."
+    )
 
     processed = skipped = 0
     for activity in candidates:
@@ -79,7 +92,9 @@ async def _recompute_power(dry_run: bool, limit: int | None, force: bool) -> Non
             continue
 
         if dry_run:
-            typer.echo(f"  [dry-run] {activity.start_date_local or activity.start_date} — {activity.name}")
+            typer.echo(
+                f"  [dry-run] {activity.start_date_local or activity.start_date} — {activity.name}"
+            )
             processed += 1
             continue
 
@@ -89,7 +104,9 @@ async def _recompute_power(dry_run: bool, limit: int | None, force: bool) -> Non
             )
             row = result.scalar_one_or_none()
             if row:
-                ok = await persist_power_for_activity(session, row.id, row, streams, weight_kg)
+                ok = await persist_power_for_activity(
+                    session, row.id, row, streams, weight_kg
+                )
                 avg_w = row.est_power_avg_w
             else:
                 ok = False
@@ -97,7 +114,9 @@ async def _recompute_power(dry_run: bool, limit: int | None, force: bool) -> Non
 
         if ok and avg_w is not None:
             processed += 1
-            typer.echo(f"  ✓ {activity.start_date_local or activity.start_date} — {activity.name} ({avg_w:.0f} W avg)")
+            typer.echo(
+                f"  ✓ {activity.start_date_local or activity.start_date} — {activity.name} ({avg_w:.0f} W avg)"
+            )
         else:
             skipped += 1
 

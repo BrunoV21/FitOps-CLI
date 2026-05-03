@@ -66,7 +66,10 @@ async def _fetch_streams_for_activities(
             }
             # Promote grade_adjusted_speed → gap_pace so running power uses
             # the grade-corrected velocity rather than raw velocity_smooth.
-            if "gap_pace" not in flat_streams and "grade_adjusted_speed" in flat_streams:
+            if (
+                "gap_pace" not in flat_streams
+                and "grade_adjusted_speed" in flat_streams
+            ):
                 gas = flat_streams["grade_adjusted_speed"]
                 flat_streams["gap_pace"] = [
                     round(1000.0 / v, 2) if v and v > 0.1 else None for v in gas
@@ -186,7 +189,9 @@ def run(
         None, "--after", help="Sync from this date (YYYY-MM-DD)."
     ),
     streams: bool = typer.Option(
-        True, "--streams/--no-streams", help="Fetch streams for newly synced activities (default: on)."
+        True,
+        "--streams/--no-streams",
+        help="Fetch streams for newly synced activities (default: on).",
     ),
     force_streams: bool = typer.Option(
         False,

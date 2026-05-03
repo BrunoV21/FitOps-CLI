@@ -53,10 +53,14 @@ async def get_recent_activities(
             col_name, val = _TAG_FILTERS[tag]
             q = q.where(getattr(Activity, col_name) == val)
         elif tag and tag.startswith(_WORKOUT_TAG_PREFIX):
-            workout_name = tag[len(_WORKOUT_TAG_PREFIX):]
-            q = q.join(WorkoutActivityLink, WorkoutActivityLink.activity_id == Activity.id).join(
-                Workout, Workout.id == WorkoutActivityLink.workout_id
-            ).where(Workout.name == workout_name)
+            workout_name = tag[len(_WORKOUT_TAG_PREFIX) :]
+            q = (
+                q.join(
+                    WorkoutActivityLink, WorkoutActivityLink.activity_id == Activity.id
+                )
+                .join(Workout, Workout.id == WorkoutActivityLink.workout_id)
+                .where(Workout.name == workout_name)
+            )
         q = q.order_by(Activity.start_date.desc()).offset(offset).limit(limit)
         result = await session.execute(q)
         return list(result.scalars().all())
@@ -88,10 +92,14 @@ async def count_activities(
             col_name, val = _TAG_FILTERS[tag]
             q = q.where(getattr(Activity, col_name) == val)
         elif tag and tag.startswith(_WORKOUT_TAG_PREFIX):
-            workout_name = tag[len(_WORKOUT_TAG_PREFIX):]
-            q = q.join(WorkoutActivityLink, WorkoutActivityLink.activity_id == Activity.id).join(
-                Workout, Workout.id == WorkoutActivityLink.workout_id
-            ).where(Workout.name == workout_name)
+            workout_name = tag[len(_WORKOUT_TAG_PREFIX) :]
+            q = (
+                q.join(
+                    WorkoutActivityLink, WorkoutActivityLink.activity_id == Activity.id
+                )
+                .join(Workout, Workout.id == WorkoutActivityLink.workout_id)
+                .where(Workout.name == workout_name)
+            )
         result = await session.execute(q)
         return result.scalar_one() or 0
 

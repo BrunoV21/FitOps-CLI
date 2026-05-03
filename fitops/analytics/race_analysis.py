@@ -4,6 +4,7 @@ Alignment, gap series, event detection, segment metrics.
 All computation is synchronous; callers (CLI/dashboard) run in async context
 but call these pure functions directly.
 """
+
 from __future__ import annotations
 
 import math
@@ -295,9 +296,7 @@ def normalized_stream_to_dict(ns: NormalizedStream) -> dict:
         "activity_id": ns.activity_id,
         "distance_grid": ns.distance_grid,
         "elapsed_s": ns.elapsed_s,
-        "latlng": [list(p) if p else None for p in ns.latlng]
-        if ns.latlng
-        else None,
+        "latlng": [list(p) if p else None for p in ns.latlng] if ns.latlng else None,
         "altitude": ns.altitude,
         "heartrate": ns.heartrate,
         "cadence": ns.cadence,
@@ -340,9 +339,7 @@ def build_common_grid(
         return []
     min_dist = min(ns.distance_grid[-1] for ns in athletes if ns.distance_grid)
     return [
-        i * step_m
-        for i in range(int(min_dist / step_m) + 1)
-        if i * step_m <= min_dist
+        i * step_m for i in range(int(min_dist / step_m) + 1) if i * step_m <= min_dist
     ]
 
 
@@ -370,9 +367,17 @@ def compute_gap_series(
     `gap_to_leader_s` is the elapsed-time difference between the athlete and the
     leader at the same race distance — the same definition used by event detection.
     """
-    primary = next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
-    course = _build_course_polyline(primary.latlng, primary.distance_grid) if primary else None
-    progress_series = {ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes}
+    primary = (
+        next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
+    )
+    course = (
+        _build_course_polyline(primary.latlng, primary.distance_grid)
+        if primary
+        else None
+    )
+    progress_series = {
+        ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes
+    }
     max_common_m = min(
         (series[-1] for series in progress_series.values() if series),
         default=0.0,
@@ -411,9 +416,7 @@ def compute_gap_series(
                 round(t - times[rival_ahead], 1) if rival_ahead is not None else 0.0
             )
             gap_to_next_behind_s = (
-                round(times[rival_behind] - t, 1)
-                if rival_behind is not None
-                else None
+                round(times[rival_behind] - t, 1) if rival_behind is not None else None
             )
 
             result[label].append(
@@ -601,7 +604,11 @@ def _project_onto_course(
             best_course_m = course_m
     if best_d2 != float("inf"):
         return best_course_m
-    if min_course_m is not None or max_course_m is not None or hint_course_m is not None:
+    if (
+        min_course_m is not None
+        or max_course_m is not None
+        or hint_course_m is not None
+    ):
         return _project_onto_course(lat, lon, course)
     return best_course_m
 
@@ -635,7 +642,9 @@ def _bearing_deg(
     lat2, lon2 = math.radians(p2[0]), math.radians(p2[1])
     d_lon = lon2 - lon1
     y = math.sin(d_lon) * math.cos(lat2)
-    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(d_lon)
+    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(
+        d_lon
+    )
     if abs(x) < 1e-12 and abs(y) < 1e-12:
         return None
     return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
@@ -691,15 +700,24 @@ def _projection_candidates(
         lateral_m = math.sqrt((px - proj_x) ** 2 + (py - proj_y) ** 2)
         course_m = cum_m[i] + t * (cum_m[i + 1] - cum_m[i])
         seg_bearing = _bearing_deg(
-            (course["lat0"] + math.degrees(ay / R), course["lon0"] + math.degrees(ax / (R * course["cos_lat0"]))),
-            (course["lat0"] + math.degrees(by / R), course["lon0"] + math.degrees(bx / (R * course["cos_lat0"]))),
+            (
+                course["lat0"] + math.degrees(ay / R),
+                course["lon0"] + math.degrees(ax / (R * course["cos_lat0"])),
+            ),
+            (
+                course["lat0"] + math.degrees(by / R),
+                course["lon0"] + math.degrees(bx / (R * course["cos_lat0"])),
+            ),
         )
         raw_candidates.append((course_m, lateral_m, seg_bearing))
 
     raw_candidates.sort(key=lambda item: item[1])
     deduped: list[tuple[float, float, float | None]] = []
     for course_m, lateral_m, seg_bearing in raw_candidates:
-        if any(abs(course_m - existing_cm) <= dedupe_window_m for existing_cm, _, _ in deduped):
+        if any(
+            abs(course_m - existing_cm) <= dedupe_window_m
+            for existing_cm, _, _ in deduped
+        ):
             continue
         deduped.append((course_m, lateral_m, seg_bearing))
         if len(deduped) >= max_candidates:
@@ -758,20 +776,32 @@ def _map_stream_to_course_progress(
                 cur_backptr.append(None)
         else:
             prev_latlon = ns.latlng[i - 1]
-            step_m = _haversine_m(prev_latlon, latlon) if prev_latlon is not None else 0.0
-            move_bearing = _bearing_deg(prev_latlon, latlon) if prev_latlon is not None else None
+            step_m = (
+                _haversine_m(prev_latlon, latlon) if prev_latlon is not None else 0.0
+            )
+            move_bearing = (
+                _bearing_deg(prev_latlon, latlon) if prev_latlon is not None else None
+            )
             max_forward_m = max(80.0, step_m * 3.0 + 20.0)
             for course_m, lateral_m, seg_bearing in candidates:
                 best_cost = float("inf")
                 best_prev_idx: int | None = None
-                for prev_idx, (prev_course_m, prev_cost, _prev_seg_bearing) in enumerate(states[-1]):
+                for prev_idx, (
+                    prev_course_m,
+                    prev_cost,
+                    _prev_seg_bearing,
+                ) in enumerate(states[-1]):
                     delta_m = course_m - prev_course_m
                     if delta_m < -20.0:
                         continue
                     if delta_m > max_forward_m:
                         continue
-                    heading_penalty = _bearing_diff_deg(move_bearing, seg_bearing) * 0.35
-                    transition_cost = lateral_m + abs(delta_m - step_m) * 0.25 + heading_penalty
+                    heading_penalty = (
+                        _bearing_diff_deg(move_bearing, seg_bearing) * 0.35
+                    )
+                    transition_cost = (
+                        lateral_m + abs(delta_m - step_m) * 0.25 + heading_penalty
+                    )
                     total_cost = prev_cost + transition_cost
                     if total_cost < best_cost:
                         best_cost = total_cost
@@ -782,9 +812,21 @@ def _map_stream_to_course_progress(
                 cur_backptr.append(best_prev_idx)
 
         if not cur_costs:
-            prev_course_m = states[-1][prev_state_idx][0] if states and prev_state_idx is not None else 0.0
-            prev_cost = states[-1][prev_state_idx][1] if states and prev_state_idx is not None else 0.0
-            prev_seg_bearing = states[-1][prev_state_idx][2] if states and prev_state_idx is not None else None
+            prev_course_m = (
+                states[-1][prev_state_idx][0]
+                if states and prev_state_idx is not None
+                else 0.0
+            )
+            prev_cost = (
+                states[-1][prev_state_idx][1]
+                if states and prev_state_idx is not None
+                else 0.0
+            )
+            prev_seg_bearing = (
+                states[-1][prev_state_idx][2]
+                if states and prev_state_idx is not None
+                else None
+            )
             states.append([(prev_course_m, prev_cost + 500.0, prev_seg_bearing)])
             backptr.append([prev_state_idx])
             prev_state_idx = 0
@@ -805,7 +847,11 @@ def _map_stream_to_course_progress(
             mapped_rev.append(mapped_rev[-1] if mapped_rev else 0.0)
             continue
         mapped_rev.append(states[i][cur_idx][0])
-        next_idx = backptr[i][cur_idx] if i < len(backptr) and cur_idx < len(backptr[i]) else None
+        next_idx = (
+            backptr[i][cur_idx]
+            if i < len(backptr) and cur_idx < len(backptr[i])
+            else None
+        )
         cur_idx = next_idx
 
     mapped = list(reversed(mapped_rev))
@@ -883,7 +929,13 @@ def compute_replay_frames(
                     "gap_geo_m": 0.0,
                 }
                 per_athlete.append(entry)
-                ranking_state.append({"course_m_exact": 0.0, "course_m_rate": 0.0, "prev_rank": prev_ranks[athlete_idx]})
+                ranking_state.append(
+                    {
+                        "course_m_exact": 0.0,
+                        "course_m_rate": 0.0,
+                        "prev_rank": prev_ranks[athlete_idx],
+                    }
+                )
                 continue
 
             lo, hi, frac, dist_m = _interp_by_elapsed(ns.elapsed_s, ns.distance_grid, t)
@@ -948,13 +1000,17 @@ def compute_replay_frames(
             key=lambda i: (
                 -ranking_state[i]["course_m_exact"],
                 -ranking_state[i]["course_m_rate"],
-                ranking_state[i]["prev_rank"] if ranking_state[i]["prev_rank"] is not None else 10_000,
+                ranking_state[i]["prev_rank"]
+                if ranking_state[i]["prev_rank"] is not None
+                else 10_000,
                 i,
             ),
         )
         leader_idx = order[0] if order else None
         leader_course_exact = (
-            ranking_state[leader_idx]["course_m_exact"] if leader_idx is not None else 0.0
+            ranking_state[leader_idx]["course_m_exact"]
+            if leader_idx is not None
+            else 0.0
         )
         leader_lat = per_athlete[leader_idx]["lat"] if leader_idx is not None else None
         leader_lon = per_athlete[leader_idx]["lon"] if leader_idx is not None else None
@@ -1199,9 +1255,17 @@ def compute_segment_athlete_metrics(
                                               time_vs_leader_s}}}
     """
     result: dict[str, dict[str, dict]] = {}
-    primary = next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
-    course = _build_course_polyline(primary.latlng, primary.distance_grid) if primary else None
-    progress_series = {ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes}
+    primary = (
+        next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
+    )
+    course = (
+        _build_course_polyline(primary.latlng, primary.distance_grid)
+        if primary
+        else None
+    )
+    progress_series = {
+        ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes
+    }
 
     for seg in segments:
         start_m = seg.start_km * 1000
@@ -1210,8 +1274,12 @@ def compute_segment_athlete_metrics(
 
         athlete_times: dict[str, float] = {}
         for ns in athletes:
-            t_start = _interp_monotonic_y_at_x(progress_series[ns.label], ns.elapsed_s, start_m)
-            t_end = _interp_monotonic_y_at_x(progress_series[ns.label], ns.elapsed_s, end_m)
+            t_start = _interp_monotonic_y_at_x(
+                progress_series[ns.label], ns.elapsed_s, start_m
+            )
+            t_end = _interp_monotonic_y_at_x(
+                progress_series[ns.label], ns.elapsed_s, end_m
+            )
             if t_start is not None and t_end is not None and t_end > t_start:
                 athlete_times[ns.label] = t_end - t_start
 
@@ -1266,7 +1334,9 @@ def compute_athlete_metrics(ns: NormalizedStream) -> dict:
         mid = len(valid_hr) // 2
         first_half_hr = statistics.mean(valid_hr[:mid])
         second_half_hr = statistics.mean(valid_hr[mid:])
-        hr_drift_ratio = round(second_half_hr / first_half_hr, 3) if first_half_hr > 0 else None
+        hr_drift_ratio = (
+            round(second_half_hr / first_half_hr, 3) if first_half_hr > 0 else None
+        )
 
     # Pace variability index
     valid_vel = [v for v in (ns.velocity or []) if v is not None and v > 0]
@@ -1362,11 +1432,22 @@ def detect_events(
     caught | breakaway | pack_split | decisive_move | recovery
     """
     events: list[RaceEvent] = []
-    primary = next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
-    course = _build_course_polyline(primary.latlng, primary.distance_grid) if primary else None
-    progress_series = {ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes}
+    primary = (
+        next((a for a in athletes if a.is_primary), athletes[0]) if athletes else None
+    )
+    course = (
+        _build_course_polyline(primary.latlng, primary.distance_grid)
+        if primary
+        else None
+    )
+    progress_series = {
+        ns.label: _map_stream_to_course_progress(ns, course) for ns in athletes
+    }
     total_km = max(
-        ((progress[-1] if progress else 0.0) / 1000.0 for progress in progress_series.values()),
+        (
+            (progress[-1] if progress else 0.0) / 1000.0
+            for progress in progress_series.values()
+        ),
         default=0.0,
     )
 
@@ -1402,7 +1483,9 @@ def detect_events(
     return _dedupe_events(events)
 
 
-def _rolling_mean(values: list[float | None], center: int, half_window: int) -> float | None:
+def _rolling_mean(
+    values: list[float | None], center: int, half_window: int
+) -> float | None:
     lo = max(0, center - half_window)
     hi = min(len(values), center + half_window + 1)
     valid = [v for v in values[lo:hi] if v is not None]
@@ -1454,7 +1537,9 @@ def _detect_surges(
                 d_km = grid[mid_idx] / 1000
                 t_s = elapsed[mid_idx]
                 # Estimate time gained vs baseline pace
-                baseline_t = (grid[i] - grid[surge_start_idx]) / baseline if baseline > 0 else 0
+                baseline_t = (
+                    (grid[i] - grid[surge_start_idx]) / baseline if baseline > 0 else 0
+                )
                 actual_t = elapsed[i] - elapsed[surge_start_idx]
                 gained = round(baseline_t - actual_t, 1)
                 _append_event(
@@ -1478,7 +1563,11 @@ def _detect_surges(
         end_idx = len(vel) - 1
         surge_len = end_idx - surge_start_idx
         if surge_len >= sustained_20s_pts:
-            baseline_vals = [u for u in vel[max(0, surge_start_idx - window_60s_pts):surge_start_idx] if u is not None]
+            baseline_vals = [
+                u
+                for u in vel[max(0, surge_start_idx - window_60s_pts) : surge_start_idx]
+                if u is not None
+            ]
             baseline = statistics.mean(baseline_vals) if baseline_vals else None
             if baseline and baseline > 0:
                 mid_idx = (surge_start_idx + end_idx) // 2
@@ -1644,7 +1733,10 @@ def _detect_drops(
         gap_increase = point["gap_to_leader_s"] - prev["gap_to_leader_s"]
         if gap_increase >= threshold_s:
             # Check it's still growing (look at one more point ahead)
-            if i + 1 < len(series) and series[i + 1]["gap_to_leader_s"] > point["gap_to_leader_s"]:
+            if (
+                i + 1 < len(series)
+                and series[i + 1]["gap_to_leader_s"] > point["gap_to_leader_s"]
+            ):
                 impact_s = round(-gap_increase, 1)
                 _append_event(
                     events,
@@ -1778,8 +1870,13 @@ def _detect_passes(
             athlete_label=ns.label,
             distance_km=curr["distance_km"],
             elapsed_s=curr["time_s"],
-            impact_s=max(0.0, (prev.get("gap_to_leader_s") or 0.0) - (curr.get("gap_to_leader_s") or 0.0)),
-            description=f"{ns.label} moved from P{pos_before} to P{pos_after}" + (f", passing {rival}" if rival else ""),
+            impact_s=max(
+                0.0,
+                (prev.get("gap_to_leader_s") or 0.0)
+                - (curr.get("gap_to_leader_s") or 0.0),
+            ),
+            description=f"{ns.label} moved from P{pos_before} to P{pos_after}"
+            + (f", passing {rival}" if rival else ""),
             total_km=total_km,
             segments=segments,
             rival_label=rival,
@@ -1852,7 +1949,11 @@ def _detect_breakaways(
         rival = prev.get("rival_behind_label") or curr.get("rival_behind_label")
         if rival is None or gap_before is None or gap_after is None:
             continue
-        if gap_before <= 2.0 and gap_after >= 8.0 and curr["distance_km"] - last_breakaway_km > 1.0:
+        if (
+            gap_before <= 2.0
+            and gap_after >= 8.0
+            and curr["distance_km"] - last_breakaway_km > 1.0
+        ):
             _append_event(
                 events,
                 event_type="breakaway",
@@ -1957,7 +2058,11 @@ def _detect_pack_splits(
             prev_back = prev_snapshot[j + 1]
             gap_now = back["gap_to_leader_s"] - front["gap_to_leader_s"]
             gap_prev = prev_back["gap_to_leader_s"] - prev_front["gap_to_leader_s"]
-            if gap_now >= threshold_s and gap_prev < threshold_s and front["distance_km"] - last_split_km > 1.0:
+            if (
+                gap_now >= threshold_s
+                and gap_prev < threshold_s
+                and front["distance_km"] - last_split_km > 1.0
+            ):
                 _append_event(
                     events,
                     event_type="pack_split",
@@ -1991,7 +2096,9 @@ def _detect_decisive_moves(
         for label, series in gap_series.items()
         if series
     }
-    for label, final_pos in sorted(final_positions.items(), key=lambda item: item[1] or 99):
+    for label, final_pos in sorted(
+        final_positions.items(), key=lambda item: item[1] or 99
+    ):
         if final_pos is None or final_pos > 3:
             continue
         series = gap_series.get(label, [])
@@ -2012,7 +2119,11 @@ def _detect_decisive_moves(
             athlete_label=label,
             distance_km=point["distance_km"],
             elapsed_s=point["time_s"],
-            impact_s=round((prev.get("gap_to_leader_s") or 0.0) - (point.get("gap_to_leader_s") or 0.0), 1),
+            impact_s=round(
+                (prev.get("gap_to_leader_s") or 0.0)
+                - (point.get("gap_to_leader_s") or 0.0),
+                1,
+            ),
             description=f"{label} made the decisive move into P{final_pos}",
             total_km=total_km,
             segments=segments,
@@ -2067,7 +2178,9 @@ def summarize_race_events(events: list[dict]) -> dict[str, Any]:
     return {
         "headline": headline,
         "decisive_point": decisive,
-        "biggest_gain": biggest_gain if (biggest_gain.get("impact_s") or 0.0) > 0 else None,
+        "biggest_gain": biggest_gain
+        if (biggest_gain.get("impact_s") or 0.0) > 0
+        else None,
         "lead_changes": len(passes),
         "finish_kicks": finish_kicks[:3],
     }
@@ -2155,7 +2268,10 @@ def _haversine_m(
     lat2, lon2 = math.radians(p2[0]), math.radians(p2[1])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
     return R * 2 * math.asin(math.sqrt(a))
 
 
@@ -2219,7 +2335,9 @@ async def fetch_activity_companions(activity_id: int) -> list[dict]:
             athlete = entry.get("athlete") or {}
             firstname = athlete.get("firstname", "")
             lastname = athlete.get("lastname", "")
-            label = f"{firstname} {lastname}".strip() or f"Athlete {athlete.get('id', '?')}"
+            label = (
+                f"{firstname} {lastname}".strip() or f"Athlete {athlete.get('id', '?')}"
+            )
             act_id = entry.get("id")
             if act_id:
                 companions.append({"label": label, "activity_id": int(act_id)})
@@ -2239,7 +2357,15 @@ async def fetch_strava_comparison_streams(activity_id: int) -> dict[str, list] |
         client = StravaClient()
         raw = await client.get_activity_streams(
             activity_id,
-            keys=["time", "distance", "latlng", "altitude", "heartrate", "cadence", "velocity_smooth"],
+            keys=[
+                "time",
+                "distance",
+                "latlng",
+                "altitude",
+                "heartrate",
+                "cadence",
+                "velocity_smooth",
+            ],
         )
         if not raw:
             return None

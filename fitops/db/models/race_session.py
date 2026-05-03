@@ -14,7 +14,9 @@ class RaceSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    primary_activity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    primary_activity_id: Mapped[int] = mapped_column(
+        Integer, nullable=False, index=True
+    )
     course_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Pre-computed replay timeline — JSON: list of
     # {t_s, athletes: [{lat, lon, course_m, vel, hr, rank, gap_m, gap_geo_m}, ...]}
@@ -83,7 +85,9 @@ class RaceSessionAthlete(Base):
             "id": self.id,
             "session_id": self.session_id,
             "activity_id": self.activity_id,
-            "strava_url": f"https://www.strava.com/activities/{self.activity_id}" if self.activity_id else None,
+            "strava_url": f"https://www.strava.com/activities/{self.activity_id}"
+            if self.activity_id
+            else None,
             "athlete_label": self.athlete_label,
             "is_primary": self.is_primary,
             "metrics": self.get_metrics(),

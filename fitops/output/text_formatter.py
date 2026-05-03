@@ -1826,7 +1826,9 @@ def print_race_sessions_list(data: dict) -> None:
     sessions = data.get("sessions") or []
     if not sessions:
         console.print("[dim]No race sessions found.[/dim]")
-        console.print("  Create one with: fitops race session-create --activity <id> --name <name>")
+        console.print(
+            "  Create one with: fitops race session-create --activity <id> --name <name>"
+        )
         return
 
     table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
@@ -1902,12 +1904,16 @@ def print_race_session_detail(data: dict) -> None:
                 f"{ev.get('athlete_label')}  {sign}{impact:.0f}s  — {ev.get('description') or ''}"
             )
         if len(events) > 5:
-            console.print(f"  … and {len(events) - 5} more. Use 'fitops race session {sess.get('id')} events' for full list.")
+            console.print(
+                f"  … and {len(events) - 5} more. Use 'fitops race session {sess.get('id')} events' for full list."
+            )
         console.print()
 
     if segments:
         console.print(f"[bold]Segments[/bold]  ({len(segments)} detected)")
-        console.print("  Use 'fitops race session <id> segments' for per-athlete breakdown.")
+        console.print(
+            "  Use 'fitops race session <id> segments' for per-athlete breakdown."
+        )
         console.print()
 
 

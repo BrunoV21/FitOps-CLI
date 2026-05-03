@@ -93,8 +93,16 @@ def _activity_row(a) -> dict:
         efficiency_pct = round(a.moving_time_s / a.elapsed_time_s * 100)
 
     _settings = get_athlete_settings()
-    aerobic_score = a.aerobic_score if a.aerobic_score is not None else compute_aerobic_score(a, _settings)
-    anaerobic_score = a.anaerobic_score if a.anaerobic_score is not None else compute_anaerobic_score(a, _settings)
+    aerobic_score = (
+        a.aerobic_score
+        if a.aerobic_score is not None
+        else compute_aerobic_score(a, _settings)
+    )
+    anaerobic_score = (
+        a.anaerobic_score
+        if a.anaerobic_score is not None
+        else compute_anaerobic_score(a, _settings)
+    )
 
     return {
         "strava_id": a.strava_id,
@@ -112,7 +120,9 @@ def _activity_row(a) -> dict:
         "pace": _pace_str(a.average_speed_ms, sport),
         "avg_hr": round(a.average_heartrate) if a.average_heartrate else None,
         "max_hr": a.max_heartrate,
-        "avg_watts": round(a.average_watts) if a.average_watts else (
+        "avg_watts": round(a.average_watts)
+        if a.average_watts
+        else (
             round(a.est_power_avg_w) if getattr(a, "est_power_avg_w", None) else None
         ),
         "weighted_avg_watts": round(a.weighted_average_watts)
@@ -139,9 +149,15 @@ def _activity_row(a) -> dict:
         "anaerobic_score_int": int(anaerobic_score),
         "aerobic_label": _aerobic_label(aerobic_score),
         "anaerobic_label": _anaerobic_label(anaerobic_score),
-        "est_power_avg_w": round(a.est_power_avg_w) if getattr(a, "est_power_avg_w", None) else None,
-        "est_power_max_w": round(a.est_power_max_w) if getattr(a, "est_power_max_w", None) else None,
-        "est_power_np_w": round(a.est_power_np_w) if getattr(a, "est_power_np_w", None) else None,
+        "est_power_avg_w": round(a.est_power_avg_w)
+        if getattr(a, "est_power_avg_w", None)
+        else None,
+        "est_power_max_w": round(a.est_power_max_w)
+        if getattr(a, "est_power_max_w", None)
+        else None,
+        "est_power_np_w": round(a.est_power_np_w)
+        if getattr(a, "est_power_np_w", None)
+        else None,
         "est_kcal_model": getattr(a, "est_kcal_model", None),
         "est_power_source": getattr(a, "est_power_source", None),
     }
@@ -1063,9 +1079,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if not cfg.is_authenticated:
             return JSONResponse({"error": "not authenticated"}, status_code=401)
         if not cfg.has_write_scope:
-            return JSONResponse({"error": "activity:write scope required — run: fitops auth login --force"}, status_code=403)
+            return JSONResponse(
+                {
+                    "error": "activity:write scope required — run: fitops auth login --force"
+                },
+                status_code=403,
+            )
 
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = (
+            await request.json()
+            if request.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
         body.get("force", False) if isinstance(body, dict) else False
 
         client = StravaClient()
@@ -1098,7 +1123,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if not cfg.is_authenticated:
             return JSONResponse({"error": "not authenticated"}, status_code=401)
         if not cfg.has_write_scope:
-            return JSONResponse({"error": "activity:write scope required — run: fitops auth login --force"}, status_code=403)
+            return JSONResponse(
+                {
+                    "error": "activity:write scope required — run: fitops auth login --force"
+                },
+                status_code=403,
+            )
 
         client = StravaClient()
         stamped, skipped, failed = [], [], []
@@ -1108,11 +1138,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
             activities = result.scalars().all()
             for activity in activities:
                 try:
-                    await stamp_activity(client, session, activity, fetch_fresh_desc=True)
+                    await stamp_activity(
+                        client, session, activity, fetch_fresh_desc=True
+                    )
                     stamped.append(activity.strava_id)
                 except Exception:
                     failed.append(activity.strava_id)
 
-        return JSONResponse({"ok": True, "stamped": stamped, "skipped": skipped, "failed": failed})
+        return JSONResponse(
+            {"ok": True, "stamped": stamped, "skipped": skipped, "failed": failed}
+        )
 
     return router

@@ -1,4 +1,5 @@
 """Unit tests for fitops.analytics.running_power."""
+
 from __future__ import annotations
 
 import pytest
@@ -140,7 +141,9 @@ def test_estimate_kcal_steady_run():
     duration_s = 3600
     stream = [power_w] * duration_s
     kcal = estimate_kcal(stream)
-    expected = round(power_w * (METABOLIC_COST / DISPLAY_POWER_COST) * duration_s / JOULES_PER_KCAL)
+    expected = round(
+        power_w * (METABOLIC_COST / DISPLAY_POWER_COST) * duration_s / JOULES_PER_KCAL
+    )
     assert kcal == expected
     # sanity: should still be roughly 900 kcal for 1 hr at 4:00/km @ 70 kg
     assert 800 < kcal < 1100

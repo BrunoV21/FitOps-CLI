@@ -345,8 +345,16 @@ def get_activity(
         from fitops.dashboard.queries.workouts import get_workout_for_activity
 
         _settings = get_athlete_settings()
-        aerobic_score = row.aerobic_score if row.aerobic_score is not None else compute_aerobic_score(row, _settings)
-        anaerobic_score = row.anaerobic_score if row.anaerobic_score is not None else compute_anaerobic_score(row, _settings)
+        aerobic_score = (
+            row.aerobic_score
+            if row.aerobic_score is not None
+            else compute_aerobic_score(row, _settings)
+        )
+        anaerobic_score = (
+            row.anaerobic_score
+            if row.anaerobic_score is not None
+            else compute_anaerobic_score(row, _settings)
+        )
 
         formatted.setdefault("insights", {})
         formatted["insights"]["aerobic_training_score"] = aerobic_score
@@ -806,9 +814,7 @@ def stamp(
     force: bool = typer.Option(
         False, "--force", help="Re-stamp even if the activity was already stamped."
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Output result as JSON."
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Output result as JSON."),
 ) -> None:
     """Embed FitOps analytics into Strava activity descriptions."""
     settings = get_settings()
@@ -859,9 +865,7 @@ def stamp(
                     skipped.append(act.strava_id)
                     continue
                 try:
-                    await stamp_activity(
-                        client, session, act, fetch_fresh_desc=True
-                    )
+                    await stamp_activity(client, session, act, fetch_fresh_desc=True)
                     stamped.append(act.strava_id)
                 except Exception as exc:
                     typer.echo(f"Failed to stamp {act.strava_id}: {exc}", err=True)

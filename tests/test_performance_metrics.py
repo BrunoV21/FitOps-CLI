@@ -55,9 +55,7 @@ async def _seed_activity(factory, *, sport_type: str, **activity_kwargs):
                 "id": activity_kwargs.get("id", 1001),
                 "name": activity_kwargs.get("name", "Test Activity"),
                 "sport_type": sport_type,
-                "start_date": activity_kwargs.get(
-                    "start_date", "2026-01-01T07:00:00Z"
-                ),
+                "start_date": activity_kwargs.get("start_date", "2026-01-01T07:00:00Z"),
                 "start_date_local": activity_kwargs.get(
                     "start_date_local", "2026-01-01T08:00:00Z"
                 ),
@@ -68,9 +66,7 @@ async def _seed_activity(factory, *, sport_type: str, **activity_kwargs):
                 "average_heartrate": activity_kwargs.get("average_heartrate", 155.0),
                 "max_heartrate": activity_kwargs.get("max_heartrate", 170),
                 "average_watts": activity_kwargs.get("average_watts"),
-                "weighted_average_watts": activity_kwargs.get(
-                    "weighted_average_watts"
-                ),
+                "weighted_average_watts": activity_kwargs.get("weighted_average_watts"),
             },
             athlete_id=42,
         )

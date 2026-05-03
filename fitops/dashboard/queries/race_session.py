@@ -329,8 +329,7 @@ async def get_session_detail(session_id: int) -> dict | None:
     # the cached payload predates the current replay schema so existing
     # sessions migrate transparently on next read.
     stale = bool(
-        replay_frames
-        and replay_frames[0].get("schema_v") != REPLAY_FRAME_SCHEMA_V
+        replay_frames and replay_frames[0].get("schema_v") != REPLAY_FRAME_SCHEMA_V
     )
     if (not replay_frames or stale) and athletes:
         from fitops.analytics.race_analysis import (
@@ -340,7 +339,9 @@ async def get_session_detail(session_id: int) -> dict | None:
 
         try:
             ns_list = [normalized_stream_from_dict(a.get_stream()) for a in athletes]
-            replay_frames = compute_replay_frames(ns_list, time_step_s=replay_time_step_s)
+            replay_frames = compute_replay_frames(
+                ns_list, time_step_s=replay_time_step_s
+            )
         except Exception:
             replay_frames = []
         if replay_frames:

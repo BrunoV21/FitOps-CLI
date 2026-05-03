@@ -126,7 +126,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             # Prefer the scope from the callback URL — Strava always includes it
             # and it's more reliable than the token exchange response body.
             if scope:
-                token_data["scopes"] = [s.strip() for s in scope.split(",") if s.strip()]
+                token_data["scopes"] = [
+                    s.strip() for s in scope.split(",") if s.strip()
+                ]
             settings.save_tokens(token_data)
             if not is_reauth:
                 background_tasks.add_task(_initial_sync)

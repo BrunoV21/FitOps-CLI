@@ -614,16 +614,30 @@ def _make_activity_ns(**kwargs):
 
 
 def _patch_scores(monkeypatch):
-    monkeypatch.setattr("fitops.dashboard.routes.activities.compute_aerobic_score", lambda *a, **k: 3.0)
-    monkeypatch.setattr("fitops.dashboard.routes.activities.compute_anaerobic_score", lambda *a, **k: 2.0)
-    monkeypatch.setattr("fitops.dashboard.routes.activities.get_athlete_settings", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.compute_aerobic_score", lambda *a, **k: 3.0
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.compute_anaerobic_score",
+        lambda *a, **k: 2.0,
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_athlete_settings",
+        lambda: SimpleNamespace(),
+    )
 
 
 def test_activity_row_power_present(monkeypatch):
     from fitops.dashboard.routes.activities import _activity_row
 
     _patch_scores(monkeypatch)
-    a = _make_activity_ns(est_power_avg_w=243.7, est_power_max_w=410.0, est_power_np_w=250.1, est_kcal_model=850, est_power_source="true_pace")
+    a = _make_activity_ns(
+        est_power_avg_w=243.7,
+        est_power_max_w=410.0,
+        est_power_np_w=250.1,
+        est_kcal_model=850,
+        est_power_source="true_pace",
+    )
     row = _activity_row(a)
     assert row["est_power_avg_w"] == 244
     assert row["est_power_max_w"] == 410

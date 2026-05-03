@@ -115,7 +115,9 @@ def fetch_weather(
     all_activities: bool = typer.Option(
         False, "--all", help="Backfill all GPS activities missing weather."
     ),
-    limit: int = typer.Option(0, "--limit", help="Max activities when using --all (0 = all, default: all)."),
+    limit: int = typer.Option(
+        0, "--limit", help="Max activities when using --all (0 = all, default: all)."
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),

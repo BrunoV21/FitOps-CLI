@@ -7,6 +7,7 @@ Covers:
 - CLI JSON shape tests
 - Dashboard HTTP 200 tests (/race/sessions, /race/sessions/{id})
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -146,9 +147,9 @@ def test_clean_elapsed_spikes_single_spike():
     result = _clean_elapsed_spikes(vals)
     assert result[0] == pytest.approx(0.0, abs=0.1)
     assert result[1] == pytest.approx(2.0, abs=0.1)
-    assert result[2] == pytest.approx(4.0, abs=0.5)   # spike corrected
-    assert result[3] == pytest.approx(6.0, abs=0.5)   # propagation fixed
-    assert result[-1] == pytest.approx(10.0, abs=0.5) # end value restored
+    assert result[2] == pytest.approx(4.0, abs=0.5)  # spike corrected
+    assert result[3] == pytest.approx(6.0, abs=0.5)  # propagation fixed
+    assert result[-1] == pytest.approx(10.0, abs=0.5)  # end value restored
 
 
 def test_clean_elapsed_spikes_monotonic_after_clean():
@@ -163,7 +164,7 @@ def test_normalize_stream_spike_in_time():
     """GPS timing spike in raw time stream should be cleaned by normalize_stream."""
     n = 50
     dist_raw = [i * 10.0 for i in range(n)]  # 0..490m
-    time_raw = [i * 2.0 for i in range(n)]   # clean: 2s/10m
+    time_raw = [i * 2.0 for i in range(n)]  # clean: 2s/10m
     # Inject spike at index 5: 10s → 50s (excess 38s propagates)
     for i in range(5, n):
         time_raw[i] += 38.0
@@ -317,8 +318,12 @@ def test_delta_series_fields():
 def test_delta_series_even_pace_near_zero():
     """Two athletes at constant pace → gap roughly constant → delta near 0."""
     # Both at identical pace, different start times not relevant for relative gaps
-    fast = _make_normalized("Fast", total_dist_m=1000.0, total_time_s=200.0, velocity=5.0)
-    slow = _make_normalized("Slow", total_dist_m=1000.0, total_time_s=250.0, velocity=4.0)
+    fast = _make_normalized(
+        "Fast", total_dist_m=1000.0, total_time_s=200.0, velocity=5.0
+    )
+    slow = _make_normalized(
+        "Slow", total_dist_m=1000.0, total_time_s=250.0, velocity=4.0
+    )
     gaps = compute_gap_series([fast, slow])
     deltas = compute_delta_series(gaps)
     # For "Fast" (leader, gap always 0), deltas should be near 0
@@ -333,7 +338,10 @@ def test_delta_series_even_pace_near_zero():
 
 
 def _make_km_segments(grades: list[float]) -> list[dict]:
-    return [{"km": i + 1, "distance_m": 1000.0, "grade": g, "bearing": 0.0} for i, g in enumerate(grades)]
+    return [
+        {"km": i + 1, "distance_m": 1000.0, "grade": g, "bearing": 0.0}
+        for i, g in enumerate(grades)
+    ]
 
 
 def test_detect_segments_all_flat():
@@ -408,8 +416,12 @@ def test_detect_segments_altitude_flat():
 
 def test_detect_segments_altitude_no_data():
     ns = NormalizedStream(
-        label="X", is_primary=True, activity_id=None,
-        distance_grid=[], elapsed_s=[], altitude=None
+        label="X",
+        is_primary=True,
+        activity_id=None,
+        distance_grid=[],
+        elapsed_s=[],
+        altitude=None,
     )
     assert detect_segments_from_altitude(ns) == []
 
@@ -442,11 +454,16 @@ def test_segment_athlete_metrics_time_vs_leader():
     fast = _make_normalized("Fast", total_dist_m=2000.0, total_time_s=400.0)
     slow = _make_normalized("Slow", total_dist_m=2000.0, total_time_s=600.0)
     seg = DetectedSegment(
-        label="Test 0.5–1.5 km", start_km=0.5, end_km=1.5,
-        gradient_type="flat", avg_grade_pct=0.0
+        label="Test 0.5–1.5 km",
+        start_km=0.5,
+        end_km=1.5,
+        gradient_type="flat",
+        avg_grade_pct=0.0,
     )
     metrics = compute_segment_athlete_metrics([fast, slow], [seg])
-    assert metrics["Test 0.5–1.5 km"]["Fast"]["time_vs_leader_s"] == pytest.approx(0.0, abs=0.5)
+    assert metrics["Test 0.5–1.5 km"]["Fast"]["time_vs_leader_s"] == pytest.approx(
+        0.0, abs=0.5
+    )
     assert metrics["Test 0.5–1.5 km"]["Slow"]["time_vs_leader_s"] > 0
 
 
@@ -486,8 +503,9 @@ def _make_ns_velocity_profile(
 def test_detect_surge():
     """Athlete with sustained pace 20%+ above baseline should produce a surge event."""
     # n=200 pts → ~2000m at 10m spacing; base 4 m/s, surge 5 m/s for pts 80-120
-    ns = _make_ns_velocity_profile("A", n_pts=200, base_vel=4.0,
-                                   surge_start=80, surge_end=120, surge_vel=5.0)
+    ns = _make_ns_velocity_profile(
+        "A", n_pts=200, base_vel=4.0, surge_start=80, surge_end=120, surge_vel=5.0
+    )
     gaps = compute_gap_series([ns])
     events = detect_events([ns], gaps)
     surge_events = [e for e in events if e.event_type == "surge"]
@@ -512,8 +530,12 @@ def test_detect_fade():
         elapsed.append(elapsed[-1] + dt)
 
     ns = NormalizedStream(
-        label="Fader", is_primary=True, activity_id=None,
-        distance_grid=dist, elapsed_s=elapsed, velocity=vel
+        label="Fader",
+        is_primary=True,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=elapsed,
+        velocity=vel,
     )
     gaps = compute_gap_series([ns])
     events = detect_events([ns], gaps)
@@ -541,8 +563,12 @@ def test_detect_final_sprint():
         elapsed.append(elapsed[-1] + dt)
 
     ns = NormalizedStream(
-        label="Sprinter", is_primary=True, activity_id=None,
-        distance_grid=dist, elapsed_s=elapsed, velocity=vel
+        label="Sprinter",
+        is_primary=True,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=elapsed,
+        velocity=vel,
     )
     gaps = compute_gap_series([ns])
     events = detect_events([ns], gaps)
@@ -563,8 +589,12 @@ def test_detect_surge_flushes_at_finish():
         elapsed.append(elapsed[-1] + (10.0 / vel[i]))
 
     ns = NormalizedStream(
-        label="Closer", is_primary=True, activity_id=None,
-        distance_grid=dist, elapsed_s=elapsed, velocity=vel
+        label="Closer",
+        is_primary=True,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=elapsed,
+        velocity=vel,
     )
     gaps = compute_gap_series([ns])
     events = detect_events([ns], gaps)
@@ -584,7 +614,9 @@ def test_detect_surge_flushes_at_finish():
 def test_detect_drop():
     """Athlete losing >10s over 500m triggers a drop event."""
     # Fast: constant 4 m/s for 2km
-    fast = _make_normalized("Fast", total_dist_m=2000.0, total_time_s=500.0, velocity=4.0)
+    fast = _make_normalized(
+        "Fast", total_dist_m=2000.0, total_time_s=500.0, velocity=4.0
+    )
 
     # Slow: starts same pace but dramatically slows mid-race
     n = 200
@@ -597,8 +629,12 @@ def test_detect_drop():
         elapsed.append(elapsed[-1] + dt)
 
     slow = NormalizedStream(
-        label="Dropper", is_primary=False, activity_id=None,
-        distance_grid=dist, elapsed_s=elapsed, velocity=vel
+        label="Dropper",
+        is_primary=False,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=elapsed,
+        velocity=vel,
     )
     gaps = compute_gap_series([fast, slow])
     events = detect_events([fast, slow], gaps)
@@ -615,7 +651,9 @@ def test_detect_drop():
 def test_detect_bridge():
     """Athlete closing gap >10s over 500m triggers a bridge event."""
     # Leader: constant pace 4 m/s for 2km
-    leader = _make_normalized("Leader", total_dist_m=2000.0, total_time_s=500.0, velocity=4.0)
+    leader = _make_normalized(
+        "Leader", total_dist_m=2000.0, total_time_s=500.0, velocity=4.0
+    )
 
     # Chaser: starts slow but accelerates — builds big gap then closes it
     n = 200
@@ -628,8 +666,12 @@ def test_detect_bridge():
         elapsed.append(elapsed[-1] + dt)
 
     chaser = NormalizedStream(
-        label="Chaser", is_primary=False, activity_id=None,
-        distance_grid=dist, elapsed_s=elapsed, velocity=vel
+        label="Chaser",
+        is_primary=False,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=elapsed,
+        velocity=vel,
     )
     gaps = compute_gap_series([leader, chaser])
     events = detect_events([leader, chaser], gaps)
@@ -645,8 +687,12 @@ def test_detect_bridge():
 
 def test_detect_separation():
     """Gap >30s between position 1 and position 2 should trigger separation."""
-    fast = _make_normalized("Fast", total_dist_m=2000.0, total_time_s=300.0, velocity=6.0)
-    very_slow = _make_normalized("VerySlow", total_dist_m=2000.0, total_time_s=900.0, velocity=2.0)
+    fast = _make_normalized(
+        "Fast", total_dist_m=2000.0, total_time_s=300.0, velocity=6.0
+    )
+    very_slow = _make_normalized(
+        "VerySlow", total_dist_m=2000.0, total_time_s=900.0, velocity=2.0
+    )
     gaps = compute_gap_series([fast, very_slow])
     events = detect_events([fast, very_slow], gaps)
     sep_events = [e for e in events if e.event_type == "separation"]
@@ -655,7 +701,9 @@ def test_detect_separation():
 
 def test_detect_pass_event():
     """An athlete overtaking another should emit a pass event with rank context."""
-    leader = _make_normalized("Leader", total_dist_m=2000.0, total_time_s=520.0, velocity=4.0)
+    leader = _make_normalized(
+        "Leader", total_dist_m=2000.0, total_time_s=520.0, velocity=4.0
+    )
     n = 200
     dist = [i * 10.0 for i in range(n)]
     mid_vel = [4.8] * 90 + [2.8] * 110
@@ -668,16 +716,26 @@ def test_detect_pass_event():
         return vals
 
     mid = NormalizedStream(
-        label="Mid", is_primary=False, activity_id=None,
-        distance_grid=dist, elapsed_s=_elapsed(mid_vel), velocity=mid_vel
+        label="Mid",
+        is_primary=False,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=_elapsed(mid_vel),
+        velocity=mid_vel,
     )
     chaser = NormalizedStream(
-        label="Chaser", is_primary=False, activity_id=None,
-        distance_grid=dist, elapsed_s=_elapsed(chaser_vel), velocity=chaser_vel
+        label="Chaser",
+        is_primary=False,
+        activity_id=None,
+        distance_grid=dist,
+        elapsed_s=_elapsed(chaser_vel),
+        velocity=chaser_vel,
     )
     gaps = compute_gap_series([leader, mid, chaser])
     events = detect_events([leader, mid, chaser], gaps)
-    pass_events = [e for e in events if e.event_type == "pass" and e.athlete_label == "Chaser"]
+    pass_events = [
+        e for e in events if e.event_type == "pass" and e.athlete_label == "Chaser"
+    ]
     assert pass_events
     assert pass_events[0].rank_before is not None
     assert pass_events[0].rank_after is not None
@@ -691,6 +749,7 @@ def test_detect_pass_event():
 
 def test_print_race_sessions_list_empty(capsys):
     from fitops.output.text_formatter import print_race_sessions_list
+
     print_race_sessions_list({"sessions": []})
     out = capsys.readouterr().out
     assert "No race sessions" in out
@@ -698,6 +757,7 @@ def test_print_race_sessions_list_empty(capsys):
 
 def test_print_race_sessions_list_with_data(capsys):
     from fitops.output.text_formatter import print_race_sessions_list
+
     print_race_sessions_list(
         {
             "sessions": [
@@ -718,6 +778,7 @@ def test_print_race_sessions_list_with_data(capsys):
 
 def test_print_race_session_detail_smoke(capsys):
     from fitops.output.text_formatter import print_race_session_detail
+
     detail = {
         "session": {
             "id": 1,
@@ -748,6 +809,7 @@ def test_print_race_session_detail_smoke(capsys):
 
 def test_print_race_session_events_empty(capsys):
     from fitops.output.text_formatter import print_race_session_events
+
     print_race_session_events({"events": []})
     out = capsys.readouterr().out
     assert "No events" in out
@@ -755,6 +817,7 @@ def test_print_race_session_events_empty(capsys):
 
 def test_print_race_session_segments_empty(capsys):
     from fitops.output.text_formatter import print_race_session_segments
+
     print_race_session_segments({"segments": []})
     out = capsys.readouterr().out
     assert "No segments" in out
@@ -762,6 +825,7 @@ def test_print_race_session_segments_empty(capsys):
 
 def test_print_race_session_gaps_empty(capsys):
     from fitops.output.text_formatter import print_race_session_gaps
+
     print_race_session_gaps({"gap_data": []})
     out = capsys.readouterr().out
     assert "No gap" in out
@@ -831,7 +895,10 @@ def test_session_gaps_json_shape():
     from fitops.output.formatter import make_meta
 
     flat_gap_data = [p for series in gaps.values() for p in series]
-    out = {"_meta": make_meta(total_count=len(flat_gap_data)), "gap_data": flat_gap_data}
+    out = {
+        "_meta": make_meta(total_count=len(flat_gap_data)),
+        "gap_data": flat_gap_data,
+    }
 
     assert "gap_data" in out
     assert "_meta" in out
@@ -845,8 +912,11 @@ def test_session_segments_json_shape():
     fast = _make_normalized("Fast", total_dist_m=2000.0, total_time_s=400.0)
     slow = _make_normalized("Slow", total_dist_m=2000.0, total_time_s=600.0)
     seg = DetectedSegment(
-        label="Flat 0.0–1.0 km", start_km=0.0, end_km=1.0,
-        gradient_type="flat", avg_grade_pct=0.0
+        label="Flat 0.0–1.0 km",
+        start_km=0.0,
+        end_km=1.0,
+        gradient_type="flat",
+        avg_grade_pct=0.0,
     )
     metrics = compute_segment_athlete_metrics([fast, slow], [seg])
 
@@ -873,8 +943,12 @@ def test_session_segments_json_shape():
 
 def test_session_events_json_shape():
     """Events output should include event_type, athlete_label, distance_km."""
-    fast = _make_normalized("Fast", total_dist_m=2000.0, total_time_s=300.0, velocity=6.0)
-    very_slow = _make_normalized("VerySlow", total_dist_m=2000.0, total_time_s=900.0, velocity=2.0)
+    fast = _make_normalized(
+        "Fast", total_dist_m=2000.0, total_time_s=300.0, velocity=6.0
+    )
+    very_slow = _make_normalized(
+        "VerySlow", total_dist_m=2000.0, total_time_s=900.0, velocity=2.0
+    )
     gaps = compute_gap_series([fast, very_slow])
     events = detect_events([fast, very_slow], gaps)
 
@@ -908,12 +982,14 @@ def test_session_events_json_shape():
 
 def _make_app():
     from fitops.dashboard.server import create_app
+
     return create_app()
 
 
 @pytest.fixture
 def client():
     from starlette.testclient import TestClient
+
     app = _make_app()
     with TestClient(app) as c:
         yield c
@@ -921,6 +997,7 @@ def client():
 
 def test_dashboard_race_sessions_empty(client, monkeypatch):
     """GET /race/sessions should return 200 with an empty sessions list."""
+
     async def _fake_get_all():
         return []
 
@@ -935,6 +1012,7 @@ def test_dashboard_race_sessions_empty(client, monkeypatch):
 
 def test_dashboard_race_sessions_with_data(client, monkeypatch):
     """GET /race/sessions should render the sessions table when data exists."""
+
     async def _fake_get_all():
         return [
             {
@@ -961,6 +1039,7 @@ def test_dashboard_race_sessions_with_data(client, monkeypatch):
 
 def test_dashboard_race_session_not_found(client, monkeypatch):
     """GET /race/sessions/999 should return 404 when session doesn't exist."""
+
     async def _fake_get_detail(session_id):
         return None
 
@@ -1099,9 +1178,7 @@ def test_replay_frames_rank_uses_projection_not_raw_distance():
 
     # Primary: 1000m straight east, lon span 0.001
     primary_distances = [i * 1000.0 / (n_pts - 1) for i in range(n_pts)]
-    primary_latlng = [
-        [40.0, -8.0 + (i / (n_pts - 1)) * 0.001] for i in range(n_pts)
-    ]
+    primary_latlng = [[40.0, -8.0 + (i / (n_pts - 1)) * 0.001] for i in range(n_pts)]
     primary = normalize_stream(
         {"distance": primary_distances, "time": times, "latlng": primary_latlng},
         "Primary",
@@ -1111,9 +1188,7 @@ def test_replay_frames_rank_uses_projection_not_raw_distance():
     # BigDistShortProj: large recorded distance (800m) but lat/lon only
     # spans half of primary's polyline (0.0005 lon).
     a_distances = [i * 800.0 / (n_pts - 1) for i in range(n_pts)]
-    a_latlng = [
-        [40.0, -8.0 + (i / (n_pts - 1)) * 0.0005] for i in range(n_pts)
-    ]
+    a_latlng = [[40.0, -8.0 + (i / (n_pts - 1)) * 0.0005] for i in range(n_pts)]
     athlete_a = normalize_stream(
         {"distance": a_distances, "time": times, "latlng": a_latlng},
         "BigDistShortProj",
@@ -1123,9 +1198,7 @@ def test_replay_frames_rank_uses_projection_not_raw_distance():
     # ShortDistLongProj: smaller recorded distance (400m) but lat/lon
     # reaches 90% along primary's polyline (0.0009 lon).
     b_distances = [i * 400.0 / (n_pts - 1) for i in range(n_pts)]
-    b_latlng = [
-        [40.0, -8.0 + (i / (n_pts - 1)) * 0.0009] for i in range(n_pts)
-    ]
+    b_latlng = [[40.0, -8.0 + (i / (n_pts - 1)) * 0.0009] for i in range(n_pts)]
     athlete_b = normalize_stream(
         {"distance": b_distances, "time": times, "latlng": b_latlng},
         "ShortDistLongProj",
@@ -1296,7 +1369,9 @@ def test_replay_frames_rank_uses_exact_course_m_for_near_ties():
         {
             "distance": [i * 500.0 / (n_pts - 1) for i in range(n_pts)],
             "time": times,
-            "latlng": [[40.0, -8.0 + (i / (n_pts - 1)) * 0.00050000] for i in range(n_pts)],
+            "latlng": [
+                [40.0, -8.0 + (i / (n_pts - 1)) * 0.00050000] for i in range(n_pts)
+            ],
         },
         "A",
         False,
@@ -1305,7 +1380,9 @@ def test_replay_frames_rank_uses_exact_course_m_for_near_ties():
         {
             "distance": [i * 500.0 / (n_pts - 1) for i in range(n_pts)],
             "time": times,
-            "latlng": [[40.0, -8.0 + (i / (n_pts - 1)) * 0.00050008] for i in range(n_pts)],
+            "latlng": [
+                [40.0, -8.0 + (i / (n_pts - 1)) * 0.00050008] for i in range(n_pts)
+            ],
         },
         "B",
         False,
@@ -1352,8 +1429,10 @@ def test_replay_frames_gap_geo_m_leader_zero_and_haversine():
         phi1, phi2 = math.radians(lat1), math.radians(lat2)
         d_phi = math.radians(lat2 - lat1)
         d_lam = math.radians(lon2 - lon1)
-        a = (math.sin(d_phi / 2) ** 2
-             + math.cos(phi1) * math.cos(phi2) * math.sin(d_lam / 2) ** 2)
+        a = (
+            math.sin(d_phi / 2) ** 2
+            + math.cos(phi1) * math.cos(phi2) * math.sin(d_lam / 2) ** 2
+        )
         return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     for f in frames:
@@ -1364,7 +1443,9 @@ def test_replay_frames_gap_geo_m_leader_zero_and_haversine():
         for entry in f["athletes"]:
             if entry["rank"] == 1:
                 continue
-            expected = haversine_m(leader["lat"], leader["lon"], entry["lat"], entry["lon"])
+            expected = haversine_m(
+                leader["lat"], leader["lon"], entry["lat"], entry["lon"]
+            )
             assert entry["gap_geo_m"] == pytest.approx(round(expected, 1), abs=0.2)
 
 
@@ -1375,16 +1456,32 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
             "schema_v": REPLAY_FRAME_SCHEMA_V,
             "t_s": 0.0,
             "athletes": [
-                {"lat": 40.0, "lon": -8.0, "course_m": 0.0, "vel": 3.0,
-                 "hr": 150.0, "rank": 1, "gap_m": 0.0, "gap_geo_m": 0.0}
+                {
+                    "lat": 40.0,
+                    "lon": -8.0,
+                    "course_m": 0.0,
+                    "vel": 3.0,
+                    "hr": 150.0,
+                    "rank": 1,
+                    "gap_m": 0.0,
+                    "gap_geo_m": 0.0,
+                }
             ],
         },
         {
             "schema_v": REPLAY_FRAME_SCHEMA_V,
             "t_s": 5.0,
             "athletes": [
-                {"lat": 40.0, "lon": -7.9999, "course_m": 15.0, "vel": 3.0,
-                 "hr": 151.0, "rank": 1, "gap_m": 0.0, "gap_geo_m": 0.0}
+                {
+                    "lat": 40.0,
+                    "lon": -7.9999,
+                    "course_m": 15.0,
+                    "vel": 3.0,
+                    "hr": 151.0,
+                    "rank": 1,
+                    "gap_m": 0.0,
+                    "gap_geo_m": 0.0,
+                }
             ],
         },
     ]
@@ -1485,7 +1582,10 @@ def test_dashboard_race_session_detail_passes_replay_frames(client, monkeypatch)
     assert "TARGET_EXPORT_FPS = 60" in resp.text
     assert "window.devicePixelRatio" in resp.text
     assert "@2x" in resp.text
-    assert "drawLeaderboardOnCanvas(ctx, entries, t, { width: W_CSS, height: H_CSS }, useFinishStandings)" in resp.text
+    assert (
+        "drawLeaderboardOnCanvas(ctx, entries, t, { width: W_CSS, height: H_CSS }, useFinishStandings)"
+        in resp.text
+    )
     assert "const isPortrait = vh > vw" in resp.text
     assert '"finish_time_s": 300.0' in resp.text or '"finish_time_s":300.0' in resp.text
     assert '"t_s": 5.0' in resp.text or '"t_s":5.0' in resp.text
@@ -1510,7 +1610,10 @@ def test_get_session_detail_lazy_computes_frames_for_cold_start(monkeypatch):
     stream_dict = normalized_stream_to_dict(ns)
     fake_athlete = MagicMock()
     fake_athlete.get_stream.return_value = stream_dict
-    fake_athlete.to_summary_dict.return_value = {"athlete_label": "A", "is_primary": True}
+    fake_athlete.to_summary_dict.return_value = {
+        "athlete_label": "A",
+        "is_primary": True,
+    }
 
     saved = {}
 
@@ -1578,7 +1681,10 @@ def test_get_session_detail_recomputes_stale_replay_schema(monkeypatch):
     stream_dict = normalized_stream_to_dict(ns)
     fake_athlete = MagicMock()
     fake_athlete.get_stream.return_value = stream_dict
-    fake_athlete.to_summary_dict.return_value = {"athlete_label": "A", "is_primary": True}
+    fake_athlete.to_summary_dict.return_value = {
+        "athlete_label": "A",
+        "is_primary": True,
+    }
 
     saved = {}
 

@@ -510,7 +510,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         .where(WorkoutActivityLink.workout_id.in_(workout_ids))
                         .group_by(WorkoutActivityLink.workout_id)
                     )
-                    session_counts = {row.workout_id: row.cnt for row in cnt_result.all()}
+                    session_counts = {
+                        row.workout_id: row.cnt for row in cnt_result.all()
+                    }
 
             for w in workouts:
                 async with get_async_session() as session:

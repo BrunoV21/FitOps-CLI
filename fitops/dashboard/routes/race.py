@@ -353,7 +353,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
         return templates.TemplateResponse(
             request,
             "race/session_create.html",
-            {"request": request, "courses": courses, "error": None, "active_page": "race_sessions"},
+            {
+                "request": request,
+                "courses": courses,
+                "error": None,
+                "active_page": "race_sessions",
+            },
         )
 
     @router.post("/race/sessions/create", response_class=HTMLResponse)
@@ -369,9 +374,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
         async def _run():
             raw = await load_primary_streams(activity)
             if raw is None:
-                return None, f"No streams found for activity {activity}. Run: fitops sync streams"
+                return (
+                    None,
+                    f"No streams found for activity {activity}. Run: fitops sync streams",
+                )
 
-            primary_ns = normalize_stream(raw, athlete_label="You", is_primary=True, activity_id=activity)
+            primary_ns = normalize_stream(
+                raw, athlete_label="You", is_primary=True, activity_id=activity
+            )
             primary_metrics = compute_athlete_metrics(primary_ns)
             primary_stream_dict = normalized_stream_to_dict(primary_ns)
 
@@ -427,7 +437,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return templates.TemplateResponse(
                 request,
                 "race/session_create.html",
-                {"request": request, "courses": courses, "error": error or "Unknown error.", "active_page": "race_sessions"},
+                {
+                    "request": request,
+                    "courses": courses,
+                    "error": error or "Unknown error.",
+                    "active_page": "race_sessions",
+                },
             )
         return RedirectResponse(url=f"/race/sessions/{session_id}", status_code=303)
 
@@ -448,6 +463,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 raw_val = activity.strip()
                 if raw_val.startswith("http"):
                     import re as _re
+
                     m = _re.search(r"/activities/(\d+)", raw_val)
                     if not m:
                         return "Could not parse a Strava activity ID from that URL."
@@ -468,7 +484,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             else:
                 return "Provide a Strava activity ID or upload a GPX file."
 
-            ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=file_act_id)
+            ns = normalize_stream(
+                raw, athlete_label=label, is_primary=False, activity_id=file_act_id
+            )
             metrics = compute_athlete_metrics(ns)
             stream_dict = normalized_stream_to_dict(ns)
             await add_session_athlete(
@@ -497,6 +515,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             segs_raw = await get_segments(session_id)
             if segs_raw:
                 from fitops.analytics.race_analysis import DetectedSegment
+
                 segs = [
                     DetectedSegment(
                         label=s["segment_label"],
@@ -537,16 +556,30 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 velocity = stream.get("velocity", [])
                 heartrate = stream.get("heartrate", [])
                 step = 5
-                athletes_streams.append({
-                    "label": a.athlete_label,
-                    "is_primary": a.is_primary,
-                    "latlng": stream.get("latlng", []),
-                    "elapsed_s": stream.get("elapsed_s", []),
-                    "distance_km": [round(d / 1000, 3) for d in dist_grid[::step]] if dist_grid else [],
-                    "velocity": [round(v, 3) if v else None for v in velocity[::step]] if velocity else [],
-                    "heartrate": [round(h, 1) if h else None for h in heartrate[::step]] if heartrate else [],
-                    "strava_url": f"https://www.strava.com/activities/{a.activity_id}" if a.activity_id else None,
-                })
+                athletes_streams.append(
+                    {
+                        "label": a.athlete_label,
+                        "is_primary": a.is_primary,
+                        "latlng": stream.get("latlng", []),
+                        "elapsed_s": stream.get("elapsed_s", []),
+                        "distance_km": [round(d / 1000, 3) for d in dist_grid[::step]]
+                        if dist_grid
+                        else [],
+                        "velocity": [
+                            round(v, 3) if v else None for v in velocity[::step]
+                        ]
+                        if velocity
+                        else [],
+                        "heartrate": [
+                            round(h, 1) if h else None for h in heartrate[::step]
+                        ]
+                        if heartrate
+                        else [],
+                        "strava_url": f"https://www.strava.com/activities/{a.activity_id}"
+                        if a.activity_id
+                        else None,
+                    }
+                )
             return templates.TemplateResponse(
                 request,
                 "race/session_detail.html",
@@ -557,10 +590,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "athletes_streams": athletes_streams,
                     "gap_data": detail.get("gap_data", []) if detail else [],
                     "events": detail.get("events", []) if detail else [],
-                    "events_summary": detail.get("events_summary", {}) if detail else {},
+                    "events_summary": detail.get("events_summary", {})
+                    if detail
+                    else {},
                     "segments": detail.get("segments", []) if detail else [],
                     "replay_frames": detail.get("replay_frames", []) if detail else [],
-                    "replay_time_step_s": detail.get("replay_time_step_s", REPLAY_TIME_STEP_S) if detail else REPLAY_TIME_STEP_S,
+                    "replay_time_step_s": detail.get(
+                        "replay_time_step_s", REPLAY_TIME_STEP_S
+                    )
+                    if detail
+                    else REPLAY_TIME_STEP_S,
                     "add_athlete_error": error,
                     "active_page": "race_sessions",
                 },
@@ -572,7 +611,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         """Return Strava group-run companions for this session's primary activity."""
         detail = await get_session_detail(session_id)
         if detail is None:
-            return JSONResponse({"companions": [], "error": "Session not found"}, status_code=404)
+            return JSONResponse(
+                {"companions": [], "error": "Session not found"}, status_code=404
+            )
 
         primary_activity_id = detail["session"]["primary_activity_id"]
         existing = await get_session_athletes(session_id)
@@ -584,7 +625,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         return JSONResponse({"companions": companions})
 
-    @router.post("/race/sessions/{session_id}/add-athletes-bulk", response_class=JSONResponse)
+    @router.post(
+        "/race/sessions/{session_id}/add-athletes-bulk", response_class=JSONResponse
+    )
     async def race_session_add_athletes_bulk(request: Request, session_id: int):
         """Add multiple athletes from a JSON body ``[{label, activity_id}, ...]``.
 
@@ -601,21 +644,37 @@ def register(templates: Jinja2Templates) -> APIRouter:
             label = str(item.get("label", "")).strip()
             act_id_raw = item.get("activity_id")
             if not label or not act_id_raw:
-                results.append({"label": label or "?", "ok": False, "error": "Missing label or activity_id"})
+                results.append(
+                    {
+                        "label": label or "?",
+                        "ok": False,
+                        "error": "Missing label or activity_id",
+                    }
+                )
                 continue
             try:
                 act_id = int(act_id_raw)
             except (TypeError, ValueError):
-                results.append({"label": label, "ok": False, "error": "Invalid activity_id"})
+                results.append(
+                    {"label": label, "ok": False, "error": "Invalid activity_id"}
+                )
                 continue
 
             raw = await fetch_strava_comparison_streams(act_id)
             if raw is None:
-                results.append({"label": label, "ok": False, "error": f"Could not fetch streams for activity {act_id}"})
+                results.append(
+                    {
+                        "label": label,
+                        "ok": False,
+                        "error": f"Could not fetch streams for activity {act_id}",
+                    }
+                )
                 continue
 
             try:
-                ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=act_id)
+                ns = normalize_stream(
+                    raw, athlete_label=label, is_primary=False, activity_id=act_id
+                )
                 metrics = compute_athlete_metrics(ns)
                 stream_dict = normalized_stream_to_dict(ns)
                 await add_session_athlete(
@@ -646,6 +705,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 segs_raw = await get_segments(session_id)
                 if segs_raw:
                     from fitops.analytics.race_analysis import DetectedSegment
+
                     segs = [
                         DetectedSegment(
                             label=s["segment_label"],
@@ -677,6 +737,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         detail = await get_session_detail(session_id)
         if detail is None:
             from fastapi.responses import Response
+
             return Response(content="Session not found.", status_code=404)
 
         athletes = detail.get("athletes", [])
@@ -707,19 +768,33 @@ def register(templates: Jinja2Templates) -> APIRouter:
             velocity = stream.get("velocity", [])
             heartrate = stream.get("heartrate", [])
             ns = ns_by_label.get(a.athlete_label)
-            course_progress_m = _map_stream_to_course_progress(ns, course) if ns else dist_grid
+            course_progress_m = (
+                _map_stream_to_course_progress(ns, course) if ns else dist_grid
+            )
             # Subsample to every 5th point (~50 m resolution) for the pace chart
             step = 5
-            athletes_streams.append({
-                "label": a.athlete_label,
-                "is_primary": a.is_primary,
-                "latlng": latlng,
-                "elapsed_s": elapsed,
-                "distance_km": [round(d / 1000, 3) for d in course_progress_m[::step]] if course_progress_m else [],
-                "velocity": [round(v, 3) if v else None for v in velocity[::step]] if velocity else [],
-                "heartrate": [round(h, 1) if h else None for h in heartrate[::step]] if heartrate else [],
-                "strava_url": f"https://www.strava.com/activities/{a.activity_id}" if a.activity_id else None,
-            })
+            athletes_streams.append(
+                {
+                    "label": a.athlete_label,
+                    "is_primary": a.is_primary,
+                    "latlng": latlng,
+                    "elapsed_s": elapsed,
+                    "distance_km": [
+                        round(d / 1000, 3) for d in course_progress_m[::step]
+                    ]
+                    if course_progress_m
+                    else [],
+                    "velocity": [round(v, 3) if v else None for v in velocity[::step]]
+                    if velocity
+                    else [],
+                    "heartrate": [round(h, 1) if h else None for h in heartrate[::step]]
+                    if heartrate
+                    else [],
+                    "strava_url": f"https://www.strava.com/activities/{a.activity_id}"
+                    if a.activity_id
+                    else None,
+                }
+            )
 
         return templates.TemplateResponse(
             request,
@@ -734,7 +809,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "events_summary": events_summary,
                 "segments": segments,
                 "replay_frames": detail.get("replay_frames", []),
-                "replay_time_step_s": detail.get("replay_time_step_s", REPLAY_TIME_STEP_S),
+                "replay_time_step_s": detail.get(
+                    "replay_time_step_s", REPLAY_TIME_STEP_S
+                ),
                 "add_athlete_error": None,
                 "active_page": "race_sessions",
             },

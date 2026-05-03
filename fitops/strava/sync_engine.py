@@ -124,15 +124,23 @@ class SyncEngine:
 
                     if existing_row is None:
                         activity = Activity.from_strava_data(item, athlete_id)
-                        activity.aerobic_score = compute_aerobic_score(activity, settings)
-                        activity.anaerobic_score = compute_anaerobic_score(activity, settings)
+                        activity.aerobic_score = compute_aerobic_score(
+                            activity, settings
+                        )
+                        activity.anaerobic_score = compute_anaerobic_score(
+                            activity, settings
+                        )
                         session.add(activity)
                         result.activities_created += 1
                         result.new_strava_ids.append(strava_id)
                     else:
                         existing_row.update_from_strava_data(item)
-                        existing_row.aerobic_score = compute_aerobic_score(existing_row, settings)
-                        existing_row.anaerobic_score = compute_anaerobic_score(existing_row, settings)
+                        existing_row.aerobic_score = compute_aerobic_score(
+                            existing_row, settings
+                        )
+                        existing_row.anaerobic_score = compute_anaerobic_score(
+                            existing_row, settings
+                        )
                         result.activities_updated += 1
 
             if len(activities) < PER_PAGE:
@@ -185,7 +193,9 @@ class SyncEngine:
 
         athlete_id = await self._upsert_athlete()
         athlete_settings = AthleteSettings()
-        await self._sync_activities_paginated(athlete_id, after, before, result, athlete_settings)
+        await self._sync_activities_paginated(
+            athlete_id, after, before, result, athlete_settings
+        )
 
         result.duration_s = time.monotonic() - start_time
 

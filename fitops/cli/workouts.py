@@ -614,8 +614,7 @@ def compliance(
                 vel_raw = streams_dict.get("velocity_smooth", [])
                 if vel_raw:
                     streams_dict["true_pace"] = [
-                        round(1000.0 / v, 1) if v and v > 0.1 else None
-                        for v in vel_raw
+                        round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
                     ]
 
         results = compute_compliance(

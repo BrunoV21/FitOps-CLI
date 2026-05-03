@@ -194,7 +194,14 @@ def test_profile_page_shows_performance_card(client, monkeypatch):
     )
     monkeypatch.setattr(
         "fitops.dashboard.routes.profile.get_current_training_load",
-        AsyncMock(return_value={"ctl": 52.1, "atl": 61.3, "tsb": -9.2, "form_label": "Fatigued"}),
+        AsyncMock(
+            return_value={
+                "ctl": 52.1,
+                "atl": 61.3,
+                "tsb": -9.2,
+                "form_label": "Fatigued",
+            }
+        ),
     )
 
     resp = client.get("/profile")
@@ -214,8 +221,12 @@ def test_profile_page_no_load_data(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.analytics.athlete_settings.get_athlete_settings",
         lambda: SimpleNamespace(
-            lthr=None, max_hr=None, threshold_pace_per_km_s=None,
-            lt1_pace_s=None, vo2max_pace_s=None, vo2max_override=None,
+            lthr=None,
+            max_hr=None,
+            threshold_pace_per_km_s=None,
+            lt1_pace_s=None,
+            vo2max_pace_s=None,
+            vo2max_override=None,
         ),
     )
     monkeypatch.setattr(

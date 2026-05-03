@@ -35,7 +35,12 @@ def test_cli_performance_json_includes_context(monkeypatch):
                 "variability_index": 0.18,
             },
         ),
-        "current_load": {"ctl": 52.1, "atl": 61.3, "tsb": -9.2, "form_label": "Fatigued"},
+        "current_load": {
+            "ctl": 52.1,
+            "atl": 61.3,
+            "tsb": -9.2,
+            "form_label": "Fatigued",
+        },
         "trends": SimpleNamespace(
             summary_label="volume building, pace improving",
             performance_trend={
@@ -50,7 +55,9 @@ def test_cli_performance_json_includes_context(monkeypatch):
         AsyncMock(return_value=fake_context),
     )
 
-    result = runner.invoke(app, ["performance", "--sport", "Ride", "--days", "180", "--json"])
+    result = runner.invoke(
+        app, ["performance", "--sport", "Ride", "--days", "180", "--json"]
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -59,4 +66,7 @@ def test_cli_performance_json_includes_context(monkeypatch):
     assert payload["performance"]["sport"] == "Ride"
     assert payload["performance"]["days"] == 180
     assert payload["performance"]["current_load"]["ctl"] == 52.1
-    assert payload["performance"]["trends"]["summary_label"] == "volume building, pace improving"
+    assert (
+        payload["performance"]["trends"]["summary_label"]
+        == "volume building, pace improving"
+    )

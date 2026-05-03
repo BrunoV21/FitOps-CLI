@@ -1,4 +1,5 @@
 """Tests for Strava activity stamping — fitops/analytics/stamp.py and stamp API routes."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -38,7 +39,9 @@ def _activity(**kwargs) -> MagicMock:
     return act
 
 
-def _fake_settings(*, authenticated: bool = True, write_scope: bool = True) -> MagicMock:
+def _fake_settings(
+    *, authenticated: bool = True, write_scope: bool = True
+) -> MagicMock:
     s = MagicMock()
     s.is_authenticated = authenticated
     s.has_write_scope = write_scope
@@ -101,6 +104,7 @@ def test_compose_stamp_no_power_fields():
 
 def test_compose_stamp_includes_repo_link():
     from fitops.analytics.stamp import REPO_LINK
+
     stamp = compose_stamp(_activity())
     assert REPO_LINK in stamp
 
@@ -360,6 +364,7 @@ def _fake_cli_settings(*, authenticated: bool = True, write_scope: bool = True):
     s.has_write_scope = write_scope
     if not authenticated:
         from fitops.utils.exceptions import NotAuthenticatedError
+
         s.require_auth.side_effect = NotAuthenticatedError("Not authenticated")
     return s
 
@@ -369,7 +374,9 @@ def _make_mock_session(activities: list):
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = activities[0] if len(activities) == 1 else None
+    mock_result.scalar_one_or_none.return_value = (
+        activities[0] if len(activities) == 1 else None
+    )
     mock_result.scalars.return_value.all.return_value = activities
     mock_session.execute = AsyncMock(return_value=mock_result)
     return mock_session
@@ -380,7 +387,10 @@ def test_cli_stamp_exits_1_when_not_authenticated(monkeypatch):
 
     from fitops.cli.activities import app
 
-    monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings(authenticated=False))
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_settings",
+        lambda: _fake_cli_settings(authenticated=False),
+    )
 
     result = CliRunner().invoke(app, ["stamp", "--all"])
     assert result.exit_code == 1
@@ -391,7 +401,10 @@ def test_cli_stamp_exits_1_without_write_scope(monkeypatch):
 
     from fitops.cli.activities import app
 
-    monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings(write_scope=False))
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_settings",
+        lambda: _fake_cli_settings(write_scope=False),
+    )
 
     result = CliRunner().invoke(app, ["stamp", "--all"])
     assert result.exit_code == 1
@@ -405,7 +418,9 @@ def test_cli_stamp_all_json_output_shape(monkeypatch):
     from fitops.cli.activities import app
     from fitops.strava.client import StravaClient
 
-    monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings())
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_settings", lambda: _fake_cli_settings()
+    )
     monkeypatch.setattr("fitops.cli.activities.init_db", lambda: None)
     monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
 
@@ -416,7 +431,10 @@ def test_cli_stamp_all_json_output_shape(monkeypatch):
     act2.strava_id = 5002
     act2.stamped_at = None
 
-    monkeypatch.setattr("fitops.cli.activities.get_async_session", lambda: _make_mock_session([act1, act2]))
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_async_session",
+        lambda: _make_mock_session([act1, act2]),
+    )
     monkeypatch.setattr("fitops.analytics.stamp.stamp_activity", AsyncMock())
 
     result = CliRunner().invoke(app, ["stamp", "--all", "--json"])
@@ -437,7 +455,9 @@ def test_cli_stamp_single_json_output_shape(monkeypatch):
     from fitops.cli.activities import app
     from fitops.strava.client import StravaClient
 
-    monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings())
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_settings", lambda: _fake_cli_settings()
+    )
     monkeypatch.setattr("fitops.cli.activities.init_db", lambda: None)
     monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
 
@@ -445,7 +465,9 @@ def test_cli_stamp_single_json_output_shape(monkeypatch):
     act.strava_id = 6001
     act.stamped_at = None
 
-    monkeypatch.setattr("fitops.cli.activities.get_async_session", lambda: _make_mock_session([act]))
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_async_session", lambda: _make_mock_session([act])
+    )
     monkeypatch.setattr("fitops.analytics.stamp.stamp_activity", AsyncMock())
 
     result = CliRunner().invoke(app, ["stamp", "--id", "6001", "--json"])
@@ -464,7 +486,9 @@ def test_cli_stamp_reports_failures_in_json(monkeypatch):
     from fitops.cli.activities import app
     from fitops.strava.client import StravaClient
 
-    monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings())
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_settings", lambda: _fake_cli_settings()
+    )
     monkeypatch.setattr("fitops.cli.activities.init_db", lambda: None)
     monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
 
@@ -472,7 +496,9 @@ def test_cli_stamp_reports_failures_in_json(monkeypatch):
     act.strava_id = 7001
     act.stamped_at = None
 
-    monkeypatch.setattr("fitops.cli.activities.get_async_session", lambda: _make_mock_session([act]))
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_async_session", lambda: _make_mock_session([act])
+    )
     monkeypatch.setattr(
         "fitops.analytics.stamp.stamp_activity",
         AsyncMock(side_effect=RuntimeError("network error")),

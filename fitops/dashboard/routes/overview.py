@@ -232,7 +232,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         )
         trend_signals = None
         if athlete_id and period == "week":
-            _tr = await get_trends_data(athlete_id, days=90, sport_types=sport_types or None)
+            _tr = await get_trends_data(
+                athlete_id, days=90, sport_types=sport_types or None
+            )
             if _tr:
                 trend_signals = {
                     "volume": (_tr.volume_trend or {}).get("direction"),

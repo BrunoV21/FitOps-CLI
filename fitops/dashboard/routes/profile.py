@@ -233,7 +233,10 @@ def _build_profile_context(
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/profile", response_class=HTMLResponse)
     async def profile(
-        request: Request, saved: str | None = None, error: str | None = None, scopes_updated: str | None = None
+        request: Request,
+        saved: str | None = None,
+        error: str | None = None,
+        scopes_updated: str | None = None,
     ):
         cfg = get_settings()
         athlete_id = cfg.athlete_id
@@ -241,7 +244,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         athlete = await get_athlete(athlete_id) if athlete_id else None
         equipment = await get_equipment_with_stats(athlete_id) if athlete_id else []
         vo2max_result = await estimate_vo2max(athlete_id) if athlete_id else None
-        current_load = await get_current_training_load(athlete_id) if athlete_id else None
+        current_load = (
+            await get_current_training_load(athlete_id) if athlete_id else None
+        )
 
         s = get_athlete_settings()
         s.reload()

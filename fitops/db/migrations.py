@@ -152,7 +152,9 @@ async def _migrate_race_session_event_columns(conn) -> None:
     for col_name, col_type in _RACE_SESSION_EVENT_NEW_COLUMNS:
         if col_name not in existing:
             await conn.execute(
-                text(f"ALTER TABLE race_session_events ADD COLUMN {col_name} {col_type}")
+                text(
+                    f"ALTER TABLE race_session_events ADD COLUMN {col_name} {col_type}"
+                )
             )
 
 
@@ -207,10 +209,7 @@ async def _has_migration_run(conn, key: str) -> bool:
 
 async def _mark_migration_run(conn, key: str) -> None:
     await conn.execute(
-        text(
-            "INSERT OR IGNORE INTO schema_version (key, value) "
-            "VALUES (:k, :v)"
-        ),
+        text("INSERT OR IGNORE INTO schema_version (key, value) VALUES (:k, :v)"),
         {"k": key, "v": "1"},
     )
 

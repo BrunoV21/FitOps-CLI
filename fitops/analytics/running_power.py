@@ -3,6 +3,7 @@
 Displayed running power is calibrated to Garmin/Stryd-like user-facing watt ranges
 rather than raw metabolic power. Calories remain based on the higher metabolic cost.
 """
+
 from __future__ import annotations
 
 DISPLAY_POWER_COST = 1.0  # J / (kg · m) — calibrated displayed running power proxy

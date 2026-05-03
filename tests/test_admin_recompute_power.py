@@ -23,14 +23,24 @@ def _make_candidate(name="Morning Run", avg_w=None):
     )
 
 
-def _patch_prereqs(monkeypatch, *, athlete_id="123", weight_kg=70.0, candidates=None, streams=None, persist_ok=True):
+def _patch_prereqs(
+    monkeypatch,
+    *,
+    athlete_id="123",
+    weight_kg=70.0,
+    candidates=None,
+    streams=None,
+    persist_ok=True,
+):
     monkeypatch.setattr("fitops.cli.admin.init_db", lambda: None)
 
     settings = SimpleNamespace(athlete_id=athlete_id)
     monkeypatch.setattr("fitops.cli.admin.get_settings", lambda: settings)
 
     athlete_settings = SimpleNamespace(weight_kg=weight_kg)
-    monkeypatch.setattr("fitops.cli.admin.get_athlete_settings", lambda: athlete_settings)
+    monkeypatch.setattr(
+        "fitops.cli.admin.get_athlete_settings", lambda: athlete_settings
+    )
 
     if candidates is None:
         candidates = [_make_candidate()]
@@ -75,7 +85,9 @@ def _patch_prereqs(monkeypatch, *, athlete_id="123", weight_kg=70.0, candidates=
         activity_row.est_power_avg_w = 280.0
         return persist_ok
 
-    monkeypatch.setattr("fitops.analytics.running_power.persist_power_for_activity", _persist)
+    monkeypatch.setattr(
+        "fitops.analytics.running_power.persist_power_for_activity", _persist
+    )
 
 
 def test_recompute_power_no_athlete(monkeypatch):

@@ -63,7 +63,9 @@ class WorkoutSegment(Base):
     avg_speed_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_cadence: Mapped[float | None] = mapped_column(Float, nullable=True)  # spm
     avg_gap_per_km: Mapped[float | None] = mapped_column(Float, nullable=True)
-    avg_true_pace_per_km: Mapped[float | None] = mapped_column(Float, nullable=True)  # s/km
+    avg_true_pace_per_km: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # s/km
 
     # Target bounds for hr_range / pace_range segments
     target_hr_min_bpm: Mapped[float | None] = mapped_column(Float, nullable=True)

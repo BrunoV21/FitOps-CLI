@@ -893,9 +893,13 @@ def plan_delete(
 
 @app.command("session-create")
 def session_create(
-    activity: int = typer.Option(..., "--activity", "-a", help="Primary Strava activity ID."),
+    activity: int = typer.Option(
+        ..., "--activity", "-a", help="Primary Strava activity ID."
+    ),
     name: str = typer.Option(..., "--name", "-n", help="Session name."),
-    course: int = typer.Option(None, "--course", "-c", help="Optional course ID to link."),
+    course: int = typer.Option(
+        None, "--course", "-c", help="Optional course ID to link."
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
 ) -> None:
     """Create a race session from a primary activity and run the full analysis pipeline."""
@@ -905,10 +909,14 @@ def session_create(
         # 1. Load primary athlete streams
         raw = await load_primary_streams(activity)
         if raw is None:
-            return {"error": f"No streams found for activity {activity}. Run: fitops sync streams"}
+            return {
+                "error": f"No streams found for activity {activity}. Run: fitops sync streams"
+            }
 
         # 2. Normalise primary athlete stream
-        primary_ns = normalize_stream(raw, athlete_label="You", is_primary=True, activity_id=activity)
+        primary_ns = normalize_stream(
+            raw, athlete_label="You", is_primary=True, activity_id=activity
+        )
         primary_metrics = compute_athlete_metrics(primary_ns)
         primary_stream_dict = normalized_stream_to_dict(primary_ns)
 
@@ -938,6 +946,7 @@ def session_create(
         # 6. Detect segments
         if course:
             from fitops.dashboard.queries.race import get_course as _get_course
+
             course_obj = await _get_course(course)
             km_segs = course_obj.get_km_segments() if course_obj else []
             if km_segs:
@@ -977,7 +986,9 @@ def session_create(
 def session_add_athlete(
     session_id: int = typer.Argument(..., help="Session ID."),
     label: str = typer.Option(..., "--label", "-l", help="Athlete display label."),
-    activity: int = typer.Option(None, "--activity", "-a", help="Strava activity ID (public)."),
+    activity: int = typer.Option(
+        None, "--activity", "-a", help="Strava activity ID (public)."
+    ),
     gpx: str = typer.Option(None, "--gpx", "-g", help="Path to GPX file."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
 ) -> None:
@@ -992,17 +1003,22 @@ def session_add_athlete(
         if activity:
             raw = await fetch_strava_comparison_streams(activity)
             if raw is None:
-                return {"error": f"Could not fetch streams for Strava activity {activity}."}
+                return {
+                    "error": f"Could not fetch streams for Strava activity {activity}."
+                }
             act_id = activity
         else:
             import pathlib
+
             gpx_path = pathlib.Path(gpx)
             if not gpx_path.exists():
                 return {"error": f"GPX file not found: {gpx}"}
             raw = parse_gpx_streams(gpx_path.read_text())
             act_id = None
 
-        ns = normalize_stream(raw, athlete_label=label, is_primary=False, activity_id=act_id)
+        ns = normalize_stream(
+            raw, athlete_label=label, is_primary=False, activity_id=act_id
+        )
         metrics = compute_athlete_metrics(ns)
         stream_dict = normalized_stream_to_dict(ns)
         await add_session_athlete(
@@ -1019,6 +1035,7 @@ def session_add_athlete(
         """Phase 2: recompute gap/segment/event data. Best-effort; never raises."""
         all_athletes_db = await get_session_athletes(session_id)
         from fitops.analytics.race_analysis import normalized_stream_from_dict
+
         all_ns = [normalized_stream_from_dict(a.get_stream()) for a in all_athletes_db]
 
         gap_series = compute_gap_series(all_ns)
@@ -1031,6 +1048,7 @@ def session_add_athlete(
             segs = detect_segments_from_altitude(primary_ns)
         else:
             from fitops.analytics.race_analysis import DetectedSegment
+
             segs = [
                 DetectedSegment(
                     label=s["segment_label"],
