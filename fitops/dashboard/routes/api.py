@@ -178,6 +178,12 @@ def register() -> APIRouter:
                 )
                 new_strava_ids = [r[0] for r in newest.all()]
             weather_result = await _fetch_weather_for_new_activities(new_strava_ids)
+            try:
+                from fitops.analytics.stamp import auto_stamp_new_activities
+
+                await auto_stamp_new_activities(new_strava_ids)
+            except Exception:
+                pass
 
         # Always sweep for unlinked plans — catches plans created after their
         # matching activity was already synced.
