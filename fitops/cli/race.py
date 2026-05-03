@@ -6,6 +6,21 @@ import json
 
 import typer
 
+from fitops.analytics.race_analysis import (
+    compute_athlete_metrics,
+    compute_delta_series,
+    compute_gap_series,
+    compute_segment_athlete_metrics,
+    detect_events,
+    detect_segments_from_altitude,
+    detect_segments_from_km_segments,
+    fetch_strava_comparison_streams,
+    load_primary_streams,
+    normalize_stream,
+    normalized_stream_to_dict,
+    parse_gpx_streams,
+    summarize_race_events,
+)
 from fitops.dashboard.queries.race import (
     delete_course as _delete_course,
 )
@@ -19,6 +34,20 @@ from fitops.dashboard.queries.race import (
     get_race_plan,
     save_course,
     save_race_plan,
+)
+from fitops.dashboard.queries.race_session import (
+    add_session_athlete,
+    create_race_session,
+    delete_race_session,
+    get_all_race_sessions,
+    get_events,
+    get_gap_series,
+    get_segments,
+    get_session_athletes,
+    get_session_detail,
+    save_events,
+    save_gap_series,
+    save_segments,
 )
 from fitops.db.migrations import init_db
 from fitops.db.session import get_async_session
@@ -35,35 +64,6 @@ from fitops.output.text_formatter import (
     print_race_session_segments,
     print_race_sessions_list,
     print_race_simulate,
-)
-from fitops.analytics.race_analysis import (
-    compute_athlete_metrics,
-    compute_delta_series,
-    compute_gap_series,
-    compute_segment_athlete_metrics,
-    detect_events,
-    detect_segments_from_altitude,
-    detect_segments_from_km_segments,
-    fetch_strava_comparison_streams,
-    load_primary_streams,
-    normalize_stream,
-    normalized_stream_to_dict,
-    parse_gpx_streams,
-    summarize_race_events,
-)
-from fitops.dashboard.queries.race_session import (
-    add_session_athlete,
-    create_race_session,
-    delete_race_session,
-    get_all_race_sessions,
-    get_events,
-    get_gap_series,
-    get_segments,
-    get_session_athletes,
-    get_session_detail,
-    save_events,
-    save_gap_series,
-    save_segments,
 )
 from fitops.race.course_parser import (
     _parse_time,

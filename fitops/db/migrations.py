@@ -17,8 +17,6 @@ from fitops.db.models.athlete import Athlete  # noqa: F401
 from fitops.db.models.note import Note  # noqa: F401
 from fitops.db.models.race_course import RaceCourse  # noqa: F401
 from fitops.db.models.race_plan import RacePlan  # noqa: F401
-from fitops.db.models.workout import Workout  # noqa: F401
-from fitops.db.models.workout_activity_link import WorkoutActivityLink  # noqa: F401
 from fitops.db.models.race_session import (  # noqa: F401
     RaceSession,
     RaceSessionAthlete,
@@ -26,6 +24,8 @@ from fitops.db.models.race_session import (  # noqa: F401
     RaceSessionGap,
     RaceSessionSegment,
 )
+from fitops.db.models.workout import Workout  # noqa: F401
+from fitops.db.models.workout_activity_link import WorkoutActivityLink  # noqa: F401
 from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401
 from fitops.db.models.workout_segment import WorkoutSegment  # noqa: F401
 from fitops.db.session import get_engine

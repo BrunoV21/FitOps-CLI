@@ -9,34 +9,6 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from fitops.analytics.weather_pace import headwind_ms
-from fitops.dashboard.queries.race import (
-    delete_course,
-    delete_race_plan,
-    get_all_courses,
-    get_all_race_plans,
-    get_course,
-    get_plans_for_course,
-    get_race_plan,
-    save_course,
-    save_race_plan,
-    update_race_plan,
-)
-from fitops.dashboard.queries.race_session import (
-    add_session_athlete,
-    create_race_session,
-    delete_race_session,
-    get_all_race_sessions,
-    get_session_athletes,
-    get_session_detail,
-    get_gap_series,
-    get_events,
-    get_segments,
-    save_events,
-    save_gap_series,
-    save_replay_frames,
-    save_segments,
-)
 from fitops.analytics.race_analysis import (
     _build_course_polyline,
     _map_stream_to_course_progress,
@@ -57,8 +29,32 @@ from fitops.analytics.race_analysis import (
     parse_gpx_streams,
     summarize_race_events,
 )
-
-REPLAY_TIME_STEP_S = 5.0
+from fitops.analytics.weather_pace import headwind_ms
+from fitops.dashboard.queries.race import (
+    delete_course,
+    delete_race_plan,
+    get_all_courses,
+    get_all_race_plans,
+    get_course,
+    get_plans_for_course,
+    get_race_plan,
+    save_course,
+    save_race_plan,
+    update_race_plan,
+)
+from fitops.dashboard.queries.race_session import (
+    add_session_athlete,
+    create_race_session,
+    delete_race_session,
+    get_all_race_sessions,
+    get_segments,
+    get_session_athletes,
+    get_session_detail,
+    save_events,
+    save_gap_series,
+    save_replay_frames,
+    save_segments,
+)
 from fitops.race.course_parser import (
     build_km_segments,
     compute_total_elevation_gain,
@@ -68,6 +64,8 @@ from fitops.race.course_parser import (
     parse_tcx,
 )
 from fitops.race.simulation import simulate_pacer_mode, simulate_splits
+
+REPLAY_TIME_STEP_S = 5.0
 
 router = APIRouter()
 

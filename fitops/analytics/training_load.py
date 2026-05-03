@@ -186,7 +186,7 @@ async def persist_training_load_snapshot(athlete_id: int) -> None:
     read a single pre-computed row instead of re-running the full 84-day
     EWMA warmup on every request.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlalchemy import text
 
@@ -198,7 +198,7 @@ async def persist_training_load_snapshot(athlete_id: int) -> None:
 
     c = result.current
     today = c.date.isoformat()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     async with get_async_session() as session:
         # sport_type IS NULL makes standard ON CONFLICT unreliable in SQLite;

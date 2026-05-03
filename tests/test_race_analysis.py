@@ -9,16 +9,14 @@ Covers:
 """
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from fitops.analytics.race_analysis import (
-    NormalizedStream,
-    RaceEvent,
-    DetectedSegment,
     REPLAY_FRAME_SCHEMA_V,
+    DetectedSegment,
+    NormalizedStream,
     _clean_elapsed_spikes,
     build_common_grid,
     compute_delta_series,
@@ -33,7 +31,6 @@ from fitops.analytics.race_analysis import (
     normalized_stream_from_dict,
     normalized_stream_to_dict,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers — fabricate minimal raw streams
@@ -271,7 +268,7 @@ def test_gap_series_distance_km_field():
     a = _make_normalized("A", total_dist_m=500.0, total_time_s=150.0)
     b = _make_normalized("B", total_dist_m=500.0, total_time_s=180.0)
     gaps = compute_gap_series([a, b])
-    for label, series in gaps.items():
+    for _label, series in gaps.items():
         for point in series:
             assert "distance_km" in point
             assert point["distance_km"] >= 0.0
@@ -311,7 +308,7 @@ def test_delta_series_fields():
     b = _make_normalized("B", total_dist_m=500.0, total_time_s=200.0)
     gaps = compute_gap_series([a, b])
     deltas = compute_delta_series(gaps)
-    for label, series in deltas.items():
+    for _label, series in deltas.items():
         for point in series:
             assert "distance_km" in point
             assert "delta_s_per_km" in point

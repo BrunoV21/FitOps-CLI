@@ -60,12 +60,15 @@ def _sep(label: str = "") -> str:
 
 
 def compose_stamp(
-    activity: "Activity",
+    activity: Activity,
     workout_data: dict | None = None,
     performance_insights: list[dict] | None = None,
     weather: dict | None = None,
 ) -> str:
-    from fitops.analytics.training_scores import aerobic_short_label, anaerobic_short_label
+    from fitops.analytics.training_scores import (
+        aerobic_short_label,
+        anaerobic_short_label,
+    )
 
     lines: list[str] = []
 
@@ -279,9 +282,9 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
 
 
 async def stamp_activity(
-    strava_client: "StravaClient",
-    session: "AsyncSession",
-    activity: "Activity",
+    strava_client: StravaClient,
+    session: AsyncSession,
+    activity: Activity,
     *,
     workout_data: dict | None = None,
     performance_insights: list[dict] | None = None,

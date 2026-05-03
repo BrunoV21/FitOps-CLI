@@ -5,7 +5,7 @@ import asyncio
 import typer
 
 from fitops.config.settings import get_settings
-from fitops.strava.oauth import DEFAULT_SCOPES, StravaOAuth, validate_strava_token
+from fitops.strava.oauth import StravaOAuth, validate_strava_token
 from fitops.utils.cache import clear_all_caches
 from fitops.utils.exceptions import FitOpsError
 

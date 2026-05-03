@@ -1051,13 +1051,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.post("/api/activities/{strava_id}/stamp")
     async def stamp_activity_api(request: Request, strava_id: int):
         from fastapi.responses import JSONResponse
+        from sqlalchemy import select
 
         from fitops.analytics.stamp import stamp_activity
         from fitops.config.settings import get_settings as _get_settings
         from fitops.db.models.activity import Activity as _Activity
         from fitops.db.session import get_async_session
         from fitops.strava.client import StravaClient
-        from sqlalchemy import select
 
         cfg = _get_settings()
         if not cfg.is_authenticated:
@@ -1066,7 +1066,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"error": "activity:write scope required — run: fitops auth login --force"}, status_code=403)
 
         body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
-        force = body.get("force", False) if isinstance(body, dict) else False
+        body.get("force", False) if isinstance(body, dict) else False
 
         client = StravaClient()
         async with get_async_session() as session:
@@ -1086,13 +1086,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.post("/api/activities/stamp-all")
     async def stamp_all_activities_api(request: Request):
         from fastapi.responses import JSONResponse
+        from sqlalchemy import select
 
         from fitops.analytics.stamp import stamp_activity
         from fitops.config.settings import get_settings as _get_settings
         from fitops.db.models.activity import Activity as _Activity
         from fitops.db.session import get_async_session
         from fitops.strava.client import StravaClient
-        from sqlalchemy import select
 
         cfg = _get_settings()
         if not cfg.is_authenticated:

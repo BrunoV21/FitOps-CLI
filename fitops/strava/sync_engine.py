@@ -6,7 +6,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from fitops.analytics.athlete_settings import AthleteSettings
-from fitops.analytics.training_scores import compute_aerobic_score, compute_anaerobic_score
+from fitops.analytics.training_scores import (
+    compute_aerobic_score,
+    compute_anaerobic_score,
+)
 from fitops.config.settings import get_settings
 from fitops.config.state import get_sync_state
 from fitops.db.models.activity import Activity

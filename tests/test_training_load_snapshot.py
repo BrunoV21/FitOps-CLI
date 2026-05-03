@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fitops.db.migrations  # noqa: F401 — registers all models on Base.metadata
 from fitops.db.base import Base
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

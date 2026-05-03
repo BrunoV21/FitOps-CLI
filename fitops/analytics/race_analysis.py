@@ -12,7 +12,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
@@ -146,10 +145,10 @@ def _interp_array(
 ) -> list[float | None]:
     """Interpolate values array onto grid using dist_raw as x axis."""
     # Filter out None values
-    pairs = [(d, v) for d, v in zip(dist_raw, values) if v is not None]
+    pairs = [(d, v) for d, v in zip(dist_raw, values, strict=False) if v is not None]
     if not pairs:
         return [None] * len(grid)
-    xs, ys = zip(*pairs)
+    xs, ys = zip(*pairs, strict=False)
     xs, ys = list(xs), list(ys)
     return [_interp(xs, ys, g) for g in grid]
 
@@ -186,7 +185,7 @@ def _interp_latlng(
     interp_lons = _interp_array(dist_raw, lons, grid)
     return [
         (lat, lon) if lat is not None and lon is not None else None
-        for lat, lon in zip(interp_lats, interp_lons)
+        for lat, lon in zip(interp_lats, interp_lons, strict=False)
     ]
 
 
@@ -1221,7 +1220,7 @@ def compute_segment_athlete_metrics(
             continue
 
         best_time = min(athlete_times.values())
-        sorted_labels = sorted(athlete_times.keys(), key=lambda l: athlete_times[l])
+        sorted_labels = sorted(athlete_times.keys(), key=lambda lbl: athlete_times[lbl])
 
         seg_metrics: dict[str, dict] = {}
         for rank_0, label in enumerate(sorted_labels):
@@ -1586,7 +1585,7 @@ def _detect_final_sprint(
     # Average velocity in last 400m
     sprint_vels = [
         v
-        for d, v in zip(grid, vel)
+        for d, v in zip(grid, vel, strict=False)
         if d >= sprint_start_m and v is not None and v > 0
     ]
     if not sprint_vels:
@@ -1765,7 +1764,7 @@ def _detect_passes(
     segments: list[DetectedSegment] | None,
 ) -> None:
     last_pass_km = -1.0
-    for prev, curr in zip(series, series[1:]):
+    for prev, curr in zip(series, series[1:], strict=False):
         pos_before = prev.get("position")
         pos_after = curr.get("position")
         if pos_before is None or pos_after is None or pos_after >= pos_before:
@@ -1806,7 +1805,7 @@ def _detect_catches(
     total_km: float,
     segments: list[DetectedSegment] | None,
 ) -> None:
-    for prev, curr in zip(series, series[1:]):
+    for prev, curr in zip(series, series[1:], strict=False):
         prev_gap = prev.get("gap_to_next_ahead_s")
         curr_gap = curr.get("gap_to_next_ahead_s")
         rival = curr.get("rival_ahead_label") or prev.get("rival_ahead_label")
@@ -1847,7 +1846,7 @@ def _detect_breakaways(
     segments: list[DetectedSegment] | None,
 ) -> None:
     last_breakaway_km = -1.0
-    for prev, curr in zip(series, series[1:]):
+    for prev, curr in zip(series, series[1:], strict=False):
         gap_before = prev.get("gap_to_next_behind_s")
         gap_after = curr.get("gap_to_next_behind_s")
         rival = prev.get("rival_behind_label") or curr.get("rival_behind_label")
@@ -2084,10 +2083,6 @@ def parse_gpx_streams(gpx_content: str) -> dict[str, list]:
 
     Returns a dict compatible with normalize_stream().
     """
-    ns_map = {
-        "gpx": "http://www.topografix.com/GPX/1/1",
-        "gpx10": "http://www.topografix.com/GPX/1/0",
-    }
 
     root = ET.fromstring(gpx_content)
     ns = "http://www.topografix.com/GPX/1/1"

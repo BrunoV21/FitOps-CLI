@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
@@ -13,7 +12,6 @@ from fitops.db.models.race_session import (
     RaceSessionSegment,
 )
 from fitops.db.session import get_async_session
-
 
 # ---------------------------------------------------------------------------
 # Race Session CRUD

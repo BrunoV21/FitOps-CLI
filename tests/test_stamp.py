@@ -1,13 +1,11 @@
 """Tests for Strava activity stamping — fitops/analytics/stamp.py and stamp API routes."""
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from fitops.analytics.stamp import STAMP_SENTINEL, apply_stamp, compose_stamp
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -379,6 +377,7 @@ def _make_mock_session(activities: list):
 
 def test_cli_stamp_exits_1_when_not_authenticated(monkeypatch):
     from typer.testing import CliRunner
+
     from fitops.cli.activities import app
 
     monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings(authenticated=False))
@@ -389,6 +388,7 @@ def test_cli_stamp_exits_1_when_not_authenticated(monkeypatch):
 
 def test_cli_stamp_exits_1_without_write_scope(monkeypatch):
     from typer.testing import CliRunner
+
     from fitops.cli.activities import app
 
     monkeypatch.setattr("fitops.cli.activities.get_settings", lambda: _fake_cli_settings(write_scope=False))
@@ -399,7 +399,9 @@ def test_cli_stamp_exits_1_without_write_scope(monkeypatch):
 
 def test_cli_stamp_all_json_output_shape(monkeypatch):
     import json
+
     from typer.testing import CliRunner
+
     from fitops.cli.activities import app
     from fitops.strava.client import StravaClient
 
@@ -429,7 +431,9 @@ def test_cli_stamp_all_json_output_shape(monkeypatch):
 
 def test_cli_stamp_single_json_output_shape(monkeypatch):
     import json
+
     from typer.testing import CliRunner
+
     from fitops.cli.activities import app
     from fitops.strava.client import StravaClient
 
@@ -454,7 +458,9 @@ def test_cli_stamp_single_json_output_shape(monkeypatch):
 
 def test_cli_stamp_reports_failures_in_json(monkeypatch):
     import json
+
     from typer.testing import CliRunner
+
     from fitops.cli.activities import app
     from fitops.strava.client import StravaClient
 
