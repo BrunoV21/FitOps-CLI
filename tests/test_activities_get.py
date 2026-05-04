@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # format_activity_row — new fields (elapsed_time, description, device_name)
 # ---------------------------------------------------------------------------
@@ -221,6 +223,41 @@ def test_km_splits_true_pace_none_when_not_provided():
     assert splits is not None
     for split in splits:
         assert split["avg_true_pace"] is None
+
+
+def test_km_splits_include_distance_and_split_time():
+    from fitops.analytics.activity_splits import compute_km_splits
+
+    streams = {
+        "distance": [i * 10.0 for i in range(201)],
+        "time": [i * 3.0 for i in range(201)],
+        "velocity_smooth": [3.333] * 201,
+    }
+    splits = compute_km_splits(streams, "Run")
+    assert splits is not None
+    assert splits[0]["distance_m"] == pytest.approx(1000.0, abs=5.0)
+    assert splits[0]["split_time_s"] == pytest.approx(300.0, abs=5.0)
+    assert splits[0]["split_time_fmt"] == "5:00"
+
+
+def test_km_splits_apply_distance_and_time_scaling():
+    from fitops.analytics.activity_splits import compute_km_splits
+
+    streams = {
+        "distance": [i * 10.0 for i in range(201)],
+        "time": [i * 3.0 for i in range(201)],
+        "velocity_smooth": [3.333] * 201,
+    }
+    splits = compute_km_splits(
+        streams,
+        "Run",
+        distance_scale=1.02,
+        time_scale=0.98,
+    )
+    assert splits is not None
+    assert splits[0]["distance_m"] > 1000.0
+    assert splits[0]["split_time_s"] < 300.0
+    assert splits[0]["pace_s"] < 300.0
 
 
 def test_km_splits_elev_loss_populated_when_altitude_descends():

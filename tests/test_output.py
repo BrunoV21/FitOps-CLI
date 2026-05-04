@@ -49,11 +49,14 @@ def test_format_activity_row_run():
         "suffer_score": 42,
         "calories": 600,
         "training_stress_score": None,
+        "chip_time_s": 3590,
+        "race_distance_m": 10000.0,
         "gear_id": "s1",
         "trainer": False,
         "commute": False,
         "manual": False,
         "private": False,
+        "workout_type": 1,
         "kudos_count": 5,
         "comment_count": 1,
         "start_latlng": "[51.5, -0.1]",
@@ -70,6 +73,8 @@ def test_format_activity_row_run():
     assert out["pace"] is not None
     assert out["power"] is None
     assert out["equipment"]["gear_name"] == "Nike Pegasus"
+    assert out["race_result"]["chip_time_formatted"] == "59:50"
+    assert out["race_result"]["race_distance_km"] == 10.0
     assert out["data_availability"]["has_gps"] is True
     assert out["data_availability"]["has_heart_rate"] is True
 
