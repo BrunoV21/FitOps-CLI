@@ -40,6 +40,13 @@ Click any activity row to open its detail page (`/activities/{id}`). The detail 
 - Heart rate (average + max)
 - Calories and gear
 
+**Official Race Result panel** (running race activities only):
+- Recorded GPS distance and recorded race time
+- Official race distance and chip time fields you can edit locally
+- Corrected average pace plus the calibration factors used to rescale the splits
+
+When you save an official race result, the activity detail page switches its split table to the corrected version. This is useful for road races where the watch recorded `9.82 km` but the official course was `10.00 km`.
+
 **Insights panel** (when streams are available):
 - **HR Drift** — cardiac decoupling percentage. < 5% means your aerobic system held steady; > 10% means you were pushing near your ceiling.
 - **Aerobic training score** — estimated aerobic stimulus for the session

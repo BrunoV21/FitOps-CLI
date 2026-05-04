@@ -44,6 +44,8 @@ If the plan has a linked activity:
 - **Split comparison chart**: dual-bar per km — simulated pace (blue) vs actual pace, coloured green (faster) or red (slower) relative to plan
 - **Split comparison table**: km | Sim Pace | Actual | Δ | HR | Cadence
 
+If the linked activity has an official **chip time** or **race distance** saved on the activity detail page, the comparison uses those corrected splits instead of the raw GPS splits.
+
 ---
 
 ## Activity Auto-Matching

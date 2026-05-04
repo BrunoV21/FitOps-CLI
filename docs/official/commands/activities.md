@@ -4,6 +4,8 @@ Browse and query synced activities.
 
 Output is a formatted table by default. Add `--json` to any command for raw JSON output (useful for scripting or AI agents).
 
+For running race activities, FitOps can store an official **chip time** and **race distance** when the watch GPS distance is wrong. Those overrides are local to FitOps; the original Strava values remain unchanged.
+
 ## Commands
 
 ### `fitops activities list`
@@ -185,6 +187,7 @@ When `--json` is used, the output is a single activity object enriched with all 
 | `weather` | object\|null | Weather conditions + pace adjustments (requires weather fetch) — see **weather** below |
 | `performance_insights` | array\|null | Detected new records or metric changes (requires streams) — see **performance_insights** below |
 | `workout` | object\|null | Linked workout plan + compliance (if workout was linked) — see **workout** below |
+| `race_result` | object\|null | Official race result override state for running race activities — see **race_result** below |
 
 #### Insights block
 
@@ -244,6 +247,30 @@ Per-km breakdown (runs only, requires streams):
 ```
 
 The last split is marked `"partial": true` when the final km is incomplete. `avg_true_pace` is `null` when no `true_pace` stream data is available (e.g., no weather data). `elev_loss` is the total descent in metres for the km segment.
+
+When a race activity has an official chip time or race distance override, `km_splits` are recomputed from the corrected race result rather than the raw GPS distance.
+
+#### race_result
+
+```json
+"race_result": {
+  "override_active": true,
+  "recorded_distance_km": 9.82,
+  "race_distance_km": 10.0,
+  "recorded_time_formatted": "41:00",
+  "chip_time_formatted": "40:30",
+  "corrected_avg_pace_formatted": "4:03/km",
+  "distance_correction_factor": 1.01833,
+  "time_correction_factor": 0.987805
+}
+```
+
+Use these commands to manage the override:
+
+```bash
+fitops activities set-race-result 17985851162 --chip-time 40:30 --race-distance-km 10
+fitops activities clear-race-result 17985851162
+```
 
 #### laps
 
