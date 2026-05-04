@@ -65,6 +65,8 @@ def compose_stamp(
     workout_data: dict | None = None,
     performance_insights: list[dict] | None = None,
     weather: dict | None = None,
+    race_result: dict | None = None,
+    corrected_splits: list[dict] | None = None,
 ) -> str:
     from fitops.analytics.training_scores import (
         aerobic_short_label,
@@ -72,6 +74,27 @@ def compose_stamp(
     )
 
     lines: list[str] = []
+
+    # ── Race calibration (top — shown first when override active) ─────────
+    if race_result and race_result.get("override_active"):
+        dist_km = race_result.get("race_distance_km") or race_result.get(
+            "corrected_distance_km"
+        )
+        time_fmt = race_result.get("chip_time_formatted") or race_result.get(
+            "corrected_time_formatted"
+        )
+        pace_fmt = race_result.get("corrected_avg_pace_formatted")
+        summary_parts: list[str] = []
+        if dist_km:
+            summary_parts.append(f"{dist_km} km")
+        if time_fmt:
+            summary_parts.append(time_fmt)
+        race_line = f"🏁 Race  {'  /  '.join(summary_parts)}"
+        if pace_fmt:
+            race_line += f"  →  {pace_fmt}"
+        if summary_parts or pace_fmt:
+            lines.append(race_line)
+        lines.append("")
 
     # ── Scores (compact single line) ─────────────────────
     score_parts: list[str] = []
@@ -206,6 +229,25 @@ def compose_stamp(
                 row2.append(f"Cad {cad:.0f} spm")
             if row2:
                 lines.append(" · ".join(row2))
+
+    # ── Corrected race splits ────────────────────────────
+    if corrected_splits:
+        lines.append("")
+        lines.append("🏁 Calibrated Splits")
+        for split in corrected_splits:
+            km_num = split.get("km")
+            label = "Last" if split.get("partial") else f"km {km_num}"
+            row1: list[str] = []
+            pace = split.get("pace")
+            if pace:
+                row1.append(f"{pace}/km")
+            hr = split.get("avg_hr")
+            if hr:
+                row1.append(f"HR {int(hr)}")
+            cad = split.get("avg_cad")
+            if cad:
+                row1.append(f"Cad {int(cad)}")
+            lines.append(f"{label}  {'  ·  '.join(row1)}" if row1 else label)
 
     # ── Performance records ──────────────────────────────
     highlight_insights = [
@@ -437,7 +479,55 @@ async def stamp_activity(
         except Exception:
             pass
 
-    new_stamp = compose_stamp(activity, workout_data, performance_insights, weather)
+    # Compute race calibration and corrected splits for race activities
+    race_result: dict | None = None
+    corrected_splits: list[dict] | None = None
+    try:
+        from fitops.analytics.race_results import (
+            compute_corrected_race_splits,
+            is_supported_race_activity,
+            summarize_race_result,
+        )
+
+        if is_supported_race_activity(activity) and (
+            getattr(activity, "race_distance_m", None)
+            or getattr(activity, "chip_time_s", None)
+        ):
+            split_stream_types = [
+                "distance",
+                "time",
+                "velocity_smooth",
+                "heartrate",
+                "cadence",
+                "altitude",
+            ]
+            race_streams_result = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == activity.id,
+                    ActivityStream.stream_type.in_(split_stream_types),
+                )
+            )
+            race_streams: dict[str, list] = {}
+            for row in race_streams_result.scalars().all():
+                race_streams[row.stream_type] = row.data
+
+            if race_streams:
+                race_result = summarize_race_result(activity, race_streams)
+                if race_result and race_result.get("override_active"):
+                    corrected_splits = compute_corrected_race_splits(
+                        activity, race_streams
+                    )
+    except Exception:
+        pass
+
+    new_stamp = compose_stamp(
+        activity,
+        workout_data,
+        performance_insights,
+        weather,
+        race_result,
+        corrected_splits,
+    )
     new_desc = apply_stamp(base_desc, new_stamp)
 
     await strava_client.update_activity(activity.strava_id, new_desc)

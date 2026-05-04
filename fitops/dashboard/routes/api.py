@@ -23,6 +23,9 @@ from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
 
 router = APIRouter()
 
+# Prevents concurrent backup restores triggered by the /api/internal/sync endpoint
+_restore_lock = asyncio.Lock()
+
 
 async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
     """Fetch and cache streams for activities missing them (or all if force=True).
@@ -518,5 +521,50 @@ def register() -> APIRouter:
         state = get_sync_state()
         last = state.last_sync_at
         return JSONResponse({"stamp": last.isoformat() if last else None})
+
+    # ------------------------------------------------------------------
+    # Health check — always exempt from auth, used by HF keepalive ping
+    # ------------------------------------------------------------------
+
+    @router.get("/health")
+    async def health():
+        return JSONResponse({"status": "ok", "ts": datetime.now(UTC).isoformat()})
+
+    # ------------------------------------------------------------------
+    # Internal sync — triggered by GitHub Actions after a backup push.
+    # Protected by a shared secret token, NOT by the session cookie.
+    # ------------------------------------------------------------------
+
+    @router.post("/api/internal/sync")
+    async def internal_sync(request: Request):
+        import os
+        import subprocess
+
+        expected = os.environ.get("FITOPS_SYNC_TOKEN", "")
+        if not expected:
+            return JSONResponse({"error": "sync not configured"}, status_code=501)
+
+        provided = request.headers.get("X-Sync-Token", "")
+        # Constant-time comparison to avoid timing attacks
+        import hmac
+
+        if not hmac.compare_digest(provided, expected):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+
+        if _restore_lock.locked():
+            return JSONResponse(
+                {"status": "restore already in progress"}, status_code=202
+            )
+
+        async def _do_restore():
+            async with _restore_lock:
+                subprocess.run(
+                    ["fitops", "backup", "restore", "--from", "github", "--yes"],
+                    check=False,
+                    capture_output=True,
+                )
+
+        asyncio.create_task(_do_restore())
+        return JSONResponse({"status": "restore queued"}, status_code=202)
 
     return router

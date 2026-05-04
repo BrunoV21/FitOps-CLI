@@ -39,6 +39,14 @@ Outdoor run  Run  |  2026-04-04
   Training   Aerobic 3.5  |  Anaerobic 1.4
 ```
 
+Running race activities with an official override also show:
+
+```text
+  Chip Time  40:30
+  Race Dist  10.0 km
+  Race Corr  distance x1.01833  |  time x0.987805  |  corrected pace 4:03/km
+```
+
 ---
 
 ## `fitops activities streams <ID>`

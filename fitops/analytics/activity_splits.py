@@ -4,7 +4,11 @@ RUN_SPORT_TYPES = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
 
 
 def compute_km_splits(
-    streams: dict, sport_type: str, true_pace: list[float] | None = None
+    streams: dict,
+    sport_type: str,
+    true_pace: list[float] | None = None,
+    distance_scale: float = 1.0,
+    time_scale: float = 1.0,
 ) -> list[dict] | None:
     """Compute per-km splits from distance/velocity/heartrate/cadence/altitude streams.
 
@@ -15,25 +19,54 @@ def compute_km_splits(
     if sport_type not in RUN_SPORT_TYPES:
         return None
 
-    dist = streams.get("distance", [])
+    raw_dist = streams.get("distance", [])
+    dist = [d * distance_scale for d in raw_dist]
+    time_stream = streams.get("time", [])
     vel = streams.get("velocity_smooth", [])
     hr = streams.get("heartrate", [])
     cad = streams.get("cadence", [])
     alt = streams.get("altitude", [])
-    tp = true_pace or []
+    pace_scale = time_scale / distance_scale if distance_scale > 0 else time_scale
+    tp = [(v * pace_scale if v and v > 0 else None) for v in (true_pace or [])]
 
     if len(dist) < 10 or len(vel) < 10 or (dist[-1] if dist else 0) < 1000:
         return None
 
     is_run = sport_type in {"Run", "TrailRun", "VirtualRun"}
 
-    def _seg_stats(start: int, end: int) -> dict:
+    def _fmt_split_time(split_time_s: float | None) -> str | None:
+        if split_time_s is None:
+            return None
+        total = max(0, int(round(split_time_s)))
+        h, rem = divmod(total, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+    def _seg_stats(start: int, end: int, segment_distance_m: float) -> dict:
         seg_vel = vel[start : end + 1]
         valid_vels = [v for v in seg_vel if v and v > 0.1]
         if not valid_vels:
             return {}
-        avg_vel = sum(valid_vels) / len(valid_vels)
-        pace_s = round(1000.0 / avg_vel, 1)
+
+        split_time_s = None
+        if time_stream and len(time_stream) > end:
+            split_time_s = max(
+                0.0, (float(time_stream[end]) - float(time_stream[start])) * time_scale
+            )
+
+        if split_time_s is None:
+            avg_vel = sum(valid_vels) / len(valid_vels)
+            corrected_avg_vel = avg_vel * distance_scale / time_scale
+            split_time_s = (
+                segment_distance_m / corrected_avg_vel
+                if corrected_avg_vel > 0
+                else None
+            )
+
+        if split_time_s is None or segment_distance_m <= 0:
+            return {}
+
+        pace_s = round(split_time_s / (segment_distance_m / 1000.0), 1)
         m, s_rem = divmod(int(pace_s), 60)
 
         avg_hr_val = None
@@ -73,6 +106,9 @@ def compute_km_splits(
                 avg_true_pace = f"{tp_m}:{tp_s:02d}/km"
 
         return {
+            "distance_m": round(segment_distance_m, 1),
+            "split_time_s": round(split_time_s, 1),
+            "split_time_fmt": _fmt_split_time(split_time_s),
             "pace": f"{m}:{s_rem:02d}",
             "pace_s": pace_s,
             "avg_hr": avg_hr_val,
@@ -90,7 +126,8 @@ def compute_km_splits(
         if dist[i] < km_target:
             continue
 
-        stats = _seg_stats(seg_start, i)
+        segment_distance_m = dist[i] - dist[seg_start]
+        stats = _seg_stats(seg_start, i, segment_distance_m)
         if not stats:
             km_target += 1000.0
             continue
@@ -112,7 +149,7 @@ def compute_km_splits(
     # Partial last km
     if seg_start < len(dist) - 1 and (dist[-1] - dist[seg_start]) >= 100:
         remaining = dist[-1] - dist[seg_start]
-        stats = _seg_stats(seg_start, len(dist) - 1)
+        stats = _seg_stats(seg_start, len(dist) - 1, remaining)
         if stats:
             splits.append(
                 {

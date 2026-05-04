@@ -88,7 +88,9 @@ def client():
     from starlette.testclient import TestClient
 
     from fitops.dashboard.server import create_app
+    from fitops.db import migrations
 
+    migrations.create_all_tables = AsyncMock(return_value=None)
     with TestClient(create_app()) as c:
         yield c
 
@@ -117,6 +119,10 @@ def test_activity_detail_with_power(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.dashboard.routes.activities.get_activity_streams",
         AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_calibration",
+        AsyncMock(return_value=None),
     )
     monkeypatch.setattr(
         "fitops.dashboard.routes.activities.get_weather_for_activities",
@@ -177,8 +183,16 @@ def test_activity_detail_no_power(client, monkeypatch):
         AsyncMock(return_value={}),
     )
     monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_calibration",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
         "fitops.dashboard.routes.activities.get_weather_for_activities",
         AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_calibration",
+        AsyncMock(return_value=None),
     )
     monkeypatch.setattr(
         "fitops.dashboard.routes.activities.get_athlete_settings",

@@ -29,6 +29,9 @@ from fitops.analytics.race_analysis import (
     parse_gpx_streams,
     summarize_race_events,
 )
+from fitops.analytics.race_results import (
+    summarize_race_result,
+)
 from fitops.analytics.weather_pace import headwind_ms
 from fitops.dashboard.queries.race import (
     delete_course,
@@ -1420,6 +1423,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         actual_splits = None
         actual_avg_pace_fmt = None
         actual_finish_fmt = None
+        actual_race_result = None
         compare_chart_labels = None
         compare_sim_paces = None
         compare_actual_paces = None
@@ -1428,8 +1432,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if plan.activity_id is not None:
             from sqlalchemy import select as _select
 
-            from fitops.analytics.activity_splits import compute_km_splits
             from fitops.db.models.activity import Activity as _Activity
+            from fitops.db.models.activity_calibration import ActivityCalibration
             from fitops.db.models.activity_stream import ActivityStream
             from fitops.db.session import get_async_session
 
@@ -1440,6 +1444,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 act = act_res.scalar_one_or_none()
                 if act:
                     activity_strava_id = act.strava_id
+                calibration_res = await session.execute(
+                    _select(ActivityCalibration).where(
+                        ActivityCalibration.activity_id == plan.activity_id
+                    )
+                )
+                calibration = calibration_res.scalar_one_or_none()
                 streams_res = await session.execute(
                     _select(ActivityStream).where(
                         ActivityStream.activity_id == plan.activity_id
@@ -1449,12 +1459,26 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     row.stream_type: row.data for row in streams_res.scalars().all()
                 }
 
+            actual_race_result = (
+                calibration.race_result
+                if act and calibration is not None
+                else summarize_race_result(act, all_streams)
+                if act
+                else None
+            )
             if act and all_streams:
-                km_splits = compute_km_splits(all_streams, act.sport_type or "Run")
+                if calibration is not None:
+                    all_streams = calibration.streams
+                km_splits = None
+                if not km_splits:
+                    from fitops.analytics.activity_splits import compute_km_splits
+
+                    km_splits = compute_km_splits(all_streams, act.sport_type or "Run")
                 if km_splits:
                     actual_splits = km_splits
                     act_total_s = sum(
-                        s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0)
+                        s.get("split_time_s")
+                        or (s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0))
                         for s in actual_splits
                     )
                     act_total_dist = (
@@ -1467,7 +1491,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         _fmt_duration(act_avg_pace_s) if act_avg_pace_s > 0 else "—"
                     )
                     actual_finish_s = sum(
-                        s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0)
+                        s.get("split_time_s")
+                        or (s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0))
                         for s in actual_splits
                     )
                     actual_finish_fmt = _fmt_duration(actual_finish_s)
@@ -1500,6 +1525,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "sim_chart_labels_json": json.dumps(sim_chart_labels),
                 "sim_chart_paces_json": json.dumps(sim_chart_paces),
                 "actual_splits": actual_splits,
+                "actual_race_result": actual_race_result,
                 "actual_avg_pace_fmt": actual_avg_pace_fmt,
                 "actual_finish_fmt": actual_finish_fmt,
                 "compare_chart_labels_json": json.dumps(compare_chart_labels or []),

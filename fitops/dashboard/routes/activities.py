@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import math
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 
 from fitops.analytics.activity_performance_insights import (
     compute_activity_performance_insights,
@@ -14,6 +16,13 @@ from fitops.analytics.activity_performance_insights import (
 from fitops.analytics.activity_splits import compute_avg_gap, compute_km_splits
 from fitops.analytics.activity_zones import compute_activity_analytics
 from fitops.analytics.athlete_settings import get_athlete_settings
+from fitops.analytics.race_results import (
+    delete_calibrated_snapshot,
+    is_supported_race_activity,
+    parse_race_time_to_seconds,
+    persist_calibrated_snapshot,
+    summarize_race_result,
+)
 from fitops.analytics.training_scores import (
     aerobic_label,
     anaerobic_label,
@@ -34,6 +43,7 @@ from fitops.analytics.weather_pace import (
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import (
     count_activities,
+    get_activity_calibration,
     get_activity_detail,
     get_activity_laps,
     get_activity_streams,
@@ -49,6 +59,8 @@ from fitops.dashboard.queries.workouts import (
     get_workout_for_activity,
     get_workout_names_for_activities,
 )
+from fitops.db.models.activity import Activity
+from fitops.db.session import get_async_session
 
 router = APIRouter()
 
@@ -161,6 +173,29 @@ def _activity_row(a) -> dict:
         "est_kcal_model": getattr(a, "est_kcal_model", None),
         "est_power_source": getattr(a, "est_power_source", None),
     }
+
+
+def _activity_with_overrides(activity, overrides: dict | None):
+    if not overrides:
+        return activity
+    data = {c.name: getattr(activity, c.name) for c in activity.__table__.columns}
+    _metadata_keys = {"description", "name", "stamped_at"}
+    data.update({k: v for k, v in overrides.items() if k not in _metadata_keys})
+    for key in (
+        "start_date",
+        "start_date_local",
+        "created_at",
+        "updated_at",
+        "stamped_at",
+    ):
+        value = data.get(key)
+        if isinstance(value, str):
+            try:
+                data[key] = datetime.fromisoformat(value)
+            except ValueError:
+                pass
+    data["is_race"] = getattr(activity, "workout_type", None) == 1
+    return SimpleNamespace(**data)
 
 
 def _weather_summary(w) -> dict:
@@ -389,9 +424,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 laps = await get_activity_laps(activity.id)
             if activity and activity.streams_fetched:
                 streams = await get_activity_streams(activity.id)
+        calibration = await get_activity_calibration(activity.id) if activity else None
+        if calibration is not None:
+            streams = calibration.streams
+
+        activity_view = _activity_with_overrides(
+            activity, calibration.summary if calibration is not None else None
+        )
 
         run_sports = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
-        is_run = activity.sport_type in run_sports if activity else False
+        is_run = activity_view.sport_type in run_sports if activity_view else False
 
         # Load weather early — True Pace stream must be injected before analytics
         _weather_map = await get_weather_for_activities([strava_id])
@@ -419,7 +461,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 ]
 
         # Running power — compute + persist when streams are available
-        if activity and streams and activity.est_power_avg_w is None:
+        if (
+            activity
+            and streams
+            and activity.est_power_avg_w is None
+            and calibration is None
+        ):
             from fitops.analytics.athlete_settings import (
                 get_athlete_settings as _get_athlete_settings_pw,
             )
@@ -447,13 +494,13 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         activity.est_kcal_model = _pw_row.est_kcal_model
                         activity.est_power_source = _pw_row.est_power_source
 
-        if activity and streams:
-            analytics = compute_activity_analytics(activity, streams)
+        if activity_view and streams:
+            analytics = compute_activity_analytics(activity_view, streams)
 
         insights = []
-        if activity and streams:
+        if activity_view and streams:
             insights = compute_activity_performance_insights(
-                activity, streams, get_athlete_settings()
+                activity_view, streams, get_athlete_settings()
             )
 
         if activity is None:
@@ -482,7 +529,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "distance_km": round(lap.distance_m / 1000, 2)
                     if lap.distance_m
                     else None,
-                    "pace": _pace_str(spd, activity.sport_type),
+                    "pace": _pace_str(spd, activity_view.sport_type),
                     "pace_s": pace_s,
                     "avg_hr": round(lap.average_heartrate)
                     if lap.average_heartrate
@@ -494,10 +541,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
-        km_splits = compute_km_splits(
-            streams, activity.sport_type, true_pace=streams.get("true_pace")
+        race_result = (
+            calibration.race_result
+            if calibration is not None
+            else summarize_race_result(activity, streams)
         )
-        avg_gap = compute_avg_gap(streams, activity.sport_type)
+        km_splits = compute_km_splits(
+            streams, activity_view.sport_type, true_pace=streams.get("true_pace")
+        )
+        avg_gap = compute_avg_gap(streams, activity_view.sport_type)
 
         # Overall true pace (distance-weighted mean of true_pace stream)
         true_pace_fmt = None
@@ -618,14 +670,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 )
 
             wap_fmt = None
-            if activity.average_speed_ms and activity.average_speed_ms > 0:
+            if activity_view.average_speed_ms and activity_view.average_speed_ms > 0:
                 if is_run:
-                    actual_pace_s = 1000.0 / activity.average_speed_ms
+                    actual_pace_s = 1000.0 / activity_view.average_speed_ms
                     wap_s = actual_pace_s / wap_factor
                     m, s_rem = divmod(int(wap_s), 60)
                     wap_fmt = f"{m}:{s_rem:02d}/km"
                 else:
-                    wap_speed_kmh = activity.average_speed_ms * 3.6 * wap_factor
+                    wap_speed_kmh = activity_view.average_speed_ms * 3.6 * wap_factor
                     wap_fmt = f"{wap_speed_kmh:.1f} km/h"
 
             # HR heat/humidity impact
@@ -635,9 +687,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
                 if vo2_factor < 0.99:  # meaningful reduction (>1%)
                     hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
-                    if activity.average_heartrate and activity.average_heartrate > 0:
+                    if (
+                        activity_view.average_heartrate
+                        and activity_view.average_heartrate > 0
+                    ):
                         hr_heat_bpm = round(
-                            activity.average_heartrate * (1.0 / vo2_factor - 1.0)
+                            activity_view.average_heartrate * (1.0 / vo2_factor - 1.0)
                         )
 
             # True Pace summary: distance-weighted mean of true_pace stream.
@@ -713,8 +768,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             "activities/detail.html",
             {
                 "request": request,
-                "activity": _activity_row(activity),
+                "activity": _activity_row(activity_view),
                 "activity_raw": activity,
+                "race_result": race_result,
                 "laps": lap_rows,
                 "km_splits": km_splits,
                 "analytics": analytics,
@@ -739,8 +795,82 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 if get_athlete_settings().lthr
                 else None,
                 "has_write_scope": settings.has_write_scope,
+                "race_result_notice": request.query_params.get("race_result_notice"),
+                "race_result_error": request.query_params.get("race_result_error"),
                 "active_page": "activities",
             },
+        )
+
+    @router.post("/activities/{strava_id}/race-result")
+    async def activity_race_result_post(
+        request: Request,
+        strava_id: int,
+        chip_time: str | None = Form(None),
+        race_distance_km: str | None = Form(None),
+    ):
+        parsed_chip_time_s = None
+        parsed_race_distance_m = None
+
+        chip_time_raw = (chip_time or "").strip()
+        race_distance_raw = (race_distance_km or "").strip()
+
+        if chip_time_raw:
+            try:
+                parsed_chip_time_s = parse_race_time_to_seconds(chip_time_raw)
+            except ValueError as exc:
+                return RedirectResponse(
+                    url=f"/activities/{strava_id}?race_result_error={str(exc)}",
+                    status_code=303,
+                )
+
+        if race_distance_raw:
+            try:
+                distance_km = float(race_distance_raw)
+            except ValueError:
+                return RedirectResponse(
+                    url=f"/activities/{strava_id}?race_result_error=Race distance must be numeric.",
+                    status_code=303,
+                )
+            if distance_km <= 0:
+                return RedirectResponse(
+                    url=f"/activities/{strava_id}?race_result_error=Race distance must be greater than zero.",
+                    status_code=303,
+                )
+            parsed_race_distance_m = distance_km * 1000.0
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(Activity).where(Activity.strava_id == strava_id)
+            )
+            activity = result.scalar_one_or_none()
+            if activity is None:
+                return RedirectResponse(
+                    url="/activities?race_result_error=Activity not found.",
+                    status_code=303,
+                )
+            if not is_supported_race_activity(activity):
+                return RedirectResponse(
+                    url=(
+                        f"/activities/{strava_id}"
+                        "?race_result_error=Race result overrides are only supported for running race activities."
+                    ),
+                    status_code=303,
+                )
+            activity.chip_time_s = parsed_chip_time_s
+            activity.race_distance_m = parsed_race_distance_m
+            streams = (
+                await get_activity_streams(activity.id)
+                if activity.streams_fetched
+                else {}
+            )
+            if activity.chip_time_s or activity.race_distance_m:
+                await persist_calibrated_snapshot(session, activity, streams)
+            else:
+                await delete_calibrated_snapshot(session, activity.id)
+
+        return RedirectResponse(
+            url=f"/activities/{strava_id}?race_result_notice=Official race result saved.",
+            status_code=303,
         )
 
     @router.get("/activities/{strava_id}/analysis", response_class=HTMLResponse)
@@ -760,9 +890,15 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 laps = await get_activity_laps(activity.id)
             if activity and activity.streams_fetched:
                 streams = await get_activity_streams(activity.id)
+        calibration = await get_activity_calibration(activity.id) if activity else None
+        if calibration is not None:
+            streams = calibration.streams
+        activity_view = _activity_with_overrides(
+            activity, calibration.summary if calibration is not None else None
+        )
 
         run_sports = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
-        is_run = activity.sport_type in run_sports if activity else False
+        is_run = activity_view.sport_type in run_sports if activity_view else False
 
         _weather_map = await get_weather_for_activities([strava_id])
         _weather_obj = _weather_map.get(strava_id)
@@ -785,8 +921,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
                 ]
 
-        if activity and streams:
-            analytics = compute_activity_analytics(activity, streams)
+        if activity_view and streams:
+            analytics = compute_activity_analytics(activity_view, streams)
 
         if activity is None:
             return templates.TemplateResponse(
@@ -826,7 +962,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "distance_km": round(lap.distance_m / 1000, 2)
                     if lap.distance_m
                     else None,
-                    "pace": _pace_str(spd, activity.sport_type),
+                    "pace": _pace_str(spd, activity_view.sport_type),
                     "pace_s": pace_s,
                     "avg_hr": round(lap.average_heartrate)
                     if lap.average_heartrate
@@ -838,7 +974,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
             )
 
-        avg_gap = compute_avg_gap(streams, activity.sport_type)
+        avg_gap = compute_avg_gap(streams, activity_view.sport_type)
 
         # Linked workout + segments
         workout_data = None
@@ -1038,7 +1174,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             "activities/analysis.html",
             {
                 "request": request,
-                "activity": _activity_row(activity),
+                "activity": _activity_row(activity_view),
                 "activity_raw": activity,
                 "laps": laps_json_list,
                 "analytics": analytics,

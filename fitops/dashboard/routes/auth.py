@@ -1,0 +1,74 @@
+"""Dashboard auth routes: /login and /logout."""
+
+from __future__ import annotations
+
+import os
+
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from fitops.auth.session import SESSION_COOKIE, SESSION_MAX_AGE, create_token
+
+router = APIRouter()
+
+
+def register(templates: Jinja2Templates) -> APIRouter:
+    _pw_hash: str = os.environ.get("FITOPS_PASSWORD_HASH", "")
+    _totp_secret: str = os.environ.get("FITOPS_TOTP_SECRET", "")
+    _session_secret: str = os.environ.get("FITOPS_SESSION_SECRET", "")
+
+    @router.get("/login", response_class=HTMLResponse)
+    async def login_get(request: Request, next: str = "/", error: str = ""):
+        return templates.TemplateResponse(
+            request,
+            "auth/login.html",
+            {"request": request, "next": next, "error": error},
+        )
+
+    @router.post("/login")
+    async def login_post(
+        request: Request,
+        password: str = Form(...),
+        totp_code: str = Form(...),
+        next: str = Form("/"),
+    ):
+        import bcrypt
+
+        from fitops.auth.totp import verify as verify_totp
+
+        pw_ok = bool(_pw_hash and bcrypt.checkpw(password.encode(), _pw_hash.encode()))
+        totp_ok = bool(_totp_secret and verify_totp(_totp_secret, totp_code))
+
+        if not (pw_ok and totp_ok):
+            return templates.TemplateResponse(
+                request,
+                "auth/login.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": "Invalid password or authenticator code.",
+                },
+                status_code=401,
+            )
+
+        token = create_token(_session_secret)
+        safe_next = next if next.startswith("/") else "/"
+        response = RedirectResponse(url=safe_next, status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            max_age=SESSION_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            secure=True,
+        )
+        return response
+
+    @router.get("/logout")
+    async def logout():
+        response = RedirectResponse(url="/login", status_code=303)
+        response.delete_cookie(SESSION_COOKIE)
+        return response
+
+    return router

@@ -67,6 +67,7 @@ def print_activity_detail(activity: dict) -> None:
     training = activity.get("training_metrics") or {}
     flags = activity.get("flags") or {}
     insights = activity.get("insights") or {}
+    race_result = activity.get("race_result") or {}
     _sport = activity.get("sport_type") or ""
     _is_run = _sport in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
 
@@ -82,6 +83,10 @@ def print_activity_detail(activity: dict) -> None:
     dist_str = f"{dist_km} km" if dist_km else "-"
     console.print(f"  Distance   {dist_str}")
     console.print(f"  Duration   {dur.get('moving_time_formatted') or '-'}")
+    if race_result.get("chip_time_formatted"):
+        console.print(f"  Chip Time  {race_result['chip_time_formatted']}")
+    if race_result.get("race_distance_km"):
+        console.print(f"  Race Dist  {race_result['race_distance_km']} km")
     if pace.get("average_per_km"):
         console.print(
             f"  Pace       {pace['average_per_km']}/km  |  {pace.get('average_per_mile', '-')}/mi"
@@ -138,6 +143,18 @@ def print_activity_detail(activity: dict) -> None:
             _tp_label = "True Pace" if _is_run else "True Speed"
             parts.append(f"{_tp_label} {true_pace_fmt}")
         console.print(f"  Effort     {'  |  '.join(parts)}")
+    if race_result.get("override_active"):
+        parts = []
+        if race_result.get("distance_correction_factor"):
+            parts.append(f"distance x{race_result['distance_correction_factor']}")
+        if race_result.get("time_correction_factor"):
+            parts.append(f"time x{race_result['time_correction_factor']}")
+        if race_result.get("corrected_avg_pace_formatted"):
+            parts.append(
+                f"corrected pace {race_result['corrected_avg_pace_formatted']}"
+            )
+        if parts:
+            console.print(f"  Race Corr  {'  |  '.join(parts)}")
 
     # Weather conditions
     if weather:
@@ -1722,6 +1739,7 @@ def print_race_plan_detail(data: dict) -> None:
 def print_race_plan_compare(data: dict) -> None:
     plan = data.get("plan") or {}
     actual_splits = data.get("actual_splits") or []
+    actual_race_result = data.get("actual_race_result") or {}
     sim_splits = plan.get("splits") or []
 
     console.print()
@@ -1732,6 +1750,12 @@ def print_race_plan_compare(data: dict) -> None:
         console.print(f"  Simulated target [dim]{plan['target_time']}[/dim]")
     if data.get("actual_avg_pace_fmt"):
         console.print(f"  Actual avg pace  {data['actual_avg_pace_fmt']}")
+    if actual_race_result.get("override_active"):
+        console.print(
+            "  Corrected with  "
+            f"{actual_race_result.get('race_distance_km') or '-'} km"
+            f"  /  {actual_race_result.get('chip_time_formatted') or actual_race_result.get('recorded_time_formatted') or '-'}"
+        )
     console.print()
 
     n = min(len(sim_splits), len(actual_splits))

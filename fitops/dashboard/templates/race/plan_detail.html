@@ -251,6 +251,13 @@
     <div class="stat-label">Simulated Avg Pace</div>
   </div>
 </div>
+{% if actual_race_result and actual_race_result.override_active %}
+<div class="panel" style="padding:0.85rem 1rem; margin-bottom:1rem; color:#cbd5e1; font-size:0.88rem;">
+  Actual race splits are corrected to the official result:
+  {{ actual_race_result.race_distance_km or '—' }} km in
+  {{ actual_race_result.chip_time_formatted or actual_race_result.recorded_time_formatted or '—' }}.
+</div>
+{% endif %}
 
 <div class="panel">
   <div class="panel-header">
