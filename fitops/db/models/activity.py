@@ -51,6 +51,9 @@ class Activity(Base):
 
     training_stress_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    chip_time_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    race_distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     aerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     anaerobic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     vo2max_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)

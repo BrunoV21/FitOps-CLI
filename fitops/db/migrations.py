@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fitops.db.base import Base
 from fitops.db.models.activity import Activity  # noqa: F401
+from fitops.db.models.activity_calibration import ActivityCalibration  # noqa: F401
 from fitops.db.models.activity_laps import ActivityLap  # noqa: F401
 from fitops.db.models.activity_stream import ActivityStream  # noqa: F401
 from fitops.db.models.activity_weather import ActivityWeather  # noqa: F401
@@ -54,6 +55,8 @@ _ACTIVITY_NEW_COLUMNS: list[tuple[str, str]] = [
     ("aerobic_score", "REAL"),
     ("anaerobic_score", "REAL"),
     ("vo2max_estimate", "REAL"),
+    ("chip_time_s", "INTEGER"),
+    ("race_distance_m", "REAL"),
     ("est_power_avg_w", "REAL"),
     ("est_power_max_w", "REAL"),
     ("est_power_np_w", "REAL"),
@@ -187,6 +190,24 @@ async def _migrate_race_plans(conn) -> None:
     )
 
 
+async def _migrate_activity_calibrations(conn) -> None:
+    """Create activity_calibrations table if it doesn't exist yet."""
+    await conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS activity_calibrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activity_id INTEGER NOT NULL,
+            summary_json TEXT NOT NULL,
+            streams_json TEXT NOT NULL,
+            race_result_json TEXT NOT NULL,
+            created_at DATETIME,
+            updated_at DATETIME,
+            CONSTRAINT uq_activity_calibrations_activity_id UNIQUE (activity_id)
+        )
+        """)
+    )
+
+
 async def _ensure_schema_version_table(conn) -> None:
     """Create the schema_version key/value table used to gate one-shot migrations."""
     await conn.execute(
@@ -289,6 +310,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_workout_columns(conn)
         await _migrate_workout_segment_columns(conn)
         await _migrate_workout_activity_links(conn)
+        await _migrate_activity_calibrations(conn)
         await _migrate_race_plans(conn)
         await _migrate_race_session_columns(conn)
         await _migrate_race_session_event_columns(conn)
