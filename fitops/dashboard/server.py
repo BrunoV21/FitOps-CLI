@@ -30,6 +30,9 @@ def create_app(port: int = 8888) -> FastAPI:
         weather,
         workouts,
     )
+    from fitops.dashboard.routes import (
+        auth as auth_route,
+    )
     from fitops.db.migrations import create_all_tables
 
     _scheduler_task: asyncio.Task | None = None
@@ -56,6 +59,27 @@ def create_app(port: int = 8888) -> FastAPI:
         title="FitOps Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan
     )
     app.state.dashboard_port = port
+
+    # Opt-in auth — active only when FITOPS_AUTH_ENABLED=true (set by HF deploy).
+    # Requires fitops[server]; local dev runs without any env vars → no auth.
+    import os as _os
+
+    _auth_enabled = _os.environ.get("FITOPS_AUTH_ENABLED", "").lower() == "true"
+    if _auth_enabled:
+        _session_secret = _os.environ.get("FITOPS_SESSION_SECRET", "")
+        if not _session_secret:
+            raise RuntimeError(
+                "FITOPS_AUTH_ENABLED is set but FITOPS_SESSION_SECRET is missing. "
+                "Re-run `fitops deploy hf` to regenerate secrets."
+            )
+        try:
+            from fitops.auth.middleware import AuthMiddleware
+        except ImportError as exc:
+            raise RuntimeError(
+                "FITOPS_AUTH_ENABLED is set but fitops[server] is not installed. "
+                "Run: pip install 'fitops[server]'"
+            ) from exc
+        app.add_middleware(AuthMiddleware, session_secret=_session_secret)
 
     app.mount(
         "/static",
@@ -177,6 +201,8 @@ def create_app(port: int = 8888) -> FastAPI:
     # Register all routers (each route module returns its router after
     # binding the shared templates instance)
     app.include_router(api.register())
+    if _auth_enabled:
+        app.include_router(auth_route.register(templates))
     app.include_router(setup.register(templates))
     app.include_router(overview.register(templates))
     app.include_router(activities.register(templates))
