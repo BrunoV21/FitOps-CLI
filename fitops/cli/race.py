@@ -21,6 +21,9 @@ from fitops.analytics.race_analysis import (
     parse_gpx_streams,
     summarize_race_events,
 )
+from fitops.analytics.race_results import (
+    summarize_race_result,
+)
 from fitops.dashboard.queries.race import (
     delete_course as _delete_course,
 )
@@ -810,17 +813,23 @@ def plan_compare(
 
     from sqlalchemy import select as _select
 
-    from fitops.analytics.activity_splits import compute_km_splits
     from fitops.db.models.activity import Activity as _Activity
+    from fitops.db.models.activity_calibration import ActivityCalibration
     from fitops.db.models.activity_stream import ActivityStream
     from fitops.race.course_parser import _fmt_duration
 
-    async def _load_actual() -> tuple[list[dict], str | None, str | None]:
+    async def _load_actual() -> tuple[list[dict], str | None, str | None, dict | None]:
         async with get_async_session() as session:
             act_res = await session.execute(
                 _select(_Activity).where(_Activity.id == plan.activity_id)
             )
             act = act_res.scalar_one_or_none()
+            calibration_res = await session.execute(
+                _select(ActivityCalibration).where(
+                    ActivityCalibration.activity_id == plan.activity_id
+                )
+            )
+            calibration = calibration_res.scalar_one_or_none()
             streams_res = await session.execute(
                 _select(ActivityStream).where(
                     ActivityStream.activity_id == plan.activity_id
@@ -830,20 +839,34 @@ def plan_compare(
                 row.stream_type: row.data for row in streams_res.scalars().all()
             }
         if not act or not all_streams:
-            return [], None, None
-        km_splits = compute_km_splits(all_streams, act.sport_type or "Run")
+            return [], None, None, None
+        race_result = calibration.race_result if calibration is not None else summarize_race_result(act, all_streams)
+        if calibration is not None:
+            all_streams = calibration.streams
+        km_splits = None
         if not km_splits:
-            return [], None, None
+            from fitops.analytics.activity_splits import compute_km_splits
+
+            km_splits = compute_km_splits(all_streams, act.sport_type or "Run")
+        if not km_splits:
+            return [], None, None, race_result
         act_total_s = sum(
-            s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0) for s in km_splits
+            s.get("split_time_s")
+            or (s.get("pace_s", 0) * (s.get("distance_m", 1000) / 1000.0))
+            for s in km_splits
         )
         act_total_dist = sum(s.get("distance_m", 0) for s in km_splits) / 1000.0
         act_avg_pace_s = (act_total_s / act_total_dist) if act_total_dist > 0 else 0.0
         avg_fmt = _fmt_duration(act_avg_pace_s) if act_avg_pace_s > 0 else None
         finish_fmt = _fmt_duration(act_total_s)
-        return km_splits, avg_fmt, finish_fmt
+        return km_splits, avg_fmt, finish_fmt, race_result
 
-    actual_splits, actual_avg_pace_fmt, actual_finish_fmt = asyncio.run(_load_actual())
+    (
+        actual_splits,
+        actual_avg_pace_fmt,
+        actual_finish_fmt,
+        actual_race_result,
+    ) = asyncio.run(_load_actual())
 
     if not actual_splits:
         typer.echo(
@@ -860,6 +883,7 @@ def plan_compare(
         "actual_splits": actual_splits,
         "actual_avg_pace_fmt": actual_avg_pace_fmt,
         "actual_finish_fmt": actual_finish_fmt,
+        "actual_race_result": actual_race_result,
     }
     if json_output:
         typer.echo(json.dumps(out, indent=2, default=str))

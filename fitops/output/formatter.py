@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from fitops.analytics.race_results import summarize_race_result
+
 RUN_SPORT_TYPES = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
 RIDE_SPORT_TYPES = {
     "Ride",
@@ -140,6 +142,10 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
     avg_cad = row.get("average_cadence")
     cadence = {"average_spm": _round2(avg_cad)} if avg_cad else None
 
+    race_result = None
+    if row.get("workout_type") == 1 and sport_type in RUN_SPORT_TYPES:
+        race_result = summarize_race_result(type("ActivityRow", (), row)())
+
     return {
         "strava_activity_id": row.get("strava_id"),
         "name": row.get("name", ""),
@@ -184,6 +190,7 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
             "gear_name": gear_name,
             "gear_type": gear_type,
         },
+        "race_result": race_result,
         "description": (row.get("description") or "").strip() or None,
         "device_name": row.get("device_name"),
         **_flags_block(row),

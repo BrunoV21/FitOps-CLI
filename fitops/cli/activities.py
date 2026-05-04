@@ -8,9 +8,17 @@ from datetime import UTC, datetime
 import typer
 from sqlalchemy import desc, select
 
+from fitops.analytics.race_results import (
+    delete_calibrated_snapshot,
+    is_supported_race_activity,
+    parse_race_time_to_seconds,
+    persist_calibrated_snapshot,
+    summarize_race_result,
+)
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
+from fitops.db.models.activity_calibration import ActivityCalibration
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session
@@ -315,9 +323,6 @@ def get_activity(
             except Exception:
                 pass  # streams are best-effort; don't block the activity output
 
-        row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
-        formatted = format_activity_row(row_dict, gear_lookup)
-
         from fitops.analytics.activity_insights import compute_hr_drift
         from fitops.analytics.activity_performance_insights import (
             compute_activity_performance_insights,
@@ -338,11 +343,18 @@ def get_activity(
             weather_row_to_dict,
         )
         from fitops.dashboard.queries.activities import (
+            get_activity_calibration,
             get_activity_laps,
             get_activity_streams,
         )
         from fitops.dashboard.queries.weather import get_weather_for_activities
         from fitops.dashboard.queries.workouts import get_workout_for_activity
+
+        row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
+        calibration = await get_activity_calibration(row.id) if row.id else None
+        if calibration is not None:
+            row_dict.update(calibration.summary)
+        formatted = format_activity_row(row_dict, gear_lookup)
 
         _settings = get_athlete_settings()
         aerobic_score = (
@@ -366,6 +378,8 @@ def get_activity(
         streams: dict = {}
         if row.streams_fetched:
             streams = await get_activity_streams(row.id)
+        if calibration is not None:
+            streams = calibration.streams
 
         # Load weather early — needed for true_pace stream injection
         _weather_map = await get_weather_for_activities([activity_id])
@@ -466,13 +480,24 @@ def get_activity(
                     "vo2max": analytics.vo2max,
                 }
 
+        formatted["race_result"] = (
+            calibration.race_result
+            if calibration is not None
+            else summarize_race_result(row, streams)
+        )
+
         # Per-km splits and average GAP (runs only)
-        km_splits = compute_km_splits(
-            streams, row.sport_type or "", true_pace=streams.get("true_pace")
+        sport_type_for_view = row_dict.get("sport_type") or row.sport_type or ""
+        km_splits = (
+            compute_km_splits(
+                streams, sport_type_for_view, true_pace=streams.get("true_pace")
+            )
+            if streams
+            else None
         )
         if km_splits is not None:
             formatted["km_splits"] = km_splits
-        avg_gap = compute_avg_gap(streams, row.sport_type or "")
+        avg_gap = compute_avg_gap(streams, sport_type_for_view)
         if avg_gap is not None:
             formatted["avg_gap"] = avg_gap
 
@@ -801,6 +826,131 @@ def get_activity(
         print_splits_table(activity.get("km_splits") or [], activity_id)
     else:
         print_activity_detail(activity)
+
+
+@app.command("set-race-result")
+def set_race_result(
+    activity_id: int = typer.Argument(..., help="Strava activity ID."),
+    chip_time: str | None = typer.Option(
+        None,
+        "--chip-time",
+        help="Official chip time. Use H:MM:SS for races over an hour or MM:SS for shorter races.",
+    ),
+    race_distance_km: float | None = typer.Option(
+        None,
+        "--race-distance-km",
+        help="Official race distance in kilometres.",
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Store official race distance and chip-time overrides for a race activity."""
+    init_db()
+
+    if chip_time is None and race_distance_km is None:
+        typer.echo(
+            "Provide --chip-time, --race-distance-km, or both.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    parsed_chip_time_s = None
+    if chip_time is not None:
+        try:
+            parsed_chip_time_s = parse_race_time_to_seconds(chip_time)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+
+    if race_distance_km is not None and race_distance_km <= 0:
+        typer.echo("--race-distance-km must be greater than zero.", err=True)
+        raise typer.Exit(1)
+
+    async def _update():
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(Activity).where(Activity.strava_id == activity_id)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                typer.echo(f"Activity {activity_id} not found locally.", err=True)
+                raise typer.Exit(1)
+            if not is_supported_race_activity(row):
+                typer.echo(
+                    "Race result overrides are only supported for running race activities.",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            if parsed_chip_time_s is not None:
+                row.chip_time_s = parsed_chip_time_s
+            if race_distance_km is not None:
+                row.race_distance_m = race_distance_km * 1000.0
+            stream_rows = await session.execute(
+                select(ActivityStream).where(ActivityStream.activity_id == row.id)
+            )
+            streams = {
+                stream_row.stream_type: stream_row.data
+                for stream_row in stream_rows.scalars().all()
+            }
+            await persist_calibrated_snapshot(session, row, streams)
+            return {
+                "_meta": make_meta(),
+                "activity_id": activity_id,
+                "race_result": summarize_race_result(row),
+            }
+
+    output = asyncio.run(_update())
+    if json_output:
+        typer.echo(json.dumps(output, indent=2, default=str))
+    else:
+        rr = output["race_result"] or {}
+        typer.echo(
+            "Updated race result"
+            f"  chip_time={rr.get('chip_time_formatted') or '-'}"
+            f"  race_distance={rr.get('race_distance_km') or '-'} km"
+        )
+
+
+@app.command("clear-race-result")
+def clear_race_result(
+    activity_id: int = typer.Argument(..., help="Strava activity ID."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Clear official race distance and chip-time overrides for a race activity."""
+    init_db()
+
+    async def _clear():
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(Activity).where(Activity.strava_id == activity_id)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                typer.echo(f"Activity {activity_id} not found locally.", err=True)
+                raise typer.Exit(1)
+            if not is_supported_race_activity(row):
+                typer.echo(
+                    "Race result overrides are only supported for running race activities.",
+                    err=True,
+                )
+                raise typer.Exit(1)
+            row.chip_time_s = None
+            row.race_distance_m = None
+            await delete_calibrated_snapshot(session, row.id)
+            return {
+                "_meta": make_meta(),
+                "activity_id": activity_id,
+                "race_result": summarize_race_result(row),
+            }
+
+    output = asyncio.run(_clear())
+    if json_output:
+        typer.echo(json.dumps(output, indent=2, default=str))
+    else:
+        typer.echo(f"Cleared race result override for activity {activity_id}.")
 
 
 @app.command("stamp")
