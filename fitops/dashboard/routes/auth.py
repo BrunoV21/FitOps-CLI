@@ -54,6 +54,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         token = create_token(_session_secret)
         safe_next = next if next.startswith("/") else "/"
+        # Respect X-Forwarded-Proto so the cookie works behind HF's HTTP proxy
+        proto = request.headers.get("x-forwarded-proto", "https")
         response = RedirectResponse(url=safe_next, status_code=303)
         response.set_cookie(
             SESSION_COOKIE,
@@ -61,7 +63,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             max_age=SESSION_MAX_AGE,
             httponly=True,
             samesite="lax",
-            secure=True,
+            secure=(proto == "https"),
         )
         return response
 
