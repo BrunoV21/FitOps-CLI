@@ -98,6 +98,12 @@ export default defineConfig({
         ]
       },
       {
+        text: '// DEPLOY',
+        items: [
+          { text: 'HuggingFace Spaces', link: '/deploy/huggingface' },
+        ]
+      },
+      {
         text: '// MORE',
         items: [
           { text: 'vs. Alternatives', link: '/comparison' },
