@@ -840,7 +840,11 @@ def plan_compare(
             }
         if not act or not all_streams:
             return [], None, None, None
-        race_result = calibration.race_result if calibration is not None else summarize_race_result(act, all_streams)
+        race_result = (
+            calibration.race_result
+            if calibration is not None
+            else summarize_race_result(act, all_streams)
+        )
         if calibration is not None:
             all_streams = calibration.streams
         km_splits = None

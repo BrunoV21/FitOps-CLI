@@ -18,7 +18,6 @@ from fitops.analytics.race_results import (
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
-from fitops.db.models.activity_calibration import ActivityCalibration
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.models.athlete import Athlete
 from fitops.db.session import get_async_session

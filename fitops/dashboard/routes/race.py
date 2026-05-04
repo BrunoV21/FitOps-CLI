@@ -1462,7 +1462,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             actual_race_result = (
                 calibration.race_result
                 if act and calibration is not None
-                else summarize_race_result(act, all_streams) if act else None
+                else summarize_race_result(act, all_streams)
+                if act
+                else None
             )
             if act and all_streams:
                 if calibration is not None:

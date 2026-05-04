@@ -552,7 +552,9 @@ def register() -> APIRouter:
             return JSONResponse({"error": "forbidden"}, status_code=403)
 
         if _restore_lock.locked():
-            return JSONResponse({"status": "restore already in progress"}, status_code=202)
+            return JSONResponse(
+                {"status": "restore already in progress"}, status_code=202
+            )
 
         async def _do_restore():
             async with _restore_lock:

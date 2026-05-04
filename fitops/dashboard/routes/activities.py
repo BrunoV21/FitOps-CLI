@@ -181,7 +181,13 @@ def _activity_with_overrides(activity, overrides: dict | None):
     data = {c.name: getattr(activity, c.name) for c in activity.__table__.columns}
     _metadata_keys = {"description", "name", "stamped_at"}
     data.update({k: v for k, v in overrides.items() if k not in _metadata_keys})
-    for key in ("start_date", "start_date_local", "created_at", "updated_at", "stamped_at"):
+    for key in (
+        "start_date",
+        "start_date_local",
+        "created_at",
+        "updated_at",
+        "stamped_at",
+    ):
         value = data.get(key)
         if isinstance(value, str):
             try:
@@ -455,7 +461,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 ]
 
         # Running power — compute + persist when streams are available
-        if activity and streams and activity.est_power_avg_w is None and calibration is None:
+        if (
+            activity
+            and streams
+            and activity.est_power_avg_w is None
+            and calibration is None
+        ):
             from fitops.analytics.athlete_settings import (
                 get_athlete_settings as _get_athlete_settings_pw,
             )
@@ -676,7 +687,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
                 if vo2_factor < 0.99:  # meaningful reduction (>1%)
                     hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
-                    if activity_view.average_heartrate and activity_view.average_heartrate > 0:
+                    if (
+                        activity_view.average_heartrate
+                        and activity_view.average_heartrate > 0
+                    ):
                         hr_heat_bpm = round(
                             activity_view.average_heartrate * (1.0 / vo2_factor - 1.0)
                         )
@@ -844,7 +858,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 )
             activity.chip_time_s = parsed_chip_time_s
             activity.race_distance_m = parsed_race_distance_m
-            streams = await get_activity_streams(activity.id) if activity.streams_fetched else {}
+            streams = (
+                await get_activity_streams(activity.id)
+                if activity.streams_fetched
+                else {}
+            )
             if activity.chip_time_s or activity.race_distance_m:
                 await persist_calibrated_snapshot(session, activity, streams)
             else:
@@ -1156,7 +1174,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             "activities/analysis.html",
             {
                 "request": request,
-                    "activity": _activity_row(activity_view),
+                "activity": _activity_row(activity_view),
                 "activity_raw": activity,
                 "laps": laps_json_list,
                 "analytics": analytics,

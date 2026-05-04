@@ -150,7 +150,9 @@ def print_activity_detail(activity: dict) -> None:
         if race_result.get("time_correction_factor"):
             parts.append(f"time x{race_result['time_correction_factor']}")
         if race_result.get("corrected_avg_pace_formatted"):
-            parts.append(f"corrected pace {race_result['corrected_avg_pace_formatted']}")
+            parts.append(
+                f"corrected pace {race_result['corrected_avg_pace_formatted']}"
+            )
         if parts:
             console.print(f"  Race Corr  {'  |  '.join(parts)}")
 

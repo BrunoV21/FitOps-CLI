@@ -224,7 +224,9 @@ async def persist_calibrated_snapshot(
         return None
 
     result = await session.execute(
-        select(ActivityCalibration).where(ActivityCalibration.activity_id == activity.id)
+        select(ActivityCalibration).where(
+            ActivityCalibration.activity_id == activity.id
+        )
     )
     existing = result.scalar_one_or_none()
     if existing is None:
@@ -245,7 +247,9 @@ async def persist_calibrated_snapshot(
 
 async def delete_calibrated_snapshot(session, activity_id: int) -> None:
     result = await session.execute(
-        select(ActivityCalibration).where(ActivityCalibration.activity_id == activity_id)
+        select(ActivityCalibration).where(
+            ActivityCalibration.activity_id == activity_id
+        )
     )
     existing = result.scalar_one_or_none()
     if existing is not None:

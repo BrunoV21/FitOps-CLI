@@ -27,9 +27,7 @@ def compute_km_splits(
     cad = streams.get("cadence", [])
     alt = streams.get("altitude", [])
     pace_scale = time_scale / distance_scale if distance_scale > 0 else time_scale
-    tp = [
-        (v * pace_scale if v and v > 0 else None) for v in (true_pace or [])
-    ]
+    tp = [(v * pace_scale if v and v > 0 else None) for v in (true_pace or [])]
 
     if len(dist) < 10 or len(vel) < 10 or (dist[-1] if dist else 0) < 1000:
         return None
@@ -60,7 +58,9 @@ def compute_km_splits(
             avg_vel = sum(valid_vels) / len(valid_vels)
             corrected_avg_vel = avg_vel * distance_scale / time_scale
             split_time_s = (
-                segment_distance_m / corrected_avg_vel if corrected_avg_vel > 0 else None
+                segment_distance_m / corrected_avg_vel
+                if corrected_avg_vel > 0
+                else None
             )
 
         if split_time_s is None or segment_distance_m <= 0:
