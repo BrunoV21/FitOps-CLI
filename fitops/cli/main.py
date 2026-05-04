@@ -23,6 +23,7 @@ def _register_subapps() -> None:
     from fitops.cli.auth import app as auth_app
     from fitops.cli.backup import app as backup_app
     from fitops.cli.dashboard import app as dashboard_app
+    from fitops.cli.deploy import app as deploy_app
     from fitops.cli.notes import app as notes_app
     from fitops.cli.race import app as race_app
     from fitops.cli.sync import app as sync_app
@@ -88,6 +89,11 @@ def _register_subapps() -> None:
         admin_app,
         name="admin",
         help=f"Admin utilities (backfill, recompute).\n\nDocs: {CLI_DOCS['admin']}",
+    )
+    app.add_typer(
+        deploy_app,
+        name="deploy",
+        help=f"Deploy FitOps dashboard to cloud providers.\n\nDocs: {CLI_DOCS['deploy']}",
     )
 
 
