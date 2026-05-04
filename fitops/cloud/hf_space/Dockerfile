@@ -6,7 +6,12 @@ RUN useradd -m -u 1000 fitops && \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "fitops[server]"
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "fitops[server] @ git+https://github.com/BrunoV21/FitOps-CLI.git"
 
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh

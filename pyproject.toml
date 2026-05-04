@@ -39,6 +39,7 @@ server = [
     "itsdangerous>=2.2.0",
     "huggingface-hub>=0.23.0",
     "qrcode>=7.4.2",
+    "PyNaCl>=1.5.0",
 ]
 
 [project.scripts]
@@ -47,6 +48,13 @@ fitops = "fitops.cli.main:app"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fitops*"]
+
+[tool.setuptools.package-data]
+fitops = [
+    "dashboard/static/**/*",
+    "dashboard/templates/**/*",
+    "cloud/**/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

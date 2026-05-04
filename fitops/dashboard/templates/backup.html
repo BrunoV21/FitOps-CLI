@@ -8,6 +8,25 @@
   <p class="page-subtitle">Protect your training data with cloud backups.</p>
 </div>
 
+<!-- ── HF Deploy Info ──────────────────────────────────────────── -->
+<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:20px;padding:12px 16px;border-left:2px solid var(--accent-primary);background:rgba(0,255,135,0.05);">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+       style="flex-shrink:0;margin-top:2px;color:var(--accent-primary)">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="12" y1="8" x2="12" y2="12"/>
+    <line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+  <p style="margin:0;font-size:13px;line-height:1.6;">
+    Want your dashboard available 24/7?
+    Install <code>fitops[server]</code> and run <code>fitops deploy hf</code> to deploy to a
+    <strong>private HuggingFace Space</strong> with password + TOTP 2FA — your GitHub backup syncs
+    automatically on every push.
+    <a href="{{ dashboard_docs.get('deploy', '') }}" target="_blank" rel="noopener"
+       style="color:var(--accent-primary);text-decoration:none;">Learn more →</a>
+  </p>
+</div>
+
 <!-- ── GitHub Provider Setup ──────────────────────────────────── -->
 <section class="panel" id="panel-github">
   <div class="panel-header">

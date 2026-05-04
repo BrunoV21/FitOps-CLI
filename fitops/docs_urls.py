@@ -43,4 +43,5 @@ DASHBOARD_DOCS: dict[str, str] = {
     "profile": f"{DOC_BASE}/dashboard/profile",
     "backup": f"{DOC_BASE}/dashboard/backup",
     "setup": f"{DOC_BASE}/getting-started/authentication",
+    "deploy": f"{DOC_BASE}/deploy/huggingface",
 }
