@@ -10,8 +10,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-    "fitops[server] @ git+https://github.com/BrunoV21/FitOps-CLI.git"
+RUN git clone https://github.com/BrunoV21/FitOps-CLI.git /app && \
+    pip install --no-cache-dir -e "/app[server]"
 
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
