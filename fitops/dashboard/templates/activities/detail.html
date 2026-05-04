@@ -23,7 +23,16 @@
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <h1 style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;">{{ activity.name }}</h1>
-        {% if activity.is_race %}<span class="badge badge-amber">Race</span>{% endif %}
+        {% if activity.is_race %}
+        <button
+          type="button"
+          class="badge badge-amber"
+          onclick="openRaceResultModal()"
+          style="cursor:pointer;border:none;"
+          title="Edit official race result">
+          Race
+        </button>
+        {% endif %}
         {% if activity.trainer %}<span class="badge badge-dim">Trainer</span>{% endif %}
         {% if activity.commute %}<span class="badge badge-dim">Commute</span>{% endif %}
       </div>
@@ -460,6 +469,17 @@
 </div>
 {% endif %}
 
+{% if race_result_notice %}
+<div class="panel" style="--delay:570ms;margin-bottom:1px;padding:12px 16px;border-left:3px solid #22c55e;color:#dcfce7;">
+  {{ race_result_notice }}
+</div>
+{% endif %}
+{% if race_result_error %}
+<div class="panel" style="--delay:570ms;margin-bottom:1px;padding:12px 16px;border-left:3px solid #ef4444;color:#fecaca;">
+  {{ race_result_error }}
+</div>
+{% endif %}
+
 {# ── Per-km Splits ────────────────────────────────────────────── #}
 {% if km_splits and km_splits | length >= 2 %}
 {# Compute pace range for color bands #}
@@ -480,7 +500,9 @@
 <div class="table-wrap" style="--delay:600ms;margin-bottom:1px;">
   <div class="splits-header">
     <p class="panel-label" style="margin:0;">Per-km Splits</p>
-    <span style="font-size:11px;color:var(--text-dim);">{{ km_splits | length }} km</span>
+    <span style="font-size:11px;color:var(--text-dim);">
+      {{ km_splits | length }} km{% if race_result and race_result.override_active %} · corrected to official race result{% endif %}
+    </span>
   </div>
   <table class="data-table">
     <thead>
@@ -523,6 +545,83 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+
+{% if race_result %}
+<div
+  id="race-result-modal"
+  style="display:none;position:fixed;inset:0;background:rgba(3,7,18,0.72);z-index:1000;padding:20px;align-items:center;justify-content:center;"
+  onclick="if(event.target===this) closeRaceResultModal();">
+  <div class="panel" style="width:min(680px,100%);max-height:90vh;overflow:auto;margin:0;border:1px solid var(--border-hover);box-shadow:0 24px 80px rgba(0,0,0,0.45);">
+    <div class="splits-header" style="margin-bottom:12px;">
+      <p class="panel-label" style="margin:0;">Official Race Result</p>
+      <div style="display:flex;align-items:center;gap:10px;">
+        {% if race_result.override_active %}
+        <span style="font-size:11px;color:var(--accent-primary);">corrected splits active</span>
+        {% endif %}
+        <button type="button" class="btn" style="padding:4px 10px;" onclick="closeRaceResultModal()">Close</button>
+      </div>
+    </div>
+    <div class="effort-grid" style="margin-bottom:14px;">
+      <div class="effort-item">
+        <p class="effort-label">Recorded Distance</p>
+        <p class="effort-val">{{ race_result.recorded_distance_km or "—" }} km</p>
+      </div>
+      <div class="effort-item">
+        <p class="effort-label">Official Distance</p>
+        <p class="effort-val">{{ race_result.race_distance_km or "—" }} km</p>
+      </div>
+      <div class="effort-item">
+        <p class="effort-label">Recorded Time</p>
+        <p class="effort-val">{{ race_result.recorded_time_formatted or "—" }}</p>
+      </div>
+      <div class="effort-item">
+        <p class="effort-label">Chip Time</p>
+        <p class="effort-val">{{ race_result.chip_time_formatted or "—" }}</p>
+      </div>
+      <div class="effort-item">
+        <p class="effort-label">Corrected Pace</p>
+        <p class="effort-val">{{ race_result.corrected_avg_pace_formatted or "—" }}</p>
+      </div>
+      <div class="effort-item">
+        <p class="effort-label">Calibration</p>
+        <p class="effort-val">
+          {% if race_result.distance_correction_factor %}d×{{ race_result.distance_correction_factor }}{% endif %}
+          {% if race_result.distance_correction_factor and race_result.time_correction_factor %} · {% endif %}
+          {% if race_result.time_correction_factor %}t×{{ race_result.time_correction_factor }}{% endif %}
+          {% if not race_result.distance_correction_factor and not race_result.time_correction_factor %}—{% endif %}
+        </p>
+      </div>
+    </div>
+    <form method="post" action="/activities/{{ activity.strava_id }}/race-result" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+      <label style="display:flex;flex-direction:column;gap:6px;">
+        <span class="effort-label">Chip Time</span>
+        <input type="text" name="chip_time" value="{{ race_result.chip_time_formatted or '' }}" placeholder="0:45:00 or 45:00">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:6px;">
+        <span class="effort-label">Official Distance (km)</span>
+        <input type="number" step="0.001" min="0" name="race_distance_km" value="{{ race_result.race_distance_km or '' }}" placeholder="10">
+      </label>
+      <button type="submit" class="btn btn-primary">Save Official Result</button>
+    </form>
+  </div>
+</div>
+<script>
+function openRaceResultModal() {
+  const modal = document.getElementById('race-result-modal');
+  if (modal) modal.style.display = 'flex';
+}
+function closeRaceResultModal() {
+  const modal = document.getElementById('race-result-modal');
+  if (modal) modal.style.display = 'none';
+}
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') closeRaceResultModal();
+});
+{% if race_result_error %}
+openRaceResultModal();
+{% endif %}
+</script>
 {% endif %}
 
 {# ── Linked Race Plan ─────────────────────────────────────────── #}
