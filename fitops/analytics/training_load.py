@@ -180,68 +180,100 @@ async def compute_training_load(
 
 
 async def persist_training_load_snapshot(athlete_id: int) -> None:
-    """Compute today's CTL/ATL/TSB and upsert into analytics_snapshots.
+    """Compute and persist CTL/ATL/TSB history for all sport views.
 
-    Called once at the end of every sync so that dashboard page loads can
-    read a single pre-computed row instead of re-running the full 84-day
-    EWMA warmup on every request.
+    Called once after each sync. Stores up to 365 days of history for the
+    total, run, and ride categories so dashboard page loads can read pre-computed
+    rows instead of re-running the full EWMA on every request.
     """
+    categories: list[tuple[str | None, frozenset | None]] = [
+        (None, None),
+        ("run", frozenset(RUN_TYPES)),
+        ("ride", frozenset(RIDE_TYPES)),
+    ]
+    for sport_category, sport_types_set in categories:
+        try:
+            await _persist_category_snapshots(athlete_id, sport_category, sport_types_set)
+        except Exception:
+            pass
+
+
+async def _persist_category_snapshots(
+    athlete_id: int,
+    sport_category: str | None,
+    sport_types_set: frozenset | None,
+) -> None:
     from datetime import datetime
 
     from sqlalchemy import text
 
     from fitops.db.session import get_async_session
 
-    result = await compute_training_load(athlete_id=athlete_id, days=1)
-    if not result.current:
+    result = await compute_training_load(
+        athlete_id=athlete_id, days=365, sport_types=sport_types_set
+    )
+    if not result.history:
         return
 
-    c = result.current
-    today = c.date.isoformat()
     now = datetime.now(UTC).isoformat()
 
     async with get_async_session() as session:
-        # sport_type IS NULL makes standard ON CONFLICT unreliable in SQLite;
-        # use a manual SELECT + INSERT/UPDATE instead.
-        existing = await session.execute(
-            text(
-                "SELECT id FROM analytics_snapshots "
-                "WHERE athlete_id = :aid AND snapshot_date = :dt AND sport_type IS NULL"
-            ),
-            {"aid": athlete_id, "dt": today},
-        )
-        row = existing.scalar_one_or_none()
-        if row is None:
-            await session.execute(
+        # Load existing snapshot ids for this category in one query.
+        if sport_category is None:
+            existing_rows = await session.execute(
                 text(
-                    "INSERT INTO analytics_snapshots "
-                    "(athlete_id, snapshot_date, sport_type, ctl, atl, tsb, computed_at) "
-                    "VALUES (:aid, :dt, NULL, :ctl, :atl, :tsb, :now)"
+                    "SELECT id, snapshot_date FROM analytics_snapshots "
+                    "WHERE athlete_id = :aid AND sport_type IS NULL"
                 ),
-                {
-                    "aid": athlete_id,
-                    "dt": today,
-                    "ctl": round(c.ctl, 2),
-                    "atl": round(c.atl, 2),
-                    "tsb": round(c.tsb, 2),
-                    "now": now,
-                },
+                {"aid": athlete_id},
             )
         else:
-            await session.execute(
+            existing_rows = await session.execute(
                 text(
-                    "UPDATE analytics_snapshots "
-                    "SET ctl = :ctl, atl = :atl, tsb = :tsb, computed_at = :now "
-                    "WHERE id = :id"
+                    "SELECT id, snapshot_date FROM analytics_snapshots "
+                    "WHERE athlete_id = :aid AND sport_type = :sc"
                 ),
-                {
-                    "ctl": round(c.ctl, 2),
-                    "atl": round(c.atl, 2),
-                    "tsb": round(c.tsb, 2),
-                    "now": now,
-                    "id": row,
-                },
+                {"aid": athlete_id, "sc": sport_category},
             )
+        id_map = {str(r[1]): r[0] for r in existing_rows.fetchall()}
+
+        for d in result.history:
+            dt = d.date.isoformat()
+            base = {
+                "ctl": round(d.ctl, 2),
+                "atl": round(d.atl, 2),
+                "tsb": round(d.tsb, 2),
+                "dtss": round(d.daily_tss, 2),
+                "now": now,
+            }
+            existing_id = id_map.get(dt)
+            if existing_id is not None:
+                await session.execute(
+                    text(
+                        "UPDATE analytics_snapshots "
+                        "SET ctl=:ctl, atl=:atl, tsb=:tsb, daily_tss=:dtss, computed_at=:now "
+                        "WHERE id=:id"
+                    ),
+                    {**base, "id": existing_id},
+                )
+            elif sport_category is None:
+                await session.execute(
+                    text(
+                        "INSERT INTO analytics_snapshots "
+                        "(athlete_id, snapshot_date, sport_type, ctl, atl, tsb, daily_tss, computed_at) "
+                        "VALUES (:aid, :dt, NULL, :ctl, :atl, :tsb, :dtss, :now)"
+                    ),
+                    {**base, "aid": athlete_id, "dt": dt},
+                )
+            else:
+                await session.execute(
+                    text(
+                        "INSERT INTO analytics_snapshots "
+                        "(athlete_id, snapshot_date, sport_type, ctl, atl, tsb, daily_tss, computed_at) "
+                        "VALUES (:aid, :dt, :sc, :ctl, :atl, :tsb, :dtss, :now)"
+                    ),
+                    {**base, "aid": athlete_id, "dt": dt, "sc": sport_category},
+                )
 
 
 def _compute_overtraining_indicators(history: list) -> dict:

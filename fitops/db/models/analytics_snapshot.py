@@ -20,6 +20,7 @@ class AnalyticsSnapshot(Base):
     ctl: Mapped[float | None] = mapped_column(Float, nullable=True)
     atl: Mapped[float | None] = mapped_column(Float, nullable=True)
     tsb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    daily_tss: Mapped[float | None] = mapped_column(Float, nullable=True)
     vo2max_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
     lt1_hr: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lt2_hr: Mapped[int | None] = mapped_column(Integer, nullable=True)

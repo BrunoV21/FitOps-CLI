@@ -296,6 +296,22 @@ async def _migrate_workout_activity_links(conn) -> None:
     await _mark_migration_run(conn, "workout_activity_links_backfill")
 
 
+_SNAPSHOT_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("daily_tss", "REAL"),
+]
+
+
+async def _migrate_snapshot_columns(conn) -> None:
+    """Add new columns to the analytics_snapshots table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(analytics_snapshots)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _SNAPSHOT_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE analytics_snapshots ADD COLUMN {col_name} {col_type}")
+            )
+
+
 async def create_all_tables(engine: AsyncEngine | None = None) -> None:
     if engine is None:
         engine = get_engine()
@@ -314,6 +330,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_race_plans(conn)
         await _migrate_race_session_columns(conn)
         await _migrate_race_session_event_columns(conn)
+        await _migrate_snapshot_columns(conn)
 
 
 def init_db() -> None:
