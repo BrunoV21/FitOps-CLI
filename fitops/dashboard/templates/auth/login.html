@@ -4,116 +4,157 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FitOps — Sign in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg:             #000000;
+      --surface:        #0a0a0a;
+      --surface-raised: #111111;
+      --border:         #1a1a1a;
+      --border-hover:   #2e2e2e;
+      --text-primary:   #ffffff;
+      --text-muted:     #888888;
+      --text-dim:       #3a3a3a;
+      --accent-primary: #00ff87;
+      --accent-red:     #ff3355;
+      --font: 'Geist Mono', 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #0f1117;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #e2e8f0;
+      background: var(--bg);
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
     .card {
-      background: #1a1d27;
-      border: 1px solid #2d3148;
-      border-radius: 12px;
-      padding: 2.5rem 2rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
       width: 100%;
       max-width: 360px;
     }
-    .logo {
-      text-align: center;
-      margin-bottom: 1.75rem;
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-    .logo-icon { font-size: 2.25rem; }
-    .logo-title {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-top: 0.4rem;
-      color: #f1f5f9;
+    .card-header svg { color: var(--accent-primary); flex-shrink: 0; }
+    .card-header-name {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-primary);
     }
-    .logo-sub {
-      font-size: 0.8rem;
-      color: #64748b;
-      margin-top: 0.25rem;
+    .card-header-sep { color: var(--text-dim); font-size: 14px; margin: 0 2px; }
+    .card-header-sub {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
     }
+    .card-body { padding: 20px; }
     .error-box {
-      background: #3b1313;
-      border: 1px solid #7f1d1d;
-      border-radius: 6px;
-      padding: 0.65rem 0.9rem;
-      margin-bottom: 1.25rem;
-      font-size: 0.85rem;
-      color: #fca5a5;
+      background: #110005;
+      border: 1px solid var(--accent-red);
+      padding: 8px 12px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: var(--accent-red);
+      letter-spacing: 0.04em;
     }
+    .error-box::before { content: '! '; }
     label {
       display: block;
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: #94a3b8;
-      margin-bottom: 0.35rem;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 6px;
     }
     input[type="password"], input[type="text"] {
       width: 100%;
-      padding: 0.6rem 0.75rem;
-      background: #0f1117;
-      border: 1px solid #2d3148;
-      border-radius: 6px;
-      color: #f1f5f9;
-      font-size: 0.95rem;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: var(--font);
+      font-size: 13px;
       outline: none;
-      margin-bottom: 1rem;
-      transition: border-color 0.15s;
+      margin-bottom: 14px;
+      transition: border-color 0.1s;
     }
-    input:focus { border-color: #6366f1; }
+    input:focus { border-color: var(--accent-primary); }
+    input::placeholder { color: var(--text-dim); }
     .hint {
-      font-size: 0.75rem;
-      color: #475569;
-      margin-top: -0.75rem;
-      margin-bottom: 1rem;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: -10px;
+      margin-bottom: 14px;
+      letter-spacing: 0.04em;
     }
+    .hint::before { content: '# '; }
     button {
       width: 100%;
-      padding: 0.65rem;
-      background: #6366f1;
-      color: #fff;
+      padding: 9px;
+      background: var(--accent-primary);
+      color: #000000;
       border: none;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      font-weight: 600;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: opacity 0.1s;
+      margin-top: 4px;
     }
-    button:hover { background: #4f46e5; }
+    button:hover { opacity: 0.85; }
+    button:active { opacity: 0.7; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">
-      <div class="logo-icon">⚡</div>
-      <div class="logo-title">FitOps Dashboard</div>
-      <div class="logo-sub">Sign in to continue</div>
+    <div class="card-header">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1L13 13H1L7 1Z" fill="currentColor"/>
+      </svg>
+      <span class="card-header-name">FitOps</span>
+      <span class="card-header-sep">/</span>
+      <span class="card-header-sub">auth</span>
     </div>
 
-    {% if error %}
-    <div class="error-box">{{ error }}</div>
-    {% endif %}
+    <div class="card-body">
+      {% if error %}
+      <div class="error-box">{{ error }}</div>
+      {% endif %}
 
-    <form method="post" action="/login">
-      <input type="hidden" name="next" value="{{ next }}">
+      <form method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
 
-      <label for="password">Password</label>
-      <input id="password" type="password" name="password" autocomplete="current-password" autofocus required>
+        <label for="password">Password</label>
+        <input id="password" type="password" name="password"
+               autocomplete="current-password" autofocus required>
 
-      <label for="totp_code">Authenticator code</label>
-      <input id="totp_code" type="text" name="totp_code" inputmode="numeric"
-             pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
-      <p class="hint">6-digit code from your authenticator app</p>
+        <label for="totp_code">Authenticator code</label>
+        <input id="totp_code" type="text" name="totp_code"
+               inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+               autocomplete="one-time-code" required>
+        <p class="hint">6-digit code from your authenticator app</p>
 
-      <button type="submit">Sign in</button>
-    </form>
+        <button type="submit">Sign in →</button>
+      </form>
+    </div>
   </div>
 </body>
 </html>
