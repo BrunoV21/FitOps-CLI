@@ -365,6 +365,9 @@ async def stamp_activity(
 
     # Fetch weather and compute derived fields
     weather: dict | None = None
+    _mean_gap_ms: float | None = None
+    _heat_f: float | None = None
+    _is_run: bool = False
     try:
         weather_result = await session.execute(
             select(ActivityWeather).where(
@@ -391,7 +394,7 @@ async def stamp_activity(
                         )
 
             # True pace: load velocity_smooth + grade_smooth from DB, compute GAP + heat
-            is_run = (activity.sport_type or "") in RUN_SPORT_TYPES
+            _is_run = (activity.sport_type or "") in RUN_SPORT_TYPES
             streams_result = await session.execute(
                 select(ActivityStream).where(
                     ActivityStream.activity_id == activity.id,
@@ -423,7 +426,9 @@ async def stamp_activity(
                         / total_w
                     )
                     heat_f = weather_row.pace_heat_factor or 1.0
-                    if is_run:
+                    _mean_gap_ms = mean_gap_ms
+                    _heat_f = heat_f
+                    if _is_run:
                         gap_pace_s = 1000.0 / mean_gap_ms
                         true_pace_s = gap_pace_s / heat_f
                         m_tp, s_tp = divmod(int(round(true_pace_s)), 60)
@@ -519,6 +524,33 @@ async def stamp_activity(
                     )
     except Exception:
         pass
+
+    # For calibrated race activities, recompute true pace using corrected speed
+    if (
+        race_result
+        and race_result.get("override_active")
+        and weather
+        and _mean_gap_ms is not None
+        and _heat_f is not None
+        and _is_run
+    ):
+        try:
+            d_scale = race_result.get("distance_correction_factor") or 1.0
+            t_scale = race_result.get("time_correction_factor") or 1.0
+            speed_scale = d_scale / t_scale if t_scale > 0 else d_scale
+            cal_gap_ms = _mean_gap_ms * speed_scale
+            cal_true_pace_s = (1000.0 / cal_gap_ms) / _heat_f
+            m_tp, s_tp = divmod(int(round(cal_true_pace_s)), 60)
+            weather["true_pace_fmt"] = f"{m_tp}:{s_tp:02d}/km"
+            corrected_pace_s = race_result.get("corrected_avg_pace_s_per_km")
+            if corrected_pace_s and corrected_pace_s > 0:
+                pct = (corrected_pace_s / cal_true_pace_s - 1.0) * 100
+                if pct > 0.05:
+                    weather["true_pace_pct"] = round(pct, 1)
+                else:
+                    weather.pop("true_pace_pct", None)
+        except Exception:
+            pass
 
     new_stamp = compose_stamp(
         activity,
