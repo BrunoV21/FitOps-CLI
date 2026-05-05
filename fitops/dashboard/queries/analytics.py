@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from fitops.analytics.performance_metrics import compute_performance_metrics
 from fitops.analytics.training_load import (
+    DailyLoad,
     TrainingLoadResult,
     compute_training_load,
 )
@@ -22,6 +23,13 @@ from fitops.db.session import get_async_session
 RUNNING_SPORTS = frozenset({"Run", "TrailRun", "Walk", "Hike", "VirtualRun"})
 RIDING_SPORTS = frozenset({"Ride", "VirtualRide", "EBikeRide"})
 
+# Maps sport_types frozenset → snapshot category stored by persist_training_load_snapshot.
+_SPORT_TYPES_TO_SNAP_CATEGORY: dict[frozenset | None, str | None] = {
+    None: None,
+    RUNNING_SPORTS: "run",
+    RIDING_SPORTS: "ride",
+}
+
 
 def _normalise_perf_sport(sport: str | None) -> tuple[str | None, frozenset | None]:
     sport_key = sport.lower() if sport else None
@@ -32,12 +40,76 @@ def _normalise_perf_sport(sport: str | None) -> tuple[str | None, frozenset | No
     return None, None
 
 
+async def _get_training_load_from_snapshots(
+    athlete_id: int,
+    days: int,
+    sport_category: str | None,
+) -> TrainingLoadResult | None:
+    """Read pre-computed CTL/ATL/TSB history from analytics_snapshots.
+
+    Returns None when there aren't enough rows to cover the requested range,
+    which signals the caller to fall back to the full compute path.
+    """
+    start = (date.today() - timedelta(days=days - 1)).isoformat()
+
+    async with get_async_session() as session:
+        if sport_category is None:
+            result = await session.execute(
+                text(
+                    "SELECT snapshot_date, ctl, atl, tsb, daily_tss "
+                    "FROM analytics_snapshots "
+                    "WHERE athlete_id = :aid AND snapshot_date >= :start "
+                    "AND sport_type IS NULL "
+                    "ORDER BY snapshot_date"
+                ),
+                {"aid": athlete_id, "start": start},
+            )
+        else:
+            result = await session.execute(
+                text(
+                    "SELECT snapshot_date, ctl, atl, tsb, daily_tss "
+                    "FROM analytics_snapshots "
+                    "WHERE athlete_id = :aid AND snapshot_date >= :start "
+                    "AND sport_type = :sc "
+                    "ORDER BY snapshot_date"
+                ),
+                {"aid": athlete_id, "start": start, "sc": sport_category},
+            )
+        rows = result.fetchall()
+
+    # Require at least 80% coverage to trust snapshots over a full recompute.
+    if len(rows) < days * 0.8:
+        return None
+
+    tl = TrainingLoadResult()
+    for snap_date, ctl, atl, tsb, daily_tss in rows:
+        if isinstance(snap_date, str):
+            snap_date = date.fromisoformat(snap_date)
+        tl.history.append(
+            DailyLoad(
+                date=snap_date,
+                daily_tss=round(daily_tss or 0.0, 2),
+                ctl=round(ctl or 0.0, 2),
+                atl=round(atl or 0.0, 2),
+                tsb=round(tsb or 0.0, 2),
+            )
+        )
+    return tl if tl.history else None
+
+
 async def get_training_load_data(
     athlete_id: int,
     days: int = 90,
     sport: str | None = None,
     sport_types: frozenset | None = None,
 ) -> TrainingLoadResult | None:
+    # Only use snapshots when there's no specific single-sport filter (sport= arg).
+    if sport is None and sport_types in _SPORT_TYPES_TO_SNAP_CATEGORY:
+        snap_category = _SPORT_TYPES_TO_SNAP_CATEGORY[sport_types]
+        cached = await _get_training_load_from_snapshots(athlete_id, days, snap_category)
+        if cached is not None:
+            return cached
+
     result = await compute_training_load(
         athlete_id=athlete_id, days=days, sport_filter=sport, sport_types=sport_types
     )

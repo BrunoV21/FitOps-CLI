@@ -53,28 +53,23 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         weeks = min(52, max(12, days // 7))
         weekly: list = []
-
         run_weekly: list = []
         ride_weekly: list = []
 
         if athlete_id:
-            tl = await get_training_load_data(
-                athlete_id, days=days, sport_types=sport_types
-            )
-            volume_summary = await get_volume_summary(
-                athlete_id, sport_types=sport_types
-            )
-            weekly = await get_weekly_volume(
-                athlete_id, weeks=weeks, sport_types=sport_types
-            )
             if view == "total":
-                run_weekly, ride_weekly = await asyncio.gather(
-                    get_weekly_volume(
-                        athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS
-                    ),
-                    get_weekly_volume(
-                        athlete_id, weeks=weeks, sport_types=RIDING_SPORTS
-                    ),
+                tl, volume_summary, weekly, run_weekly, ride_weekly = await asyncio.gather(
+                    get_training_load_data(athlete_id, days=days, sport_types=sport_types),
+                    get_volume_summary(athlete_id, sport_types=sport_types),
+                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=sport_types),
+                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS),
+                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS),
+                )
+            else:
+                tl, volume_summary, weekly = await asyncio.gather(
+                    get_training_load_data(athlete_id, days=days, sport_types=sport_types),
+                    get_volume_summary(athlete_id, sport_types=sport_types),
+                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=sport_types),
                 )
 
         if tl:
