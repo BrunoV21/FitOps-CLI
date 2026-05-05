@@ -9,6 +9,7 @@
 </div>
 
 <!-- ── HF Deploy Info ──────────────────────────────────────────── -->
+{% if not auth_enabled %}
 <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:20px;padding:12px 16px;border-left:2px solid var(--accent-primary);background:rgba(0,255,135,0.05);">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
@@ -26,6 +27,7 @@
        style="color:var(--accent-primary);text-decoration:none;">Learn more →</a>
   </p>
 </div>
+{% endif %}
 
 <!-- ── GitHub Provider Setup ──────────────────────────────────── -->
 <section class="panel" id="panel-github">

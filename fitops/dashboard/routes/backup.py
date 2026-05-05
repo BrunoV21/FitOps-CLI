@@ -18,6 +18,10 @@ router = APIRouter()
 
 def register(templates: Jinja2Templates) -> APIRouter:
 
+    import os as _os
+
+    _auth_enabled = _os.environ.get("FITOPS_AUTH_ENABLED", "").lower() == "true"
+
     @router.get("/backup", response_class=HTMLResponse)
     async def backup_page(request: Request):
         gh = bcfg.get_github_config()
@@ -31,6 +35,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "github_configured": bool(gh),
                 "github_repo": gh["repo"] if gh else "",
                 "schedule": schedule,
+                "auth_enabled": _auth_enabled,
             },
         )
 
