@@ -98,6 +98,17 @@ async def test_persist_snapshot_upserts(populated_db, patched_session, engine):
 
     athlete_id = populated_db
     await persist_training_load_snapshot(athlete_id)
+
+    async with engine.connect() as conn:
+        row = await conn.execute(
+            text(
+                "SELECT COUNT(*) FROM analytics_snapshots "
+                "WHERE athlete_id = :aid AND sport_type IS NULL"
+            ),
+            {"aid": athlete_id},
+        )
+        count_after_first = row.scalar()
+
     await persist_training_load_snapshot(athlete_id)
 
     async with engine.connect() as conn:
@@ -108,9 +119,23 @@ async def test_persist_snapshot_upserts(populated_db, patched_session, engine):
             ),
             {"aid": athlete_id},
         )
-        count = row.scalar()
+        count_after_second = row.scalar()
 
-    assert count == 1, f"Expected 1 snapshot row, got {count}"
+        # Each date must appear at most once (upsert, not insert).
+        row2 = await conn.execute(
+            text(
+                "SELECT COUNT(DISTINCT snapshot_date) FROM analytics_snapshots "
+                "WHERE athlete_id = :aid AND sport_type IS NULL"
+            ),
+            {"aid": athlete_id},
+        )
+        distinct_dates = row2.scalar()
+
+    assert count_after_first > 0, "Expected at least one snapshot row after first persist"
+    assert count_after_second == count_after_first, (
+        f"Second persist grew row count from {count_after_first} to {count_after_second} — duplicates created"
+    )
+    assert distinct_dates == count_after_second, "Duplicate rows exist for the same snapshot_date"
 
 
 async def test_persist_snapshot_no_activities(patched_session, engine):

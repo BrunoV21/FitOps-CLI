@@ -139,13 +139,19 @@ def test_middleware_allows_static_assets(auth_app):
 
 
 def test_middleware_allows_authenticated_request(auth_app):
+    from unittest.mock import MagicMock
+
     from starlette.testclient import TestClient
 
     from fitops.auth.session import SESSION_COOKIE, create_token
 
     token = create_token("test-session-secret-32-chars-long!!")
 
-    with patch("fitops.dashboard.routes.overview.get_overview_stats", return_value={}):
+    mock_settings = MagicMock()
+    mock_settings.is_authenticated = True
+    mock_settings.athlete_id = None
+
+    with patch("fitops.dashboard.routes.overview.get_settings", return_value=mock_settings):
         with TestClient(auth_app, follow_redirects=False) as c:
             resp = c.get("/", cookies={SESSION_COOKIE: token})
             assert resp.status_code != 302
