@@ -274,18 +274,49 @@ async function triggerStreams(force) {
 }
 
 // Auto-reload when a background sync brings in new data.
+// Only one tab polls the server (leader election via localStorage + BroadcastChannel).
 (function () {
   var _stamp = null;
+  var _tabId = Math.random().toString(36).slice(2);
+  var LEADER_KEY = 'fitops_stamp_leader';
+  var LEADER_TTL = 20000;
+  var POLL_MS = 15000;
+  var _bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('fitops_sync') : null;
+
+  function isLeader() {
+    try {
+      var raw = localStorage.getItem(LEADER_KEY);
+      if (!raw) return true;
+      var d = JSON.parse(raw);
+      return d.id === _tabId || (Date.now() - d.ts) > LEADER_TTL;
+    } catch (e) { return true; }
+  }
+
+  function claimLeader() {
+    try { localStorage.setItem(LEADER_KEY, JSON.stringify({ id: _tabId, ts: Date.now() })); } catch (e) {}
+  }
+
+  function handleStamp(stamp) {
+    if (_stamp !== null && stamp !== null && stamp !== _stamp) { location.reload(); }
+    _stamp = stamp;
+  }
+
+  if (_bc) { _bc.onmessage = function (e) { if (e.data && e.data.type === 'stamp') handleStamp(e.data.stamp); }; }
+
+  // Seed _stamp once on load so the first interval tick has a baseline.
   fetch('/api/sync/stamp').then(function (r) { return r.json(); }).then(function (d) { _stamp = d.stamp; }).catch(function () {});
+
   setInterval(function () {
     if (document.hidden) return;
+    // With BroadcastChannel: only the leader polls; followers receive via broadcast.
+    // Without BroadcastChannel: every tab polls independently (safe fallback).
+    if (_bc && !isLeader()) return;
+    claimLeader();
     fetch('/api/sync/stamp').then(function (r) { return r.json(); }).then(function (d) {
-      if (_stamp !== null && d.stamp !== null && d.stamp !== _stamp) {
-        location.reload();
-      }
-      _stamp = d.stamp;
+      if (_bc) _bc.postMessage({ type: 'stamp', stamp: d.stamp });
+      handleStamp(d.stamp);
     }).catch(function () {});
-  }, 15000);
+  }, POLL_MS);
 }());
 </script>
 </body>
