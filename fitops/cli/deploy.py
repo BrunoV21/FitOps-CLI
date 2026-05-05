@@ -127,16 +127,17 @@ def deploy_hf(
     owner, space_name = hf_repo.split("/", 1)
     space_url = f"https://huggingface.co/spaces/{hf_repo}"
     app_url = f"https://{owner}-{space_name}.hf.space"
+    app_url_display = f"{app_url}/"
 
     typer.echo(f"  Space:   {space_url}")
-    typer.echo(f"  App URL: {app_url}")
+    typer.echo(f"  App URL: {app_url_display}")
 
     # ── Step 7: configure GitHub Actions automatically ──────────────────────
     typer.echo("\nConfiguring GitHub Actions on backup repo…")
     _setup_github_actions(github_backup_token, github_backup_repo, app_url, sync_token)
 
     typer.echo("\nDone! Your dashboard will be live in a few minutes.")
-    typer.echo(f"  {app_url}")
+    typer.echo(f"\n  Dashboard → {app_url_display}")
 
 
 # ── GitHub helpers ───────────────────────────────────────────────────────────
