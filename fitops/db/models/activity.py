@@ -216,7 +216,8 @@ class Activity(Base):
         self.weighted_average_watts = data.get(
             "weighted_average_watts", self.weighted_average_watts
         )
-        self.description = data.get("description", self.description)
+        if (desc := data.get("description")) is not None:
+            self.description = desc
         self.calories = data.get("calories", self.calories)
         self.suffer_score = data.get("suffer_score", self.suffer_score)
         self.kudos_count = data.get("kudos_count", self.kudos_count) or 0

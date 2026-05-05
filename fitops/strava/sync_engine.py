@@ -171,7 +171,9 @@ class SyncEngine:
                 if activity is None:
                     continue
                 try:
-                    await stamp_activity(self._client, session, activity)
+                    await stamp_activity(
+                        self._client, session, activity, fetch_fresh_desc=True
+                    )
                 except Exception:
                     logger.warning("Failed to stamp activity %s", strava_id)
 

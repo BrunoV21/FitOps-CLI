@@ -330,7 +330,7 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
             if activity is None:
                 continue
             try:
-                await stamp_activity(client, session, activity)
+                await stamp_activity(client, session, activity, fetch_fresh_desc=True)
             except Exception:
                 pass
 
