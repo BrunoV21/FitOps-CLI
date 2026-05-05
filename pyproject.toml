@@ -51,9 +51,17 @@ include = ["fitops*"]
 
 [tool.setuptools.package-data]
 fitops = [
+    # Static assets — explicit root + recursive subdirs (favicon sits at static/ root)
+    "dashboard/static/*",
     "dashboard/static/**/*",
-    "dashboard/templates/**/*",
-    "cloud/**/*",
+    # Templates — root-level and all subdirectory templates
+    "dashboard/templates/*.html",
+    "dashboard/templates/**/*.html",
+    # HF Space deployment files
+    "cloud/hf_space/Dockerfile",
+    "cloud/hf_space/startup.sh",
+    # Bundled example workout definitions
+    "workouts/example_workouts/*.md",
 ]
 
 [tool.pytest.ini_options]

@@ -1,0 +1,8 @@
+recursive-include fitops/dashboard/static *
+recursive-include fitops/dashboard/templates *.html
+include fitops/cloud/hf_space/Dockerfile
+include fitops/cloud/hf_space/startup.sh
+recursive-include fitops/workouts/example_workouts *.md
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store
