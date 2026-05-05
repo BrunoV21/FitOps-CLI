@@ -56,7 +56,20 @@ def register(templates: Jinja2Templates) -> APIRouter:
         safe_next = next if next.startswith("/") else "/"
         # Respect X-Forwarded-Proto so the cookie works behind HF's HTTP proxy
         proto = request.headers.get("x-forwarded-proto", "https")
-        response = RedirectResponse(url=safe_next, status_code=303)
+        # Return a 200 HTML page that sets the cookie and then redirects via JS.
+        # A 303 RedirectResponse with Set-Cookie can be swallowed by reverse
+        # proxies (HF Spaces terminates TLS upstream), causing the browser to
+        # follow the redirect before the cookie is stored. A 200 response
+        # ensures Set-Cookie is fully processed first.
+        safe_next_escaped = safe_next.replace('"', "%22")
+        html = (
+            f"<!doctype html><html><head>"
+            f'<meta http-equiv="refresh" content="0;url={safe_next_escaped}">'
+            f"</head><body>"
+            f'<script>window.location.replace("{safe_next_escaped}");</script>'
+            f"</body></html>"
+        )
+        response = HTMLResponse(content=html, status_code=200)
         response.set_cookie(
             SESSION_COOKIE,
             token,
