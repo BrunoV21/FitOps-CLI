@@ -102,7 +102,7 @@ def compose_stamp(
         score_parts.append(
             f"Aer {activity.aerobic_score:.1f} ({aerobic_short_label(activity.aerobic_score)})"
         )
-    if activity.anaerobic_score is not None:
+    if activity.anaerobic_score is not None and activity.anaerobic_score > 0:
         score_parts.append(
             f"Ana {activity.anaerobic_score:.1f} ({anaerobic_short_label(activity.anaerobic_score)})"
         )
