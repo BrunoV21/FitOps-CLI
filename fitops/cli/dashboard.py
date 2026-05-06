@@ -30,8 +30,24 @@ def serve(
 
     init_db()
 
+    # Generate a local session token before the server starts so the browser
+    # URL can carry it for automatic authentication on first open.
+    import os as _os
+
+    _deploy_mode = _os.environ.get("FITOPS_AUTH_ENABLED", "").lower() == "true"
+
     url = f"http://{host}:{port}"
-    typer.echo(f"Starting FitOps Dashboard at {url}")
+
+    if not _deploy_mode:
+        from fitops.auth.local_token import init as _init_local_auth
+
+        _startup_token = _init_local_auth()
+        _open_url = f"{url}/auth/local?token={_startup_token}"
+        typer.echo(f"Starting FitOps Dashboard at {url}")
+        typer.echo(f"Auth URL: {_open_url}")
+    else:
+        _open_url = url
+        typer.echo(f"Starting FitOps Dashboard at {url}")
 
     if not no_open:
         import threading
@@ -40,7 +56,7 @@ def serve(
 
         def _open():
             time.sleep(0.8)
-            webbrowser.open(url)
+            webbrowser.open(_open_url)
 
         threading.Thread(target=_open, daemon=True).start()
 
