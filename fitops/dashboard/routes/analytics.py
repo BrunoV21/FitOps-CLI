@@ -58,16 +58,30 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         if athlete_id:
             if view == "total":
-                tl, volume_summary, weekly, run_weekly, ride_weekly = await asyncio.gather(
-                    get_training_load_data(athlete_id, days=days, sport_types=sport_types),
+                (
+                    tl,
+                    volume_summary,
+                    weekly,
+                    run_weekly,
+                    ride_weekly,
+                ) = await asyncio.gather(
+                    get_training_load_data(
+                        athlete_id, days=days, sport_types=sport_types
+                    ),
                     get_volume_summary(athlete_id, sport_types=sport_types),
                     get_weekly_volume(athlete_id, weeks=weeks, sport_types=sport_types),
-                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS),
-                    get_weekly_volume(athlete_id, weeks=weeks, sport_types=RIDING_SPORTS),
+                    get_weekly_volume(
+                        athlete_id, weeks=weeks, sport_types=RUNNING_SPORTS
+                    ),
+                    get_weekly_volume(
+                        athlete_id, weeks=weeks, sport_types=RIDING_SPORTS
+                    ),
                 )
             else:
                 tl, volume_summary, weekly = await asyncio.gather(
-                    get_training_load_data(athlete_id, days=days, sport_types=sport_types),
+                    get_training_load_data(
+                        athlete_id, days=days, sport_types=sport_types
+                    ),
                     get_volume_summary(athlete_id, sport_types=sport_types),
                     get_weekly_volume(athlete_id, weeks=weeks, sport_types=sport_types),
                 )
