@@ -9,6 +9,7 @@ from datetime import UTC
 import typer
 from sqlalchemy import delete, select
 
+from fitops.backup.event_sync import trigger_cli
 from fitops.db.migrations import init_db
 from fitops.db.models.note import Note
 from fitops.db.session import get_async_session
@@ -133,6 +134,7 @@ def create_note(
         if note.tags:
             typer.echo(f"  Tags: {', '.join(note.tags)}")
         typer.echo(f"  File: {note.file_path}")
+    trigger_cli()
 
 
 @app.command("list")
@@ -264,6 +266,7 @@ def edit_note(
         asyncio.run(_upsert_note(reloaded))
 
     typer.echo(f"Saved: {slug}")
+    trigger_cli()
 
 
 @app.command("delete")
@@ -285,6 +288,7 @@ def delete_note(
     asyncio.run(_delete_note_db(slug))
 
     typer.echo(f"Deleted: {slug}")
+    trigger_cli()
 
 
 @app.command("tags")
