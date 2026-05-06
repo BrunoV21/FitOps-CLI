@@ -30,8 +30,11 @@
   </div>
 </div>
 
+<!-- Stats block: rows 1 + weather + rolling all share one visual section -->
+<div class="stats-block">
+
 <!-- Row 1: 3 stat panels -->
-<div class="grid-3 mb-6" style="margin-bottom:1px;">
+<div class="grid-3">
   <div class="panel panel--accent-blue" style="--delay:0ms">
     <p class="panel-label">Activities — {{ period_label }}</p>
     <p class="panel-metric">{{ stats.total_count | default(0) }}</p>
@@ -59,7 +62,7 @@
 
 <!-- Row 2: Weather (week only) -->
 {% if period == 'week' and today_weather %}
-<div class="grid-4 mb-6" style="margin-bottom:1px;">
+<div class="grid-4">
 
   <!-- Temperature -->
   <div class="panel panel--accent-blue" style="--delay:100ms;padding:12px 16px;">
@@ -128,7 +131,7 @@
 
 <!-- Row 2b: Rolling stats (week — accumulated totals) -->
 {% if period == 'week' and rolling %}
-<div class="grid-3 mb-6" style="margin-bottom:1px;">
+<div class="grid-3">
   <div class="panel panel--accent-blue" style="--delay:100ms">
     <p class="panel-label">Total Time — This Week</p>
     <p class="panel-metric">{{ rolling.total_time_h }}<span class="panel-unit">h</span></p>
@@ -146,7 +149,7 @@
 
 <!-- Row 2c: Rolling stats (month — averages per week) -->
 {% if period == 'month' and rolling %}
-<div class="grid-4 mb-6" style="margin-bottom:1px;">
+<div class="grid-4">
   <div class="panel panel--accent-blue" style="--delay:100ms">
     <p class="panel-label">Total Time — This Month</p>
     <p class="panel-metric">{{ rolling.total_time_h }}<span class="panel-unit">h</span></p>
@@ -168,7 +171,7 @@
 
 <!-- Row 2d: Rolling stats (year — averages per week and month) -->
 {% if period == 'year' and rolling %}
-<div class="grid-4 mb-6" style="margin-bottom:1px;">
+<div class="grid-4">
   <div class="panel panel--accent-blue" style="--delay:100ms">
     <p class="panel-label">Total Time — This Year</p>
     <p class="panel-metric">{{ rolling.total_time_h }}<span class="panel-unit">h</span></p>
@@ -187,6 +190,8 @@
   </div>
 </div>
 {% endif %}
+
+</div><!-- /stats-block -->
 
 <!-- Row 3: Recent activities + Training status (training status only on week view) -->
 <div class="grid-12" style="margin-bottom:1px;">
@@ -297,7 +302,9 @@
       Longer
     </div>
   </div>
-  <div id="activity-heatmap" style="width:100%;padding-bottom:4px;"></div>
+  <div class="heatmap-scroll">
+    <div id="activity-heatmap" style="width:100%;padding-bottom:4px;"></div>
+  </div>
   <p id="heatmap-tooltip" style="font-size:11px;color:var(--text-dim);margin-top:8px;min-height:16px;"></p>
   <div id="heatmap-day-detail"></div>
 </div>

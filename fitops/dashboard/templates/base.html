@@ -11,6 +11,26 @@
 </head>
 <body>
 
+<!-- Mobile topbar (visible only on small screens) -->
+<header class="mobile-topbar">
+  <button class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Open navigation">
+    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+  </button>
+  <div class="mobile-topbar-logo">
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+      <path d="M7 1L13 13H1L7 1Z" fill="currentColor"/>
+    </svg>
+    <span>FitOps</span>
+    <span class="mobile-topbar-sep">/</span>
+    <span class="mobile-topbar-page">{{ self.page_name() }}</span>
+  </div>
+</header>
+
+<!-- Backdrop for mobile sidebar drawer -->
+<div class="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
 <div class="app-shell">
 
   <!-- Sidebar -->
@@ -153,6 +173,21 @@
 {% block scripts %}{% endblock %}
 
 <script>
+// Mobile sidebar drawer toggle
+function toggleSidebar() {
+  document.body.classList.toggle('sidebar-open');
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') document.body.classList.remove('sidebar-open');
+});
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.sidebar-link').forEach(function(link) {
+    link.addEventListener('click', function() {
+      if (window.innerWidth <= 767) document.body.classList.remove('sidebar-open');
+    });
+  });
+});
+
 // Chart fullscreen helper
 function _fsPanel(btn) {
   var el = btn.closest('.panel') || btn.closest('.analysis-section');

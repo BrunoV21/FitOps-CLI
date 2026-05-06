@@ -295,11 +295,6 @@
   <div class="analysis-header">
     <p class="panel-label" style="margin:0;">Activity Analysis</p>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div id="metric-toggles" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-      <div class="xaxis-toggle">
-        <button id="xaxis-distance" class="xaxis-btn"        onclick="setXAxis('distance')">Distance</button>
-        <button id="xaxis-time"     class="xaxis-btn active" onclick="setXAxis('time')">Time</button>
-      </div>
       <a href="/activities/{{ activity.strava_id }}/analysis"
          style="font-size:10px;padding:4px 11px;border:1px solid var(--border-hover);border-radius:4px;
                 color:var(--text-muted);text-decoration:none;letter-spacing:0.07em;
@@ -317,6 +312,13 @@
       <div id="activity-map" style="height:100%;min-height:380px;"></div>
     </div>
     <div class="analysis-chart">
+      <div class="analysis-chart-controls">
+        <div id="metric-toggles" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        <div class="xaxis-toggle">
+          <button id="xaxis-distance" class="xaxis-btn"        onclick="setXAxis('distance')">Distance</button>
+          <button id="xaxis-time"     class="xaxis-btn active" onclick="setXAxis('time')">Time</button>
+        </div>
+      </div>
       <canvas id="stream-chart"></canvas>
     </div>
   </div>
