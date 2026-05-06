@@ -1,4 +1,4 @@
-"""Dashboard auth routes: /login and /logout."""
+"""Dashboard auth routes: /login, /logout (deploy mode) and /auth/local (local mode)."""
 
 from __future__ import annotations
 
@@ -87,3 +87,43 @@ def register(templates: Jinja2Templates) -> APIRouter:
         return response
 
     return router
+
+
+_local_router = APIRouter()
+
+
+def register_local(templates: Jinja2Templates) -> APIRouter:
+    """Register local-mode auth routes (/auth/local and /auth/local/expired)."""
+
+    @_local_router.get("/auth/local")
+    async def local_auth(token: str = ""):
+        from fitops.auth.local_token import (
+            LOCAL_SESSION_COOKIE,
+            LOCAL_SESSION_MAX_AGE,
+            get_session_value,
+            verify_startup_token,
+        )
+
+        if not token or not verify_startup_token(token):
+            return RedirectResponse(url="/auth/local/expired", status_code=302)
+
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            LOCAL_SESSION_COOKIE,
+            get_session_value(),
+            max_age=LOCAL_SESSION_MAX_AGE,
+            httponly=True,
+            samesite="strict",
+            secure=False,  # always localhost, never HTTPS
+        )
+        return response
+
+    @_local_router.get("/auth/local/expired")
+    async def local_auth_expired(request: Request):
+        return templates.TemplateResponse(
+            request,
+            "auth/local_expired.html",
+            {"request": request},
+        )
+
+    return _local_router

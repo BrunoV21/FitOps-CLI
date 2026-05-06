@@ -53,6 +53,9 @@
   @media (max-width: 980px) {
     .events-summary-grid { grid-template-columns:1fr; }
   }
+  @media (max-width: 767px) {
+    #replay-map { height: 480px; }
+  }
   #gif-progress { display:none; margin-top:0.5rem; }
   #gif-progress-bar-wrap { background:#222; border-radius:4px; height:6px; overflow:hidden; margin-top:0.3rem; }
   #gif-progress-bar { background:var(--accent-primary); height:100%; width:0; transition:width 0.1s; }
@@ -113,7 +116,7 @@
 </div>
 
 {# ── Row 1: Map replay + Gap chart ── #}
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.25rem;">
+<div class="ig-2" style="gap:1.25rem; margin-bottom:1.25rem;">
 
   {# Map panel #}
   <div class="panel">
@@ -189,8 +192,8 @@
       <span class="panel-meta" id="chart-meta" style="margin-left:0.5rem;">min/km — lower is faster</span>
     </div>
   </div>
-  <div id="pace-chart-wrap"><canvas id="pace-chart" style="max-height:320px;"></canvas></div>
-  <div id="hr-chart-wrap" style="display:none;"><canvas id="hr-chart" style="max-height:320px;"></canvas></div>
+  <div id="pace-chart-wrap"><canvas id="pace-chart" style="max-height:380px;"></canvas></div>
+  <div id="hr-chart-wrap" style="display:none;"><canvas id="hr-chart" style="max-height:380px;"></canvas></div>
 </div>
 {% endif %}
 
@@ -504,7 +507,7 @@
   </div>
 </div>
 
-<div style="display:grid; grid-template-columns:1fr auto; gap:1.25rem; align-items:start; margin-bottom:1.25rem;">
+<div class="ig-2" style="gap:1.25rem; align-items:start; margin-bottom:1.25rem;">
 
   <div class="panel">
     <div class="panel-header">
@@ -512,7 +515,7 @@
     </div>
     <form method="post" action="/race/sessions/{{ session.id }}/add-athlete"
           enctype="multipart/form-data" style="padding:1rem 1.25rem;">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+      <div class="ig-2" style="gap:1rem; margin-bottom:1rem;">
         <div>
           <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Label <span style="color:#ef4444;">*</span></label>
           <input type="text" name="label" required placeholder="e.g. Kipchoge"
@@ -1338,7 +1341,7 @@ renderFrame(0);
           x: { type: 'linear', title: { display: true, text: 'Distance (km)', color: '#666' },
                ticks: { color: '#666', maxTicksLimit: 8 }, grid: { color: '#222' } },
           y: { reverse: true, title: { display: true, text: 'Pace (min/km)', color: '#666' },
-               ticks: { color: '#666', callback: v => { const m = Math.floor(v); const s = Math.round((v-m)*60); return `${m}:${String(s).padStart(2,'0')}`; } },
+               ticks: { color: '#666', maxTicksLimit: 6, callback: v => { const m = Math.floor(v); const s = Math.round((v-m)*60); return `${m}:${String(s).padStart(2,'0')}`; } },
                grid: { color: '#222' } }
         }
       }
@@ -1377,7 +1380,7 @@ renderFrame(0);
           x: { type: 'linear', title: { display: true, text: 'Distance (km)', color: '#666' },
                ticks: { color: '#666', maxTicksLimit: 8 }, grid: { color: '#222' } },
           y: { title: { display: true, text: 'Heart Rate (bpm)', color: '#666' },
-               ticks: { color: '#666' }, grid: { color: '#222' } }
+               ticks: { color: '#666', maxTicksLimit: 6 }, grid: { color: '#222' } }
         }
       }
     });

@@ -60,12 +60,14 @@ def create_app(port: int = 8888) -> FastAPI:
     )
     app.state.dashboard_port = port
 
-    # Opt-in auth — active only when FITOPS_AUTH_ENABLED=true (set by HF deploy).
-    # Requires fitops[server]; local dev runs without any env vars → no auth.
     import os as _os
 
     _auth_enabled = _os.environ.get("FITOPS_AUTH_ENABLED", "").lower() == "true"
+    _local_auth_active = False
+
     if _auth_enabled:
+        # Deploy mode (HF / public-facing): password + TOTP + signed cookie.
+        # Requires fitops[server] for itsdangerous, bcrypt, pyotp.
         _session_secret = _os.environ.get("FITOPS_SESSION_SECRET", "")
         if not _session_secret:
             raise RuntimeError(
@@ -80,6 +82,17 @@ def create_app(port: int = 8888) -> FastAPI:
                 "Run: pip install 'fitops[server]'"
             ) from exc
         app.add_middleware(AuthMiddleware, session_secret=_session_secret)
+    else:
+        # Local mode: session token generated at startup by the CLI and passed in
+        # the browser URL. Uses only stdlib — no extra dependencies required.
+        from fitops.auth.local_token import get_session_value as _get_local_sv
+
+        if _get_local_sv():
+            # init() was called by the CLI — enable local session middleware.
+            from fitops.auth.middleware import LocalAuthMiddleware
+
+            app.add_middleware(LocalAuthMiddleware)
+            _local_auth_active = True
 
     app.mount(
         "/static",
@@ -203,6 +216,8 @@ def create_app(port: int = 8888) -> FastAPI:
     app.include_router(api.register())
     if _auth_enabled:
         app.include_router(auth_route.register(templates))
+    elif _local_auth_active:
+        app.include_router(auth_route.register_local(templates))
     app.include_router(setup.register(templates))
     app.include_router(overview.register(templates))
     app.include_router(activities.register(templates))

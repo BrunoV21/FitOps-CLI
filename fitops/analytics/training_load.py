@@ -193,7 +193,9 @@ async def persist_training_load_snapshot(athlete_id: int) -> None:
     ]
     for sport_category, sport_types_set in categories:
         try:
-            await _persist_category_snapshots(athlete_id, sport_category, sport_types_set)
+            await _persist_category_snapshots(
+                athlete_id, sport_category, sport_types_set
+            )
         except Exception:
             pass
 

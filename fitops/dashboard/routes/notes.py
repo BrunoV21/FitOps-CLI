@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
+from fitops.backup.event_sync import trigger_async
 from fitops.dashboard.queries.notes import get_all_notes, get_all_tags, upsert_note
 from fitops.db.models.note import Note
 from fitops.db.session import get_async_session
@@ -109,6 +110,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         async with get_async_session() as session:
             await upsert_note(session, note)
 
+        await trigger_async()
         return RedirectResponse(url=f"/notes/{note.slug}", status_code=303)
 
     @router.get("/notes/{slug}/edit", response_class=HTMLResponse)
@@ -159,6 +161,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         async with get_async_session() as session:
             await upsert_note(session, note)
 
+        await trigger_async()
         return RedirectResponse(url=f"/notes/{slug}", status_code=303)
 
     @router.post("/notes/{slug}/delete")
@@ -168,6 +171,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         async with get_async_session() as session:
             await session.execute(sa_delete(Note).where(Note.slug == slug))
 
+        await trigger_async()
         return RedirectResponse(url="/notes", status_code=303)
 
     @router.get("/notes/{slug}", response_class=HTMLResponse)

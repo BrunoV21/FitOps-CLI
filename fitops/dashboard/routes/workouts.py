@@ -15,6 +15,7 @@ from fitops.analytics.training_scores import (
     compute_anaerobic_score,
 )
 from fitops.analytics.weather_pace import weather_row_to_dict
+from fitops.backup.event_sync import trigger_async
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.race import get_all_courses, get_course
 from fitops.dashboard.queries.weather import get_weather_for_activities
@@ -674,6 +675,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 for s in segments
             ],
         }
+        await trigger_async()
         return templates.TemplateResponse(
             request,
             "workouts/create.html",

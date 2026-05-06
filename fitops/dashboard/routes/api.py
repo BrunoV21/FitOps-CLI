@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.weather_pace import pace_heat_factor, wbgt_approx
+from fitops.backup.event_sync import trigger_async
 from fitops.config.settings import get_settings
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
@@ -198,6 +199,7 @@ def register() -> APIRouter:
         except Exception:
             pass
 
+        await trigger_async()
         return JSONResponse(
             {
                 "activities_created": result.activities_created,
@@ -226,6 +228,7 @@ def register() -> APIRouter:
             weather_result = await _fetch_weather_for_new_activities(
                 result["strava_ids"]
             )
+        await trigger_async()
         return JSONResponse(
             {
                 "streams_fetched": result["streams_fetched"],

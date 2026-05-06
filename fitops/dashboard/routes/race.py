@@ -33,6 +33,7 @@ from fitops.analytics.race_results import (
     summarize_race_result,
 )
 from fitops.analytics.weather_pace import headwind_ms
+from fitops.backup.event_sync import trigger_async
 from fitops.dashboard.queries.race import (
     delete_course,
     delete_race_plan,
@@ -305,6 +306,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 total_distance_m=total_dist,
                 total_elevation_gain_m=elev_gain,
             )
+            await trigger_async()
             return RedirectResponse(url=f"/race/{result['id']}", status_code=303)
 
         except Exception as exc:
@@ -1378,6 +1380,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         except Exception:
             pass
 
+        await trigger_async()
         return RedirectResponse(url=f"/race/plans/{saved_id}", status_code=303)
 
     @router.get("/race/plans/{plan_id}", response_class=HTMLResponse)

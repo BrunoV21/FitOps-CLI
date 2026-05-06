@@ -79,7 +79,7 @@
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:1rem; margin-top:0.5rem;">
+      <div class="ig-4" style="gap:1rem; margin-top:0.5rem;">
         <div>
           <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">Temperature (°C) — override</label>
           <input type="number" name="temp" value="{{ form.temp or '' }}" step="0.5" placeholder="auto"
@@ -122,7 +122,7 @@
       {% endif %}
     </span>
   </div>
-  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem; padding:0.75rem 1.25rem;">
+  <div class="ig-4" style="gap:0.75rem; padding:0.75rem 1.25rem;">
     <div><span style="font-size:0.75rem; color:#888;">Temp</span><br><strong>{{ "%.1f"|format(weather_info.temperature_c) }}°C</strong></div>
     <div><span style="font-size:0.75rem; color:#888;">Humidity</span><br><strong>{{ weather_info.humidity_pct | int }}%</strong></div>
     <div><span style="font-size:0.75rem; color:#888;">Wind</span><br><strong>{{ weather_info.wind_speed_kmh }} km/h</strong></div>

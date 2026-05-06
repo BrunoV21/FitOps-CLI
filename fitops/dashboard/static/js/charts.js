@@ -758,10 +758,10 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
     return `${y}-${m}-${day}`;
   }
 
-  const DAY_SIZE = 11;
+  const DAY_SIZE = 14;
   const DAY_GAP = 2;
   const CELL = DAY_SIZE + DAY_GAP;
-  const LABEL_H = 18;
+  const LABEL_H = 20;
   const DOW_LABEL_W = 24;
 
   const DAY_NAMES = ["Mon", "Wed", "Fri"];
@@ -847,7 +847,14 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
     ${cells}
   </svg>`;
 
+  container.style.minWidth = (svgW + DOW_LABEL_W) + 'px';
   container.innerHTML = svg;
+
+  // Scroll wrapper to show most-recent (rightmost) end
+  requestAnimationFrame(() => {
+    const scrollEl = container.closest('.heatmap-scroll');
+    if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
+  });
 
   // Tooltip on hover
   const tooltipEl = tooltipId ? document.getElementById(tooltipId) : null;

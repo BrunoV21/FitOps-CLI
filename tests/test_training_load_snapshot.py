@@ -131,11 +131,15 @@ async def test_persist_snapshot_upserts(populated_db, patched_session, engine):
         )
         distinct_dates = row2.scalar()
 
-    assert count_after_first > 0, "Expected at least one snapshot row after first persist"
+    assert count_after_first > 0, (
+        "Expected at least one snapshot row after first persist"
+    )
     assert count_after_second == count_after_first, (
         f"Second persist grew row count from {count_after_first} to {count_after_second} — duplicates created"
     )
-    assert distinct_dates == count_after_second, "Duplicate rows exist for the same snapshot_date"
+    assert distinct_dates == count_after_second, (
+        "Duplicate rows exist for the same snapshot_date"
+    )
 
 
 async def test_persist_snapshot_no_activities(patched_session, engine):

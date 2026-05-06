@@ -7,6 +7,7 @@ from datetime import UTC
 import typer
 from sqlalchemy import desc, select
 
+from fitops.backup.event_sync import trigger_cli
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.db.models.activity import Activity
@@ -290,6 +291,7 @@ def link_workout(
             default=str,
         )
     )
+    trigger_cli()
 
 
 @app.command("get")
@@ -926,6 +928,7 @@ def create_workout(
             indent=2,
         )
     )
+    trigger_cli()
 
 
 @app.command("simulate")
@@ -1318,3 +1321,4 @@ def unlink_workout(
             indent=2,
         )
     )
+    trigger_cli()

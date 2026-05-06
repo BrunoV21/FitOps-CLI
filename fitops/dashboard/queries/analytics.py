@@ -106,7 +106,9 @@ async def get_training_load_data(
     # Only use snapshots when there's no specific single-sport filter (sport= arg).
     if sport is None and sport_types in _SPORT_TYPES_TO_SNAP_CATEGORY:
         snap_category = _SPORT_TYPES_TO_SNAP_CATEGORY[sport_types]
-        cached = await _get_training_load_from_snapshots(athlete_id, days, snap_category)
+        cached = await _get_training_load_from_snapshots(
+            athlete_id, days, snap_category
+        )
         if cached is not None:
             return cached
 

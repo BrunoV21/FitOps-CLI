@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from fitops.analytics.weather_pace import pace_heat_factor as _pace_heat_factor
 from fitops.analytics.weather_pace import wbgt_approx
+from fitops.backup.event_sync import trigger_cli
 from fitops.config.settings import get_settings
 from fitops.config.state import get_sync_state
 from fitops.dashboard.queries.weather import upsert_activity_weather
@@ -292,6 +293,7 @@ def run(
             typer.echo(json.dumps(out, indent=2))
         else:
             print_sync_result(out)
+        trigger_cli()
     except FitOpsError as e:
         typer.echo(f"Sync failed: {e}", err=True)
         raise typer.Exit(1)
@@ -381,6 +383,7 @@ def sync_streams(
             typer.echo(json.dumps(result, indent=2))
         else:
             print_sync_streams_result(result)
+        trigger_cli()
     except FitOpsError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)

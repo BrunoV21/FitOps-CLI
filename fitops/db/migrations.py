@@ -308,7 +308,9 @@ async def _migrate_snapshot_columns(conn) -> None:
     for col_name, col_type in _SNAPSHOT_NEW_COLUMNS:
         if col_name not in existing:
             await conn.execute(
-                text(f"ALTER TABLE analytics_snapshots ADD COLUMN {col_name} {col_type}")
+                text(
+                    f"ALTER TABLE analytics_snapshots ADD COLUMN {col_name} {col_type}"
+                )
             )
 
 

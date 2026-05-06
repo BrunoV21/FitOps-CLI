@@ -9,6 +9,7 @@ from sqlalchemy import select
 from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.pace_zones import compute_pace_zones
 from fitops.analytics.zones import compute_zones
+from fitops.backup.event_sync import trigger_cli
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
 from fitops.db.models.athlete import Athlete
@@ -262,6 +263,7 @@ def set_physiology(
 
     parts = ", ".join(f"{k}={v}" for k, v in updates.items())
     typer.echo(f"Saved: {parts}")
+    trigger_cli()
 
 
 @app.command("equipment")

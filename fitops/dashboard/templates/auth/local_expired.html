@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FitOps — Session Expired</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:             #000000;
+      --surface:        #0a0a0a;
+      --border:         #1a1a1a;
+      --text-primary:   #ffffff;
+      --text-muted:     #888888;
+      --text-dim:       #3a3a3a;
+      --accent-primary: #00ff87;
+      --accent-red:     #ff3355;
+      --font: 'Geist Mono', 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 400px;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-header svg { color: var(--accent-primary); flex-shrink: 0; }
+    .card-header-name {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+    }
+    .card-header-sep { color: var(--text-dim); font-size: 14px; margin: 0 2px; }
+    .card-header-sub {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--accent-red);
+    }
+    .card-body { padding: 24px 20px; }
+    .error-box {
+      background: #110005;
+      border: 1px solid var(--accent-red);
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      color: var(--accent-red);
+      letter-spacing: 0.04em;
+    }
+    .error-box::before { content: '! '; }
+    .instructions {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.8;
+    }
+    .instructions p { margin-bottom: 10px; }
+    .instructions code {
+      background: #111;
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      font-family: var(--font);
+      font-size: 11px;
+      color: var(--accent-primary);
+    }
+    .step {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: flex-start;
+    }
+    .step-num {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1L13 13H1L7 1Z" fill="currentColor"/>
+      </svg>
+      <span class="card-header-name">FitOps</span>
+      <span class="card-header-sep">/</span>
+      <span class="card-header-sub">session expired</span>
+    </div>
+
+    <div class="card-body">
+      <div class="error-box">No valid session found.</div>
+
+      <div class="instructions">
+        <div class="step">
+          <span class="step-num">01</span>
+          <span>Check your terminal for the auth URL printed at startup:</span>
+        </div>
+        <div class="step">
+          <span class="step-num">&nbsp;</span>
+          <code>Auth URL: http://127.0.0.1:8888/auth/local?token=…</code>
+        </div>
+        <div class="step">
+          <span class="step-num">02</span>
+          <span>Open that URL in your browser to restore your session.</span>
+        </div>
+        <div class="step">
+          <span class="step-num">03</span>
+          <span>If the server was restarted, run <code>fitops dashboard serve</code> again — a new auth URL will be printed and your browser will open automatically.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -10,6 +10,7 @@ from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.pace_zones import compute_pace_zones
 from fitops.analytics.vo2max import compute_race_predictions, estimate_vo2max
 from fitops.analytics.zones import compute_zones
+from fitops.backup.event_sync import trigger_async
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.analytics import get_current_training_load
 from fitops.dashboard.queries.profile import get_athlete, get_equipment_with_stats
@@ -351,6 +352,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     if "birthday" in updates:
                         db_athlete.birthday = updates["birthday"]
 
+        await trigger_async()
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     @router.post("/profile/hr-zones")
@@ -378,6 +380,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return RedirectResponse("/profile?error=invalid_zones", status_code=303)
 
         s.set(custom_hr_zone_bounds=bounds)
+        await trigger_async()
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     @router.post("/profile/estimates")
@@ -426,6 +429,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         if not updates and not clear_keys:
             return RedirectResponse("/profile?error=no_changes", status_code=303)
+        await trigger_async()
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     @router.post("/profile/recalculate-vo2max")
@@ -512,6 +516,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             return RedirectResponse("/profile?error=invalid_zones", status_code=303)
 
         s.set(custom_pace_zone_bounds=bounds)
+        await trigger_async()
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     return router
