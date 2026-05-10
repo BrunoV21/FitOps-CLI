@@ -361,11 +361,9 @@ async def stamp_activity(
         except Exception:
             pass
 
-    # Fetch weather — compute all derived fields via shared function
+    # Fetch weather — prefer persisted derived values, lazy-compute if missing
     weather: dict | None = None
     _is_run = (activity.sport_type or "") in RUN_SPORT_TYPES
-    _mean_gap_ms: float | None = None
-    _heat_f: float | None = None
     try:
         weather_result = await session.execute(
             select(ActivityWeather).where(
@@ -374,7 +372,32 @@ async def stamp_activity(
         )
         weather_row = weather_result.scalar_one_or_none()
         if weather_row:
-            # Fetch streams needed for true pace computation
+            # If derived values not yet persisted, compute and store them
+            if weather_row.wap_factor is None:
+                from fitops.db.models.activity_stream import ActivityStream
+
+                streams_result = await session.execute(
+                    select(ActivityStream).where(
+                        ActivityStream.activity_id == activity.id,
+                        ActivityStream.stream_type.in_(
+                            ["velocity_smooth", "grade_smooth", "latlng",
+                             "grade_adjusted_speed"]
+                        ),
+                    )
+                )
+                streams_dict: dict[str, list] = {}
+                for row in streams_result.scalars().all():
+                    streams_dict[row.stream_type] = row.data
+
+                from fitops.analytics.weather_pace import persist_derived_weather
+                try:
+                    await persist_derived_weather(
+                        session, weather_row, activity, streams_dict or None
+                    )
+                except Exception:
+                    pass
+
+            # Fetch streams for compute_weather_panel (needed for true_pace_stream chart)
             streams_result = await session.execute(
                 select(ActivityStream).where(
                     ActivityStream.activity_id == activity.id,
@@ -384,9 +407,9 @@ async def stamp_activity(
                     ),
                 )
             )
-            streams_dict: dict[str, list] = {}
-            for row in streams_result.scalars().all():
-                streams_dict[row.stream_type] = row.data
+            streams_dict = {}
+            for srow in streams_result.scalars().all():
+                streams_dict[srow.stream_type] = srow.data
 
             from fitops.analytics.weather_pace import compute_weather_panel
             weather = compute_weather_panel(
@@ -401,25 +424,7 @@ async def stamp_activity(
             # Remove stream data (not needed by stamp composer)
             weather.pop("true_pace_stream", None)
 
-            # Keep track of GAP/heat for race calibration fallback
-            _heat_f = weather_row.pace_heat_factor or 1.0
-            if streams_dict.get("velocity_smooth") and streams_dict.get("grade_smooth"):
-                vel_raw = streams_dict["velocity_smooth"]
-                grade_raw = streams_dict["grade_smooth"]
-                wt_pairs = [
-                    (v * (1 + 0.033 * g), v)
-                    for v, g in zip(vel_raw, grade_raw, strict=False)
-                    if v and v > 0.1
-                ]
-                if wt_pairs:
-                    gap_speeds, weights = zip(*wt_pairs, strict=False)
-                    total_w = sum(weights)
-                    _mean_gap_ms = sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False)) / total_w
-
-            # Stamp uses wap_factor_pct (not true_pace_pct) for consistency with dashboard
-            # Convert wap_factor_pct to true_pace_pct for the stamp format:
-            # wap_factor_pct < 0 means conditions helped (tailwind/cool), shown as negative
-            # wap_factor_pct > 0 means conditions hurt (headwind/heat), shown as positive
+            # Stamp uses wap_factor_pct for the weather percentage
             wap_pct = weather.get("wap_factor_pct")
             if wap_pct is not None:
                 weather["true_pace_pct"] = round(wap_pct, 1)
@@ -507,6 +512,24 @@ async def stamp_activity(
         pass
 
     # For calibrated race activities, recompute true pace using corrected speed
+    _mean_gap_ms: float | None = None
+    _heat_f: float | None = None
+    if weather_row and weather:
+        _heat_f = weather_row.pace_heat_factor or 1.0
+        # Load velocity_smooth and grade_smooth from streams for GAP calculation
+        if streams_dict.get("velocity_smooth") and streams_dict.get("grade_smooth"):
+            vel_raw = streams_dict["velocity_smooth"]
+            grade_raw = streams_dict["grade_smooth"]
+            wt_pairs = [
+                (v * (1 + 0.033 * g), v)
+                for v, g in zip(vel_raw, grade_raw, strict=False)
+                if v and v > 0.1
+            ]
+            if wt_pairs:
+                gap_speeds, weights = zip(*wt_pairs, strict=False)
+                total_w = sum(weights)
+                _mean_gap_ms = sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False)) / total_w
+
     if (
         race_result
         and race_result.get("override_active")

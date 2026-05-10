@@ -576,8 +576,29 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 }
 
         # Build weather panel (shared computation with stamp)
+        # If derived values not yet persisted, lazy-compute and store them
         weather_panel = None
         w = _weather_obj
+        if w and w.wap_factor is None:
+            # Lazy-persist derived values on first read
+            try:
+                from fitops.analytics.weather_pace import persist_derived_weather
+                async with get_async_session() as _wp_session:
+                    from sqlalchemy import select as _sel
+                    _wp_result = await _wp_session.execute(
+                        _sel(ActivityWeather).where(ActivityWeather.activity_id == strava_id)
+                    )
+                    _wp_row = _wp_result.scalar_one_or_none()
+                    if _wp_row:
+                        await persist_derived_weather(
+                            _wp_session, _wp_row, activity, streams or None
+                        )
+                        # Refresh the weather object
+                        w = _wp_row
+                        _weather_map[strava_id] = w
+            except Exception:
+                pass
+
         if w:
             weather_panel = compute_weather_panel(
                 w,

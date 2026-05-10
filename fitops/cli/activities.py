@@ -538,35 +538,10 @@ def get_activity(
                 )
             formatted["laps"] = lap_rows
 
-        # Weather panel
+        # Weather panel — use persisted derived values when available
         if _weather_obj:
-            import json as _json
-
             ws = weather_row_to_dict(_weather_obj)
-
-            course_bearing: float | None = None
-            if row.start_latlng and row.end_latlng:
-                try:
-                    s_pt = _json.loads(row.start_latlng)
-                    e_pt = _json.loads(row.end_latlng)
-                    if len(s_pt) == 2 and len(e_pt) == 2:
-                        course_bearing = compute_bearing(
-                            s_pt[0], s_pt[1], e_pt[0], e_pt[1]
-                        )
-                except (ValueError, TypeError, IndexError):
-                    pass
-
             w = _weather_obj
-            wap_factor = 1.0
-            if w.temperature_c is not None and w.humidity_pct is not None:
-                wap_factor = compute_wap_factor(
-                    temp_c=w.temperature_c,
-                    rh_pct=w.humidity_pct,
-                    wind_speed_ms_val=w.wind_speed_ms or 0.0,
-                    wind_dir_deg=w.wind_direction_deg or 0.0,
-                    course_bearing=course_bearing,
-                )
-
             is_run = (row.sport_type or "") in {
                 "Run",
                 "TrailRun",
@@ -574,6 +549,49 @@ def get_activity(
                 "Hike",
                 "VirtualRun",
             }
+
+            # Prefer DB-persisted derived values; fallback to computation
+            if w.wap_factor is not None:
+                wap_factor = w.wap_factor
+                course_bearing = w.course_bearing
+                hr_heat_pct = w.hr_heat_pct
+                hr_heat_bpm = w.hr_heat_bpm
+            else:
+                import json as _json
+
+                course_bearing = None
+                if row.start_latlng and row.end_latlng:
+                    try:
+                        s_pt = _json.loads(row.start_latlng)
+                        e_pt = _json.loads(row.end_latlng)
+                        if len(s_pt) == 2 and len(e_pt) == 2:
+                            course_bearing = compute_bearing(
+                                s_pt[0], s_pt[1], e_pt[0], e_pt[1]
+                            )
+                    except (ValueError, TypeError, IndexError):
+                        pass
+
+                wap_factor = 1.0
+                if w.temperature_c is not None and w.humidity_pct is not None:
+                    wap_factor = compute_wap_factor(
+                        temp_c=w.temperature_c,
+                        rh_pct=w.humidity_pct,
+                        wind_speed_ms_val=w.wind_speed_ms or 0.0,
+                        wind_dir_deg=w.wind_direction_deg or 0.0,
+                        course_bearing=course_bearing,
+                    )
+
+                hr_heat_pct = None
+                hr_heat_bpm = None
+                if w.temperature_c is not None and w.humidity_pct is not None:
+                    vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
+                    if vo2_factor < 0.99:
+                        hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
+                        if row.average_heartrate and row.average_heartrate > 0:
+                            hr_heat_bpm = round(
+                                row.average_heartrate * (1.0 / vo2_factor - 1.0)
+                            )
+
             wap_fmt = None
             if row.average_speed_ms and row.average_speed_ms > 0:
                 if is_run:
@@ -585,36 +603,35 @@ def get_activity(
                     wap_speed_kmh = row.average_speed_ms * 3.6 * wap_factor
                     wap_fmt = f"{wap_speed_kmh:.1f} km/h"
 
-            hr_heat_pct: float | None = None
-            hr_heat_bpm: int | None = None
-            if w.temperature_c is not None and w.humidity_pct is not None:
-                vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
-                if vo2_factor < 0.99:
-                    hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
-                    if row.average_heartrate and row.average_heartrate > 0:
-                        hr_heat_bpm = round(
-                            row.average_heartrate * (1.0 / vo2_factor - 1.0)
-                        )
-
             true_pace_fmt = None
-            tp_stream = streams.get("true_pace", [])
-            vel_stream = streams.get("velocity_smooth", [])
-            tp_pairs = [
-                (p, v)
-                for p, v in zip(tp_stream, vel_stream, strict=False)
-                if p and p > 0 and v and v > 0.1
-            ]
-            if tp_pairs:
-                paces, vels = zip(*tp_pairs, strict=False)
-                total_wt = sum(vels)
-                mean_tp = (
-                    sum(p * v for p, v in zip(paces, vels, strict=False)) / total_wt
-                )
+            # Use persisted true_pace_s_per_km if available
+            if w.true_pace_s_per_km:
+                mean_tp = w.true_pace_s_per_km
                 if is_run:
                     m_tp, s_tp = divmod(int(round(mean_tp)), 60)
                     true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
                 else:
                     true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
+            else:
+                tp_stream = streams.get("true_pace", [])
+                vel_stream = streams.get("velocity_smooth", [])
+                tp_pairs = [
+                    (p, v)
+                    for p, v in zip(tp_stream, vel_stream, strict=False)
+                    if p and p > 0 and v and v > 0.1
+                ]
+                if tp_pairs:
+                    paces, vels = zip(*tp_pairs, strict=False)
+                    total_wt = sum(vels)
+                    mean_tp = (
+                        sum(p * v for p, v in zip(paces, vels, strict=False))
+                        / total_wt
+                    )
+                    if is_run:
+                        m_tp, s_tp = divmod(int(round(mean_tp)), 60)
+                        true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+                    else:
+                        true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
 
             formatted["weather"] = {
                 **ws,
