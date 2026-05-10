@@ -358,6 +358,64 @@ def compute_weather_panel(
 
     result = weather_row_to_dict(weather)
 
+    # ── Fast path: use persisted derived values if available ──
+    # When weather was stored (or lazy-computed), wap_factor, course_bearing,
+    # hr_heat_pct, hr_heat_bpm, true_pace_s_per_km are already on the
+    # ActivityWeather row.  Use them instead of recomputing.
+    has_persisted = getattr(weather, "wap_factor", None) is not None
+
+    if has_persisted:
+        # Fill in persisted derived values directly
+        wap_factor = weather.wap_factor or 1.0
+        result["wap_factor"] = round(wap_factor, 4)
+        result["wap_factor_pct"] = round((wap_factor - 1.0) * 100, 1)
+
+        # WAP formatted pace/speed
+        wap_fmt = None
+        if average_speed_ms and average_speed_ms > 0:
+            if is_run:
+                actual_pace_s = 1000.0 / average_speed_ms
+                wap_s = actual_pace_s / wap_factor
+                m, s_rem = divmod(int(wap_s), 60)
+                wap_fmt = f"{m}:{s_rem:02d}/km"
+            else:
+                wap_speed_kmh = average_speed_ms * 3.6 * wap_factor
+                wap_fmt = f"{wap_speed_kmh:.1f} km/h"
+        result["wap_fmt"] = wap_fmt
+
+        result["hr_heat_pct"] = weather.hr_heat_pct
+        result["hr_heat_bpm"] = weather.hr_heat_bpm
+
+        course_bearing = weather.course_bearing
+        result["course_bearing"] = (
+            round(course_bearing, 0) if course_bearing is not None else None
+        )
+
+        # True pace from persisted value
+        tp_s = weather.true_pace_s_per_km
+        true_pace_fmt = None
+        if tp_s and tp_s > 0:
+            if is_run:
+                m_tp, s_tp = divmod(int(round(tp_s)), 60)
+                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+            else:
+                true_pace_fmt = f"{3600.0 / tp_s:.1f} km/h"
+        result["true_pace_fmt"] = true_pace_fmt
+        result["true_pace_s_per_km"] = tp_s
+
+        # If streams are provided, try to load persisted true_pace stream
+        # and also try to compute if not in streams dict (for charts)
+        if streams and "true_pace" not in streams:
+            tp_stream = compute_true_pace_stream(
+                streams, weather, course_bearing=course_bearing
+            )
+            if tp_stream:
+                result["true_pace_stream"] = tp_stream
+
+        return result
+
+    # ── Slow path: compute from scratch (first time / missing data) ──
+
     # Course bearing for wind component
     course_bearing: float | None = None
     if start_latlng and end_latlng:
@@ -468,4 +526,142 @@ def compute_weather_panel(
         round(course_bearing, 0) if course_bearing is not None else None
     )
 
+    # Expose the numeric true pace in s/km for persistence
+    if tp_stream and tp_pairs:
+        result["true_pace_s_per_km"] = round(mean_tp, 2)  # type: ignore[possibly-undefined]
+    elif "gap_pace_s" in dir():  # fallback path
+        result["true_pace_s_per_km"] = round(gap_pace_s / heat_f if "heat_f" in dir() else gap_pace_s, 2)
+
     return result
+
+
+async def persist_derived_weather(
+    session,
+    weather_row,
+    activity,
+    streams: dict | None = None,
+) -> None:
+    """Compute derived weather-pace fields and persist them to the DB.
+
+    Writes wap_factor, course_bearing, hr_heat_pct, hr_heat_bpm,
+    true_pace_s_per_km on the ActivityWeather row, and stores the true_pace
+    stream in activity_streams.
+
+    This is the single place where derived values get written — both the
+    weather fetch pipeline and the stamp/dashboard code paths converge here.
+    """
+    import json as _json
+
+    from sqlalchemy import select
+
+    from fitops.db.models.activity_stream import ActivityStream
+
+    is_run = (activity.sport_type or "") in _RUN_SPORT_TYPES
+    average_heartrate = getattr(activity, "average_heartrate", None)
+    start_latlng = activity.start_latlng
+    end_latlng = activity.end_latlng
+
+    # Course bearing
+    course_bearing: float | None = None
+    if start_latlng and end_latlng:
+        try:
+            s = _json.loads(start_latlng)
+            e = _json.loads(end_latlng)
+            if len(s) == 2 and len(e) == 2:
+                course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
+        except (ValueError, TypeError, IndexError):
+            pass
+
+    # WAP factor
+    wap_factor = 1.0
+    if weather_row.temperature_c is not None and weather_row.humidity_pct is not None:
+        wap_factor = compute_wap_factor(
+            temp_c=weather_row.temperature_c,
+            rh_pct=weather_row.humidity_pct,
+            wind_speed_ms_val=weather_row.wind_speed_ms or 0.0,
+            wind_dir_deg=weather_row.wind_direction_deg or 0.0,
+            course_bearing=course_bearing,
+        )
+
+    # HR heat impact
+    hr_heat_pct: float | None = None
+    hr_heat_bpm: int | None = None
+    if weather_row.temperature_c is not None and weather_row.humidity_pct is not None:
+        vo2_factor = vo2max_heat_factor(weather_row.temperature_c, weather_row.humidity_pct)
+        if vo2_factor < 0.99:
+            hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
+            if average_heartrate and average_heartrate > 0:
+                hr_heat_bpm = round(average_heartrate * (1.0 / vo2_factor - 1.0))
+
+    # True Pace: distance-weighted mean
+    true_pace_s_per_km: float | None = None
+    if streams:
+        tp_stream = compute_true_pace_stream(
+            streams, weather_row, course_bearing=course_bearing
+        )
+        vel_stream = streams.get("velocity_smooth", [])
+        if tp_stream and vel_stream:
+            tp_pairs = [
+                (p, v)
+                for p, v in zip(tp_stream, vel_stream, strict=False)
+                if p is not None and p > 0 and v and v > 0.1
+            ]
+            if tp_pairs:
+                paces, vels = zip(*tp_pairs, strict=False)
+                total_w = sum(vels)
+                mean_tp = sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
+                true_pace_s_per_km = round(mean_tp, 2)
+
+            # Persist true_pace stream
+            db_id = activity.id
+            existing = await session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == db_id,
+                    ActivityStream.stream_type == "true_pace",
+                )
+            )
+            stream_row = existing.scalar_one_or_none()
+            if stream_row is None:
+                session.add(
+                    ActivityStream.from_strava_stream(db_id, "true_pace", tp_stream)
+                )
+            else:
+                stream_row.data_json = _json.dumps(tp_stream)
+                stream_row.data_length = len(tp_stream)
+
+        # Fallback: GAP + heat
+        if true_pace_s_per_km is None:
+            vel_raw = streams.get("velocity_smooth", [])
+            grade_raw = streams.get("grade_smooth", [])
+            if vel_raw and grade_raw:
+                wt_pairs = [
+                    (v * (1 + 0.033 * g), v)
+                    for v, g in zip(vel_raw, grade_raw, strict=False)
+                    if v and v > 0.1
+                ]
+            else:
+                wt_pairs = [(v, v) for v in vel_raw if v and v > 0.1]
+            if wt_pairs:
+                gap_speeds, weights = zip(*wt_pairs, strict=False)
+                total_w = sum(weights)
+                mean_gap_ms = (
+                    sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False))
+                    / total_w
+                )
+                heat_f = (
+                    pace_heat_factor(weather_row.temperature_c, weather_row.humidity_pct)
+                    if weather_row.temperature_c is not None
+                    and weather_row.humidity_pct is not None
+                    else 1.0
+                )
+                if is_run and mean_gap_ms > 0:
+                    true_pace_s_per_km = round(1000.0 / mean_gap_ms / heat_f, 2)
+
+    # Write to ActivityWeather row
+    weather_row.wap_factor = round(wap_factor, 4)
+    weather_row.course_bearing = round(course_bearing, 0) if course_bearing is not None else None
+    weather_row.hr_heat_pct = hr_heat_pct
+    weather_row.hr_heat_bpm = hr_heat_bpm
+    weather_row.true_pace_s_per_km = true_pace_s_per_km
+
+    await session.flush()
