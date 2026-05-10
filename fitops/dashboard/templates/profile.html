@@ -2,6 +2,16 @@
 {% block title %}Profile — FitOps{% endblock %}
 {% block page_name %}Profile{% endblock %}
 
+{% block head_extra %}
+<style>
+  @media (max-width: 767px) {
+    .profile-mobile-stack {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <p class="page-title">Profile</p>
@@ -42,7 +52,7 @@
 {% endif %}
 
 <!-- Identity + Physiological Estimates -->
-<div class="grid-2" style="margin-bottom:1px;">
+<div class="grid-2 profile-mobile-stack" style="margin-bottom:1px;">
 
   <!-- Strava identity -->
   <div class="panel" style="--delay:0ms">
@@ -310,7 +320,7 @@
 </div>
 
 <!-- HR Zones + Pace Zones -->
-<div class="grid-2" style="margin-top:1px;">
+<div class="grid-2 profile-mobile-stack" style="margin-top:1px;">
 
   <div class="panel" style="--delay:120ms">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -496,7 +506,7 @@
 </div>
 
 <!-- Race Predictions + Equipment -->
-<div class="grid-2" style="margin-top:1px;">
+<div class="grid-2 profile-mobile-stack" style="margin-top:1px;">
 
   <!-- Race Predictions -->
   <div class="panel" style="--delay:160ms">
