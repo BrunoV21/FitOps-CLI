@@ -82,12 +82,15 @@ async def get_equipment_with_stats(athlete_id: int) -> list[dict]:
 
 
 async def get_activity_heatmap_data(
-    athlete_id: int, since: datetime | None = None, weeks: int = 53
+    athlete_id: int,
+    since: datetime | None = None,
+    weeks: int = 53,
+    sport_types: frozenset | None = None,
 ) -> list[dict]:
     """Return per-day duration totals and per-activity detail for the period since `since`."""
     cutoff = since if since is not None else datetime.now(UTC) - timedelta(weeks=weeks)
     async with get_async_session() as session:
-        result = await session.execute(
+        stmt = (
             select(
                 Activity.strava_id,
                 Activity.start_date_local,
@@ -102,6 +105,9 @@ async def get_activity_heatmap_data(
             )
             .order_by(Activity.start_date_local)
         )
+        if sport_types:
+            stmt = stmt.where(Activity.sport_type.in_(list(sport_types)))
+        result = await session.execute(stmt)
         rows = result.all()
 
     day_map: dict[str, dict] = {}

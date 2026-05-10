@@ -82,6 +82,15 @@ def test_compose_stamp_includes_scores():
     assert "Ana" in stamp
 
 
+def test_compose_stamp_shows_true_pace_without_percentage():
+    stamp = compose_stamp(
+        _activity(),
+        weather={"true_pace_fmt": "3:37/km", "true_pace_pct": -0.7},
+    )
+    assert "Pace 3:37/km" in stamp
+    assert "0.7%" not in stamp
+
+
 def test_compose_stamp_real_power_takes_priority():
     act = _activity(average_watts=210.0, est_power_avg_w=200.0)
     stamp = compose_stamp(act)

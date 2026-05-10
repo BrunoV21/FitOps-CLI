@@ -296,6 +296,26 @@ async def _migrate_workout_activity_links(conn) -> None:
     await _mark_migration_run(conn, "workout_activity_links_backfill")
 
 
+_ACTIVITY_WEATHER_NEW_COLUMNS: list[tuple[str, str]] = [
+    ("wap_factor", "REAL"),
+    ("course_bearing", "REAL"),
+    ("hr_heat_pct", "REAL"),
+    ("hr_heat_bpm", "REAL"),
+    ("true_pace_s_per_km", "REAL"),
+]
+
+
+async def _migrate_activity_weather_columns(conn) -> None:
+    """Add new derived columns to the activity_weather table if they don't exist yet."""
+    result = await conn.execute(text("PRAGMA table_info(activity_weather)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _ACTIVITY_WEATHER_NEW_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE activity_weather ADD COLUMN {col_name} {col_type}")
+            )
+
+
 _SNAPSHOT_NEW_COLUMNS: list[tuple[str, str]] = [
     ("daily_tss", "REAL"),
 ]
@@ -333,6 +353,7 @@ async def create_all_tables(engine: AsyncEngine | None = None) -> None:
         await _migrate_race_session_columns(conn)
         await _migrate_race_session_event_columns(conn)
         await _migrate_snapshot_columns(conn)
+        await _migrate_activity_weather_columns(conn)
 
 
 def init_db() -> None:

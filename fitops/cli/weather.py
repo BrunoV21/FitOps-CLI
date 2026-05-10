@@ -235,22 +235,26 @@ def show_weather(
 
         d = weather.to_dict()
 
+        # Use persisted derived values if available, otherwise compute
         course_bearing: float | None = None
-        if act and act.start_latlng and act.end_latlng:
-            s = _parse_latlng(act.start_latlng)
-            e = _parse_latlng(act.end_latlng)
-            if s and e:
-                course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
-
-        wap_factor = 1.0
-        if weather.temperature_c is not None and weather.humidity_pct is not None:
-            wap_factor = compute_wap_factor(
-                temp_c=weather.temperature_c,
-                rh_pct=weather.humidity_pct,
-                wind_speed_ms_val=weather.wind_speed_ms or 0.0,
-                wind_dir_deg=weather.wind_direction_deg or 0.0,
-                course_bearing=course_bearing,
-            )
+        if weather.wap_factor is not None:
+            wap_factor = weather.wap_factor
+            course_bearing = weather.course_bearing
+        else:
+            if act and act.start_latlng and act.end_latlng:
+                s = _parse_latlng(act.start_latlng)
+                e = _parse_latlng(act.end_latlng)
+                if s and e:
+                    course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
+            wap_factor = 1.0
+            if weather.temperature_c is not None and weather.humidity_pct is not None:
+                wap_factor = compute_wap_factor(
+                    temp_c=weather.temperature_c,
+                    rh_pct=weather.humidity_pct,
+                    wind_speed_ms_val=weather.wind_speed_ms or 0.0,
+                    wind_dir_deg=weather.wind_direction_deg or 0.0,
+                    course_bearing=course_bearing,
+                )
 
         actual_pace_s: float | None = None
         wap_s: float | None = None
@@ -276,6 +280,9 @@ def show_weather(
             else None,
             "actual_pace": _fmt_pace(actual_pace_s) if actual_pace_s else None,
             "wap": _fmt_pace(wap_s) if wap_s else None,
+            "true_pace": _fmt_pace(weather.true_pace_s_per_km)
+            if weather.true_pace_s_per_km
+            else None,
         }
 
     result = asyncio.run(_load())

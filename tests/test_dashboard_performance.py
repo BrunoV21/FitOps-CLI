@@ -212,6 +212,8 @@ def test_profile_page_shows_performance_card(client, monkeypatch):
     assert "-9.2" in resp.text
     assert "Fatigued" in resp.text
     assert "Performance →" in resp.text
+    assert ".profile-mobile-stack" in resp.text
+    assert 'class="grid-2 profile-mobile-stack"' in resp.text
 
 
 def test_profile_page_no_load_data(client, monkeypatch):

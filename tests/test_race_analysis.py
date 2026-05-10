@@ -1053,13 +1053,6 @@ def test_dashboard_race_session_not_found(client, monkeypatch):
 
 def test_dashboard_race_session_detail(client, monkeypatch):
     """GET /race/sessions/1 should return 200 with session data rendered."""
-    fake_session_row = MagicMock()
-    fake_session_row.id = 1
-    fake_session_row.name = "Test Race Session"
-    fake_session_row.primary_activity_id = 1001
-    fake_session_row.athlete_count = 2
-    fake_session_row.course_id = None
-    fake_session_row.created_at = "2026-04-13"
 
     async def _fake_get_detail(session_id):
         return {
@@ -1090,7 +1083,13 @@ def test_dashboard_race_session_detail(client, monkeypatch):
     fake_athlete = MagicMock()
     fake_athlete.athlete_label = "Me"
     fake_athlete.is_primary = True
-    fake_athlete.get_stream.return_value = {"latlng": [], "elapsed_s": []}
+    fake_athlete.get_stream.return_value = {
+        "latlng": [[40.0, -8.0], [40.0, -7.9999]],
+        "elapsed_s": [0, 60],
+        "distance_grid": [0, 1000],
+        "velocity": [3.2, 3.3],
+        "heartrate": [150, 154],
+    }
 
     async def _fake_get_athletes(session_id):
         return [fake_athlete]
@@ -1105,6 +1104,9 @@ def test_dashboard_race_session_detail(client, monkeypatch):
     resp = client.get("/race/sessions/1")
     assert resp.status_code == 200
     assert "Test Race Session" in resp.text
+    assert 'class="panel comparison-panel"' in resp.text
+    assert 'id="comparison-legend"' in resp.text
+    assert "const mobileChartState = { current: mobileQuery.matches }" in resp.text
 
 
 # ---------------------------------------------------------------------------

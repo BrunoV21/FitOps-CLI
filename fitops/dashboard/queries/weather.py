@@ -68,28 +68,37 @@ async def get_wap_history(
 
         actual_pace_s = 1000.0 / act.average_speed_ms  # s/km
 
-        # Compute course bearing from start→end latlng if available
-        course_bearing: float | None = None
-        if act.start_latlng and act.end_latlng:
-            try:
-                s = json.loads(act.start_latlng)
-                e = json.loads(act.end_latlng)
-                if len(s) == 2 and len(e) == 2:
-                    course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
-            except (json.JSONDecodeError, TypeError, IndexError):
-                pass
-
+        # Use persisted wap_factor if available, otherwise compute
         wap_factor = 1.0
-        if weather.temperature_c is not None and weather.humidity_pct is not None:
-            wap_factor = compute_wap_factor(
-                temp_c=weather.temperature_c,
-                rh_pct=weather.humidity_pct,
-                wind_speed_ms_val=weather.wind_speed_ms or 0.0,
-                wind_dir_deg=weather.wind_direction_deg or 0.0,
-                course_bearing=course_bearing,
-            )
+        if weather.wap_factor is not None:
+            wap_factor = weather.wap_factor
+            course_bearing = weather.course_bearing
+        else:
+            # Compute course bearing from start→end latlng if available
+            course_bearing = None
+            if act.start_latlng and act.end_latlng:
+                try:
+                    s = json.loads(act.start_latlng)
+                    e = json.loads(act.end_latlng)
+                    if len(s) == 2 and len(e) == 2:
+                        course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
+                except (json.JSONDecodeError, TypeError, IndexError):
+                    pass
+            if weather.temperature_c is not None and weather.humidity_pct is not None:
+                wap_factor = compute_wap_factor(
+                    temp_c=weather.temperature_c,
+                    rh_pct=weather.humidity_pct,
+                    wind_speed_ms_val=weather.wind_speed_ms or 0.0,
+                    wind_dir_deg=weather.wind_direction_deg or 0.0,
+                    course_bearing=course_bearing,
+                )
 
         wap_s = actual_pace_s / wap_factor if wap_factor > 0 else actual_pace_s
+
+        # Use persisted true_pace_s_per_km if available
+        true_pace_s = (
+            weather.true_pace_s_per_km if weather.true_pace_s_per_km else wap_s
+        )
 
         history.append(
             {
@@ -102,9 +111,7 @@ async def get_wap_history(
                 else None,
                 "actual_pace_s": round(actual_pace_s, 1),
                 "wap_s": round(wap_s, 1),
-                "true_pace_s": round(
-                    wap_s, 1
-                ),  # same as WAP (GAP streams not stored yet)
+                "true_pace_s": round(true_pace_s, 1),
                 "wap_factor": round(wap_factor, 4),
                 "temp_c": weather.temperature_c,
                 "humidity_pct": weather.humidity_pct,
@@ -141,8 +148,10 @@ async def upsert_activity_weather(
     activity_id: int,
     weather_dict: dict,
     source: str = "open-meteo",
-) -> ActivityWeather:
-    """Insert or update ActivityWeather row."""
+    activity=None,
+    streams: dict | None = None,
+) -> dict:
+    """Insert or update ActivityWeather row, then persist derived values."""
     async with get_async_session() as session:
         result = await session.execute(
             select(ActivityWeather).where(ActivityWeather.activity_id == activity_id)
@@ -173,6 +182,41 @@ async def upsert_activity_weather(
             session.add(row)
 
         await session.flush()
+
+        # Persist derived weather-pace values (wap, true pace, etc.)
+        # We need the Activity row for course_bearing, speed, HR.
+        if activity is None:
+            act_result = await session.execute(
+                select(Activity).where(Activity.strava_id == activity_id)
+            )
+            activity = act_result.scalar_one_or_none()
+
+        if activity is not None:
+            # If no streams provided, try loading from DB
+            if streams is None and activity.streams_fetched:
+                from fitops.db.models.activity_stream import ActivityStream as _AS
+
+                stream_types = [
+                    "velocity_smooth",
+                    "grade_smooth",
+                    "latlng",
+                    "grade_adjusted_speed",
+                ]
+                stream_result = await session.execute(
+                    select(_AS).where(
+                        _AS.activity_id == activity.id,
+                        _AS.stream_type.in_(stream_types),
+                    )
+                )
+                streams = {s.stream_type: s.data for s in stream_result.scalars().all()}
+
+            try:
+                from fitops.analytics.weather_pace import persist_derived_weather
+
+                await persist_derived_weather(session, row, activity, streams)
+            except Exception:
+                pass  # Non-critical: derived values will be lazy-computed on read
+
         row_dict = row.to_dict()
 
     return row_dict

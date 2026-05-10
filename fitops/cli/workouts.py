@@ -601,13 +601,13 @@ def compliance(
         # Inject true_pace stream for weather+grade adjusted pace in segment actuals
         if is_run and "true_pace" not in streams_dict:
             try:
+                from fitops.analytics.weather_pace import compute_true_pace_stream
                 from fitops.dashboard.queries.weather import get_weather_for_activities
-                from fitops.dashboard.routes.activities import _compute_true_pace_stream
 
                 _weather_map = await get_weather_for_activities([activity.strava_id])
                 _weather_obj = _weather_map.get(activity.strava_id)
                 if _weather_obj:
-                    tp_s = _compute_true_pace_stream(streams_dict, _weather_obj)
+                    tp_s = compute_true_pace_stream(streams_dict, _weather_obj)
                     if tp_s:
                         streams_dict["true_pace"] = tp_s
             except Exception:

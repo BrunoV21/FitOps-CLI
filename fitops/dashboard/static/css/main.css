@@ -339,7 +339,30 @@ input, select, textarea { font-family: var(--font); }
 .period-tab.active { color: var(--text-primary); background: var(--surface); }
 
 /* ── Data Table ─────────────────────────────────────────────── */
-.table-wrap { border: 1px solid var(--border); overflow: hidden; overflow-x: auto; }
+.table-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-hover) transparent;
+  scrollbar-gutter: stable both-edges;
+  touch-action: pan-x;
+}
+.table-wrap::-webkit-scrollbar { height: 10px; }
+.table-wrap::-webkit-scrollbar-track { background: transparent; }
+.table-wrap::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border-hover) 82%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.table-wrap::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-dim) 72%, transparent);
+  background-clip: padding-box;
+}
 .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .data-table thead tr { border-bottom: 1px solid var(--border); }
 .data-table th {
@@ -537,6 +560,13 @@ code {
 /* ── Chart Containers ───────────────────────────────────────── */
 canvas { max-height: 400px; }
 .stream-chart-canvas { max-height: none; }
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
 
 /* ── Heatmap Legend ─────────────────────────────────────────── */
 .heatmap-legend {
@@ -935,6 +965,24 @@ body.sidebar-open .sidebar-backdrop { display: block; }
   /* Filter bar: full-width selects on mobile */
   .filter-bar { flex-direction: column; align-items: stretch; }
   .select-ctrl { width: 100%; }
+
+  /* Tables: preserve readability while scrolling horizontally */
+  .table-wrap {
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+  .data-table {
+    width: max-content;
+    min-width: 100%;
+  }
+  .data-table th {
+    padding: 9px 12px;
+    font-size: 9px;
+  }
+  .data-table td {
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
 }
 
 /* ── Weather ─────────────────────────────────────────────────── */
@@ -1037,6 +1085,116 @@ body.sidebar-open .sidebar-backdrop { display: block; }
 .analysis-section:fullscreen canvas,
 .analysis-section:-webkit-full-screen canvas {
   max-height: 100%;
+}
+
+/* Activity detail chart pane alone in fullscreen */
+.analysis-chart:fullscreen,
+.analysis-chart:-webkit-full-screen {
+  background: var(--bg-card, #0d0d0d) !important;
+  display: flex !important;
+  flex-direction: column;
+  padding: 1rem 1.1rem;
+  overflow: hidden;
+}
+.analysis-chart:fullscreen .analysis-chart-controls,
+.analysis-chart:-webkit-full-screen .analysis-chart-controls {
+  flex-shrink: 0;
+}
+.analysis-chart:fullscreen canvas,
+.analysis-chart:-webkit-full-screen canvas {
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
+}
+
+@media (max-width: 767px), (pointer: coarse) and (max-height: 767px) {
+  .panel:fullscreen,
+  .panel:-webkit-full-screen,
+  .analysis-section:fullscreen,
+  .analysis-section:-webkit-full-screen,
+  .analysis-chart:fullscreen,
+  .analysis-chart:-webkit-full-screen {
+    padding: 0.75rem;
+  }
+  .panel:fullscreen .chart-wrap,
+  .panel:-webkit-full-screen .chart-wrap,
+  .analysis-section:fullscreen .analysis-chart,
+  .analysis-section:-webkit-full-screen .analysis-chart,
+  .analysis-chart:fullscreen,
+  .analysis-chart:-webkit-full-screen {
+    min-height: calc(100vh - 3.5rem);
+  }
+
+  .panel:fullscreen.mobile-chart-landscape,
+  .panel:-webkit-full-screen.mobile-chart-landscape,
+  .analysis-section:fullscreen.mobile-chart-landscape,
+  .analysis-section:-webkit-full-screen.mobile-chart-landscape,
+  .analysis-chart:fullscreen.mobile-chart-landscape,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 0.75rem;
+  }
+  .panel:fullscreen.mobile-chart-landscape .chart-wrap,
+  .panel:-webkit-full-screen.mobile-chart-landscape .chart-wrap,
+  .analysis-section:fullscreen.mobile-chart-landscape .analysis-chart,
+  .analysis-section:-webkit-full-screen.mobile-chart-landscape .analysis-chart {
+    min-height: calc(100vw - 3.5rem);
+  }
+  .analysis-chart:fullscreen.mobile-chart-landscape,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape {
+    min-height: auto;
+  }
+  .analysis-chart:fullscreen.mobile-chart-landscape .analysis-chart-controls,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape .analysis-chart-controls {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    z-index: 2;
+    width: 92px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    padding-left: 8px;
+    background: linear-gradient(90deg, transparent, var(--bg-card, #0d0d0d) 24%);
+  }
+  .analysis-chart:fullscreen.mobile-chart-landscape .analysis-chart-controls #metric-toggles,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape .analysis-chart-controls #metric-toggles {
+    display: flex !important;
+    flex-direction: column;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: 16px !important;
+  }
+  .analysis-chart:fullscreen.mobile-chart-landscape .analysis-chart-controls button,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape .analysis-chart-controls button {
+    width: 62px;
+    min-height: 24px;
+    padding: 4px 5px !important;
+    font-size: 9px !important;
+    line-height: 1.1;
+    transform: rotate(90deg);
+    transform-origin: center;
+    white-space: nowrap;
+  }
+  .analysis-chart:fullscreen.mobile-chart-landscape .xaxis-toggle,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape .xaxis-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .analysis-chart:fullscreen.mobile-chart-landscape canvas,
+  .analysis-chart:-webkit-full-screen.mobile-chart-landscape canvas {
+    margin-right: 104px;
+  }
 }
 
 /* ── Deep Analysis Page ─────────────────────────────────────── */

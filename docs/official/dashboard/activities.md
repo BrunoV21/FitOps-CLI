@@ -67,6 +67,8 @@ Power is computed at sync time and cached; the page never recomputes it on load.
 - Elevation profile
 - Power (hidden by default — click the **Pwr** toggle to show the wattage series)
 
+On mobile, expanding the stream chart fullscreen switches it into a sideways view: time or distance moves to the vertical axis, selected stream values move to horizontal axes, and the stream selector moves to the right edge so you can show or hide multiple streams while keeping the wider reading layout.
+
 ![Activity Analysis — streams, HR drift, scatter plots](../assets/dashboard-activity-analysis.png)
 
 If streams are not yet cached for an activity, a **Fetch Streams** button appears. Click it to pull the full time-series data from Strava — this enables the charts, HR drift analysis, and zone-time breakdowns.

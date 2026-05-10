@@ -4,9 +4,13 @@ Tests for fitops/analytics/weather_pace.py — pure function coverage.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fitops.analytics.weather_pace import (
     compute_bearing,
+    compute_true_pace_stream,
     compute_wap_factor,
+    compute_weather_panel,
     headwind_ms,
     pace_heat_factor,
     pace_wind_factor,
@@ -168,3 +172,87 @@ def test_compute_wap_factor_hot_headwind():
     """Hot humid conditions + headwind → factor > 1.05."""
     factor = compute_wap_factor(28.0, 75.0, 5.0, 0.0, 0.0)  # wind from N, running N
     assert factor > 1.05
+
+
+def test_compute_true_pace_stream_uses_local_bearing_by_default():
+    weather = SimpleNamespace(
+        temperature_c=10.0,
+        humidity_pct=40.0,
+        wind_speed_ms=5.0,
+        wind_direction_deg=0.0,
+    )
+    streams = {
+        "latlng": [
+            [0.0000, 0.0000],
+            [0.0010, 0.0000],
+            [0.0020, 0.0000],
+            [0.0020, 0.0010],
+            [0.0020, 0.0020],
+            [0.0020, 0.0030],
+            [0.0020, 0.0040],
+            [0.0020, 0.0050],
+        ],
+        "velocity_smooth": [3.0] * 8,
+        "grade_adjusted_speed": [3.0] * 8,
+    }
+
+    local_tp = compute_true_pace_stream(streams, weather)
+    constant_tp = compute_true_pace_stream(streams, weather, course_bearing=0.0)
+
+    assert local_tp is not None
+    assert constant_tp is not None
+    assert local_tp != constant_tp
+    assert local_tp[-1] > constant_tp[-1]
+
+
+def test_compute_weather_panel_true_pace_uses_local_bearing_not_course_bearing():
+    weather = SimpleNamespace(
+        temperature_c=10.0,
+        humidity_pct=40.0,
+        wind_speed_ms=5.0,
+        wind_direction_deg=0.0,
+        weather_code=None,
+        apparent_temp_c=None,
+        precipitation_mm=None,
+        wbgt_c=None,
+        pace_heat_factor=1.0,
+        source="test",
+        wap_factor=None,
+        course_bearing=None,
+        hr_heat_pct=None,
+        hr_heat_bpm=None,
+        true_pace_s_per_km=None,
+    )
+    streams = {
+        "latlng": [
+            [0.0000, 0.0000],
+            [0.0010, 0.0000],
+            [0.0020, 0.0000],
+            [0.0020, 0.0010],
+            [0.0020, 0.0020],
+            [0.0020, 0.0030],
+            [0.0020, 0.0040],
+            [0.0020, 0.0050],
+        ],
+        "velocity_smooth": [3.0] * 8,
+        "grade_adjusted_speed": [3.0] * 8,
+    }
+
+    panel = compute_weather_panel(
+        weather,
+        streams,
+        average_speed_ms=3.0,
+        is_run=True,
+        start_latlng="[0.0, 0.0]",
+        end_latlng="[0.002, 0.005]",
+        average_heartrate=150.0,
+    )
+    tp_stream = panel.get("true_pace_stream")
+
+    assert tp_stream is not None
+
+    local_tp = compute_true_pace_stream(streams, weather)
+    constant_tp = compute_true_pace_stream(streams, weather, course_bearing=0.0)
+
+    assert tp_stream == local_tp
+    assert tp_stream != constant_tp

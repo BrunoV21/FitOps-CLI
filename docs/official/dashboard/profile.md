@@ -2,6 +2,8 @@
 
 The Profile page (`/profile`) is where you configure your physiology. Set your threshold values once, and every analytics calculation across the dashboard and CLI will use them automatically.
 
+On mobile screens, the paired dashboard panels on this page collapse into single-column rows so Identity, Physiological Estimates, HR Zones, Pace Zones, Race Predictions, and Equipment each get their own full-width block.
+
 ## Current Training Load
 
 At the top of the page a compact snapshot of your current training load is shown if sync data is available:

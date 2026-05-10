@@ -35,6 +35,24 @@ class ActivityWeather(Base):
         Float, nullable=True
     )  # e.g. 1.06
 
+    # Persisted derived weather-pace values (populated during weather fetch or
+    # lazy-computed on first read; NULL means "not yet computed").
+    wap_factor: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # combined heat+wind factor e.g. 1.06
+    course_bearing: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # degrees, 0=N clockwise
+    hr_heat_pct: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # HR impact from heat (%)
+    hr_heat_bpm: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # HR impact from heat (bpm)
+    true_pace_s_per_km: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )  # distance-weighted mean true pace
+
     source: Mapped[str] = mapped_column(
         Text, default="open-meteo"
     )  # "open-meteo" | "manual"
@@ -57,6 +75,11 @@ class ActivityWeather(Base):
             "weather_code": self.weather_code,
             "wbgt_c": self.wbgt_c,
             "pace_heat_factor": self.pace_heat_factor,
+            "wap_factor": self.wap_factor,
+            "course_bearing": self.course_bearing,
+            "hr_heat_pct": self.hr_heat_pct,
+            "hr_heat_bpm": self.hr_heat_bpm,
+            "true_pace_s_per_km": self.true_pace_s_per_km,
             "source": self.source,
             "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
         }

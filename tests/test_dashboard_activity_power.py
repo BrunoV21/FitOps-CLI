@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from fitops.dashboard.routes.activities import _downsample_streams
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -227,6 +229,91 @@ def test_activity_detail_no_power(client, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_activity_detail_weather_panel_hides_true_pace_header_badge(
+    client, monkeypatch
+):
+    act = _fake_activity(power=False)
+
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_settings",
+        lambda: _fake_settings(),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_detail",
+        AsyncMock(return_value=act),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_laps",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_streams",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_calibration",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_weather_for_activities",
+        AsyncMock(
+            return_value={
+                99001: MagicMock(
+                    source="open-meteo",
+                    temperature_c=14.0,
+                    apparent_temp_c=14.0,
+                    humidity_pct=70.0,
+                    wind_speed_ms=2.9,
+                    wind_direction_deg=180.0,
+                    precipitation_mm=0.1,
+                    wbgt_c=10.0,
+                    weather_code=61,
+                    pace_heat_factor=1.0,
+                    wap_factor=0.993,
+                    course_bearing=180.0,
+                    hr_heat_pct=None,
+                    hr_heat_bpm=None,
+                    true_pace_s_per_km=217.0,
+                )
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_athlete_settings",
+        _fake_athlete_settings,
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.compute_activity_analytics",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.compute_activity_performance_insights",
+        lambda *_: [],
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_all_workouts",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_workout_for_activity",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_race_plan_for_activity",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_athlete",
+        AsyncMock(return_value=None),
+    )
+
+    resp = client.get("/activities/99001")
+    assert resp.status_code == 200
+    assert "Conditions" in resp.text
+    assert "WAP" not in resp.text
+    assert "-0.7%" not in resp.text
+
+
 def test_activity_detail_not_found(client, monkeypatch):
     """GET /activities/{id} returns 404 when the activity doesn't exist."""
     monkeypatch.setattr(
@@ -248,3 +335,33 @@ def test_activity_detail_not_found(client, monkeypatch):
 
     resp = client.get("/activities/00000")
     assert resp.status_code == 404
+
+
+def test_downsample_streams_aligns_all_series_and_keeps_last_point():
+    streams = {
+        "time": list(range(1200)),
+        "distance": [float(i * 10) for i in range(1198)],
+        "latlng": [[40.0 + i * 0.0001, -8.0 - i * 0.0001] for i in range(1199)],
+        "heartrate": [140 + (i % 7) for i in range(1201)],
+    }
+
+    result = _downsample_streams(streams, target=500)
+
+    assert {len(v) for v in result.values()} == {500}
+    assert result["time"][0] == 0
+    assert result["time"][-1] == 1199
+    assert result["distance"][-1] == streams["distance"][-1]
+    assert result["latlng"][-1] == streams["latlng"][-1]
+    assert result["heartrate"][-1] == streams["heartrate"][-1]
+
+
+def test_downsample_streams_preserves_short_streams_without_truncation():
+    streams = {
+        "time": [0, 1, 2, 3],
+        "distance": [0.0, 15.0, 31.0, 47.0],
+        "latlng": [[40.0, -8.0], [40.1, -8.1], [40.2, -8.2], [40.3, -8.3]],
+    }
+
+    result = _downsample_streams(streams, target=500)
+
+    assert result == streams

@@ -6,7 +6,7 @@ import shutil
 from datetime import UTC, datetime
 
 import typer
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 
 from fitops.analytics.race_results import (
     delete_calibrated_snapshot,
@@ -34,6 +34,47 @@ from fitops.strava.client import StravaClient
 from fitops.utils.exceptions import NotAuthenticatedError
 
 app = typer.Typer(no_args_is_help=True)
+
+
+async def _replace_activity_streams(
+    session,
+    activity_db_id: int,
+    stream_data: dict[str, object],
+) -> None:
+    """Replace all stored streams for an activity with a fresh Strava payload."""
+    await session.execute(
+        delete(ActivityStream).where(ActivityStream.activity_id == activity_db_id)
+    )
+    for stream_type, stream_obj in stream_data.items():
+        data_list = (
+            stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
+        )
+        session.add(
+            ActivityStream.from_strava_stream(activity_db_id, stream_type, data_list)
+        )
+
+
+async def _refresh_activity_weather_cache(
+    activity,
+    *,
+    strava_activity_id: int,
+    streams: dict | None,
+):
+    """Recompute persisted weather-derived values for an activity, if weather exists."""
+    from fitops.analytics.weather_pace import persist_derived_weather
+    from fitops.db.models.activity_weather import ActivityWeather
+
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(ActivityWeather).where(
+                ActivityWeather.activity_id == strava_activity_id
+            )
+        )
+        weather_row = result.scalar_one_or_none()
+        if weather_row is None:
+            return None
+        await persist_derived_weather(session, weather_row, activity, streams)
+        return weather_row
 
 
 async def _get_gear_lookup() -> dict:
@@ -299,24 +340,7 @@ def get_activity(
                     )
                     row3 = result3.scalar_one_or_none()
                     if row3:
-                        for stream_type, stream_obj in stream_data.items():
-                            data_list = (
-                                stream_obj.get("data", [])
-                                if isinstance(stream_obj, dict)
-                                else stream_obj
-                            )
-                            existing = await session.execute(
-                                select(ActivityStream).where(
-                                    ActivityStream.activity_id == row3.id,
-                                    ActivityStream.stream_type == stream_type,
-                                )
-                            )
-                            if existing.scalar_one_or_none() is None:
-                                session.add(
-                                    ActivityStream.from_strava_stream(
-                                        row3.id, stream_type, data_list
-                                    )
-                                )
+                        await _replace_activity_streams(session, row3.id, stream_data)
                         row3.streams_fetched = True
                         row = row3
             except Exception:
@@ -334,12 +358,6 @@ def get_activity(
             anaerobic_label,
             compute_aerobic_score,
             compute_anaerobic_score,
-        )
-        from fitops.analytics.weather_pace import (
-            compute_bearing,
-            compute_wap_factor,
-            vo2max_heat_factor,
-            weather_row_to_dict,
         )
         from fitops.dashboard.queries.activities import (
             get_activity_calibration,
@@ -383,12 +401,22 @@ def get_activity(
         # Load weather early — needed for true_pace stream injection
         _weather_map = await get_weather_for_activities([activity_id])
         _weather_obj = _weather_map.get(activity_id)
+        if fetch_fresh and row is not None:
+            fresh_weather = await _refresh_activity_weather_cache(
+                row,
+                strava_activity_id=activity_id,
+                streams=streams or None,
+            )
+            if fresh_weather is not None:
+                _weather_obj = fresh_weather
 
         # Inject true_pace stream (weather + GAP adjusted) before analytics
         if streams and _weather_obj:
-            from fitops.dashboard.routes.activities import (
-                _compute_true_pace_stream,
-                _compute_wap_stream,
+            from fitops.analytics.weather_pace import (
+                compute_true_pace_stream as _compute_true_pace_stream,
+            )
+            from fitops.analytics.weather_pace import (
+                compute_wap_stream_points as _compute_wap_stream,
             )
 
             wap_s = _compute_wap_stream(streams, _weather_obj)
@@ -538,96 +566,38 @@ def get_activity(
                 )
             formatted["laps"] = lap_rows
 
-        # Weather panel
+        # Weather panel — single source of truth via compute_weather_panel
         if _weather_obj:
-            import json as _json
+            from fitops.analytics.weather_pace import compute_weather_panel
 
-            ws = weather_row_to_dict(_weather_obj)
-
-            course_bearing: float | None = None
-            if row.start_latlng and row.end_latlng:
+            # If derived values not yet persisted, lazy-compute and store them
+            if _weather_obj.wap_factor is None:
                 try:
-                    s_pt = _json.loads(row.start_latlng)
-                    e_pt = _json.loads(row.end_latlng)
-                    if len(s_pt) == 2 and len(e_pt) == 2:
-                        course_bearing = compute_bearing(
-                            s_pt[0], s_pt[1], e_pt[0], e_pt[1]
-                        )
-                except (ValueError, TypeError, IndexError):
+                    _wp_row = await _refresh_activity_weather_cache(
+                        row,
+                        strava_activity_id=activity_id,
+                        streams=streams or None,
+                    )
+                    if _wp_row is not None:
+                        _weather_obj = _wp_row
+                except Exception:
                     pass
 
-            w = _weather_obj
-            wap_factor = 1.0
-            if w.temperature_c is not None and w.humidity_pct is not None:
-                wap_factor = compute_wap_factor(
-                    temp_c=w.temperature_c,
-                    rh_pct=w.humidity_pct,
-                    wind_speed_ms_val=w.wind_speed_ms or 0.0,
-                    wind_dir_deg=w.wind_direction_deg or 0.0,
-                    course_bearing=course_bearing,
-                )
-
-            is_run = (row.sport_type or "") in {
-                "Run",
-                "TrailRun",
-                "Walk",
-                "Hike",
-                "VirtualRun",
-            }
-            wap_fmt = None
-            if row.average_speed_ms and row.average_speed_ms > 0:
-                if is_run:
-                    actual_pace_s = 1000.0 / row.average_speed_ms
-                    wap_s_val = actual_pace_s / wap_factor
-                    m_w, s_w = divmod(int(wap_s_val), 60)
-                    wap_fmt = f"{m_w}:{s_w:02d}/km"
-                else:
-                    wap_speed_kmh = row.average_speed_ms * 3.6 * wap_factor
-                    wap_fmt = f"{wap_speed_kmh:.1f} km/h"
-
-            hr_heat_pct: float | None = None
-            hr_heat_bpm: int | None = None
-            if w.temperature_c is not None and w.humidity_pct is not None:
-                vo2_factor = vo2max_heat_factor(w.temperature_c, w.humidity_pct)
-                if vo2_factor < 0.99:
-                    hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
-                    if row.average_heartrate and row.average_heartrate > 0:
-                        hr_heat_bpm = round(
-                            row.average_heartrate * (1.0 / vo2_factor - 1.0)
-                        )
-
-            true_pace_fmt = None
-            tp_stream = streams.get("true_pace", [])
-            vel_stream = streams.get("velocity_smooth", [])
-            tp_pairs = [
-                (p, v)
-                for p, v in zip(tp_stream, vel_stream, strict=False)
-                if p and p > 0 and v and v > 0.1
-            ]
-            if tp_pairs:
-                paces, vels = zip(*tp_pairs, strict=False)
-                total_wt = sum(vels)
-                mean_tp = (
-                    sum(p * v for p, v in zip(paces, vels, strict=False)) / total_wt
-                )
-                if is_run:
-                    m_tp, s_tp = divmod(int(round(mean_tp)), 60)
-                    true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
-                else:
-                    true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
-
-            formatted["weather"] = {
-                **ws,
-                "wap_factor": round(wap_factor, 4),
-                "wap_factor_pct": round((wap_factor - 1.0) * 100, 1),
-                "wap_fmt": wap_fmt,
-                "true_pace_fmt": true_pace_fmt,
-                "course_bearing": round(course_bearing, 0)
-                if course_bearing is not None
-                else None,
-                "hr_heat_pct": hr_heat_pct,
-                "hr_heat_bpm": hr_heat_bpm,
-            }
+            weather_panel = compute_weather_panel(
+                _weather_obj,
+                streams,
+                average_speed_ms=row.average_speed_ms,
+                is_run=(row.sport_type or "")
+                in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"},
+                start_latlng=row.start_latlng,
+                end_latlng=row.end_latlng,
+                average_heartrate=row.average_heartrate,
+            )
+            # Inject true_pace_stream back into streams for downstream use
+            tp_s = weather_panel.pop("true_pace_stream", None)
+            if tp_s and streams:
+                streams["true_pace"] = tp_s
+            formatted["weather"] = weather_panel
 
         # Performance insights (new PRs / metric changes)
         if streams:
