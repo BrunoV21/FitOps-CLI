@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -532,6 +533,123 @@ def test_weather_row_to_dict_null_wbgt_defaults_green():
     w = _make_weather_obj(wbgt_c=None)
     d = weather_row_to_dict(w)
     assert d["wbgt_flag"] == "green"
+
+
+def test_print_activity_detail_hides_adj_pace(capsys):
+    from fitops.output.text_formatter import print_activity_detail
+
+    activity = {
+        "name": "Fast Run",
+        "sport_type": "Run",
+        "start_date_local": "2026-05-09T08:00:00",
+        "distance": {"km": 5.23},
+        "duration": {"moving_time_formatted": "19:20"},
+        "pace": {"average_per_km": "3:41", "average_per_mile": "5:56"},
+        "elevation": {"total_gain_m": 49.2},
+        "heart_rate": {"average_bpm": 190, "max_bpm": 196},
+        "training_metrics": {"calories": 297},
+        "insights": {"aerobic_training_score": 3.1, "anaerobic_training_score": 3.7},
+        "avg_gap": "3:39/km",
+        "weather": {
+            "true_pace_fmt": "3:37/km",
+            "wap_fmt": "3:43/km",
+            "wap_factor_pct": -0.7,
+            "temp_fmt": "14°C",
+            "condition": "Light drizzle",
+            "wbgt_flag": "green",
+            "wind_speed_kmh": 10.5,
+            "wind_dir_compass": "S",
+            "precipitation_mm": 0.1,
+        },
+    }
+
+    print_activity_detail(activity)
+    out = capsys.readouterr().out
+    assert "True Pace 3:37/km" in out
+    assert "Adj Pace" not in out
+    assert "conditions easier" not in out
+
+
+@pytest.mark.asyncio
+async def test_replace_activity_streams_replaces_all_existing_rows():
+    from fitops.cli.activities import _replace_activity_streams
+
+    execute_calls = []
+    added_rows = []
+
+    class _Session:
+        async def execute(self, stmt):
+            execute_calls.append(stmt)
+            return None
+
+        def add(self, row):
+            added_rows.append(row)
+
+    session = _Session()
+    stream_data = {
+        "velocity_smooth": {"data": [3.0, 3.1, 3.2]},
+        "latlng": [[1.0, 2.0], [1.1, 2.1]],
+    }
+
+    await _replace_activity_streams(session, 42, stream_data)
+
+    assert len(execute_calls) == 1
+    assert "DELETE FROM activity_streams" in str(execute_calls[0])
+    assert len(added_rows) == 2
+    assert {row.stream_type for row in added_rows} == {"velocity_smooth", "latlng"}
+    assert all(row.activity_id == 42 for row in added_rows)
+
+
+@pytest.mark.asyncio
+async def test_refresh_activity_weather_cache_uses_strava_activity_id(monkeypatch):
+    from fitops.cli.activities import _refresh_activity_weather_cache
+
+    execute_calls = []
+    weather_row = SimpleNamespace(activity_id=18435320363)
+
+    class _Result:
+        def scalar_one_or_none(self):
+            return weather_row
+
+    class _Session:
+        async def execute(self, stmt):
+            execute_calls.append(stmt)
+            return _Result()
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            return _Session()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    persist_mock = AsyncMock()
+
+    monkeypatch.setattr("fitops.cli.activities.get_async_session", lambda: _SessionCtx())
+    monkeypatch.setattr(
+        "fitops.analytics.weather_pace.persist_derived_weather",
+        persist_mock,
+    )
+
+    activity = SimpleNamespace(id=7, strava_id=18435320363)
+    streams = {"velocity_smooth": [3.0, 3.1]}
+
+    refreshed = await _refresh_activity_weather_cache(
+        activity,
+        strava_activity_id=18435320363,
+        streams=streams,
+    )
+
+    assert refreshed is weather_row
+    assert len(execute_calls) == 1
+    compiled = execute_calls[0].compile()
+    assert 18435320363 in compiled.params.values()
+    assert 7 not in compiled.params.values()
+    persist_mock.assert_awaited_once()
+    args = persist_mock.await_args.args
+    assert args[1] is weather_row
+    assert args[2] is activity
+    assert args[3] == streams
 
 
 # ---------------------------------------------------------------------------

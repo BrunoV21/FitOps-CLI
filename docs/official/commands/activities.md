@@ -81,6 +81,8 @@ See [Output Examples → Activities](../output-examples/activities.md) for sampl
 
 Get detailed info for a single activity.
 
+The formatted detail view shows `True Pace` as the effort-normalised pace metric when weather and streams are available.
+
 ```bash
 fitops activities get 12345678901 [OPTIONS]
 ```
@@ -95,7 +97,7 @@ fitops activities get 12345678901 [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--fresh` | false | Re-fetch detail from Strava API (bypasses local cache) |
+| `--fresh` | false | Re-fetch detail and streams from Strava, replace local stream cache, and recompute derived activity metrics from the fresh payload |
 | `--splits` | false | Print a per-km splits table (runs only, requires streams) |
 | `--workout` | false | Print focused workout plan + compliance view |
 | `--chart` | false | Render an ASCII time-series chart in the terminal |
