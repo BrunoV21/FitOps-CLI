@@ -169,7 +169,7 @@
 
 </div>
 
-<script src="/static/js/charts.js"></script>
+<script src="/static/js/charts.js?v=20260510-sideways-rotated-labels"></script>
 {% block scripts %}{% endblock %}
 
 <script>
@@ -189,23 +189,130 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Chart fullscreen helper
-function _fsPanel(btn) {
-  var el = btn.closest('.panel') || btn.closest('.analysis-section');
-  if (!el) return;
-  if (!document.fullscreenElement) {
-    el.requestFullscreen().catch(function() {});
-  } else {
-    document.exitFullscreen();
+var _chartFullscreenOrientationLocked = false;
+
+function _isMobileChartFullscreenTarget(el) {
+  if (!el) return false;
+  return window.matchMedia && window.matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 767px)').matches;
+}
+
+function _applyChartLandscapeFallback(el) {
+  if (!el || !_isMobileChartFullscreenTarget(el)) return;
+  el.classList.add('mobile-chart-landscape');
+  var canvas = el.querySelector('#stream-chart');
+  var chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
+  if (chart && typeof setStreamChartSidewaysMode === 'function') {
+    setStreamChartSidewaysMode(chart, true);
   }
 }
-document.addEventListener('fullscreenchange', function() {
-  var el = document.fullscreenElement;
+
+function _clearChartLandscapeFallback(el) {
+  if (!el) return;
+  el.classList.remove('mobile-chart-landscape');
+  var canvas = el.querySelector('#stream-chart');
+  var chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
+  if (chart && typeof setStreamChartSidewaysMode === 'function') {
+    setStreamChartSidewaysMode(chart, false);
+  }
+}
+
+function _syncChartLandscapeFallback(el) {
+  if (!el) return;
+  if (_isMobileChartFullscreenTarget(el)) {
+    _applyChartLandscapeFallback(el);
+  } else {
+    _clearChartLandscapeFallback(el);
+  }
+}
+
+function _getFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function _requestChartFullscreen(el) {
+  if (el.requestFullscreen) return el.requestFullscreen();
+  if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+  return Promise.reject(new Error('Fullscreen API unavailable'));
+}
+
+function _exitChartFullscreen() {
+  if (document.exitFullscreen) return document.exitFullscreen();
+  if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+  return Promise.resolve();
+}
+
+async function _lockChartLandscape(el) {
+  if (!_isMobileChartFullscreenTarget(el)) return false;
+  var orientation = screen.orientation;
+  if (!orientation || typeof orientation.lock !== 'function') return false;
+  try {
+    await orientation.lock('landscape');
+    _chartFullscreenOrientationLocked = true;
+    return true;
+  } catch (_err) {}
+  return false;
+}
+
+function _unlockChartLandscape() {
+  if (!_chartFullscreenOrientationLocked) return;
+  var orientation = screen.orientation;
+  if (!orientation || typeof orientation.unlock !== 'function') {
+    _chartFullscreenOrientationLocked = false;
+    return;
+  }
+  try {
+    orientation.unlock();
+  } catch (_err) {}
+  _chartFullscreenOrientationLocked = false;
+}
+
+function _fsPanel(btn) {
+  var el = null;
+  var selector = btn.getAttribute('data-fs-target');
+  if (selector) {
+    var scope = btn.closest('.analysis-section, .panel') || document;
+    el = scope.querySelector(selector);
+  }
+  if (!el) el = btn.closest('.panel') || btn.closest('.analysis-section');
+  if (!el) return;
+  if (!_getFullscreenElement()) {
+    _requestChartFullscreen(el)
+      .then(function() {
+        _syncChartLandscapeFallback(el);
+        return _lockChartLandscape(el);
+      })
+      .then(function() {
+        _syncChartLandscapeFallback(el);
+      })
+      .catch(function() {});
+  } else {
+    _exitChartFullscreen();
+  }
+}
+function _onChartFullscreenChange() {
+  var el = _getFullscreenElement();
   if (el) {
+    _syncChartLandscapeFallback(el);
     el.querySelectorAll('canvas').forEach(function(c) {
       var chart = typeof Chart !== 'undefined' && Chart.getChart(c);
       if (chart) setTimeout(function() { chart.resize(); }, 50);
     });
+  } else {
+    document.querySelectorAll('.mobile-chart-landscape').forEach(function(node) {
+      _clearChartLandscapeFallback(node);
+    });
+    _unlockChartLandscape();
   }
+}
+document.addEventListener('fullscreenchange', _onChartFullscreenChange);
+document.addEventListener('webkitfullscreenchange', _onChartFullscreenChange);
+window.addEventListener('resize', function() {
+  _syncChartLandscapeFallback(_getFullscreenElement());
+});
+window.addEventListener('orientationchange', function() {
+  setTimeout(function() {
+    _syncChartLandscapeFallback(_getFullscreenElement());
+  }, 100);
 });
 
 // Stagger panel entrance animations

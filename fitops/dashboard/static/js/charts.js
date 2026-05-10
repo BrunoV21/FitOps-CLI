@@ -198,6 +198,248 @@ function _fmtMMSS(s) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+function _streamMetricTooltip(label, value, isRun) {
+  if (value === null || value === undefined) return null;
+  if (label === 'Heart Rate') return ` HR: ${Math.round(value)} bpm`;
+  if (label === 'Pace')        return ` Pace: ${_fmtMMSS(value)}/km`;
+  if (label === 'Speed')       return ` Speed: ${value.toFixed(1)} km/h`;
+  if (label === 'GAP')         return ` GAP: ${_fmtMMSS(value)}/km`;
+  if (label === 'WAP')         return ` WAP: ${_fmtMMSS(value)}/km`;
+  if (label === 'WAP Speed')   return ` WAP: ${value.toFixed(1)} km/h`;
+  if (label === 'True Pace')   return ` True Pace: ${_fmtMMSS(value)}/km`;
+  if (label === 'True Speed')  return ` True Speed: ${value.toFixed(1)} km/h`;
+  if (label === 'Altitude')    return ` Alt: ${Math.round(value)} m`;
+  if (label === 'Cadence')     return ` Cadence: ${Math.round(value)} ${isRun ? 'spm' : 'rpm'}`;
+  if (label === 'Power')       return ` Power: ${Math.round(value)} W`;
+  return ` ${label}: ${value}`;
+}
+
+function _streamMetricUnit(label, isRun) {
+  if (label === 'Heart Rate') return 'bpm';
+  if (['Pace', 'GAP', 'WAP', 'True Pace'].includes(label)) return 'min/km';
+  if (['Speed', 'WAP Speed', 'True Speed'].includes(label)) return 'km/h';
+  if (label === 'Altitude') return 'm';
+  if (label === 'Cadence') return isRun ? 'spm' : 'rpm';
+  if (label === 'Power') return 'W';
+  return label;
+}
+
+function _formatStreamTick(label, value) {
+  if (['Pace', 'GAP', 'WAP', 'True Pace'].includes(label)) return _fmtMMSS(value);
+  if (['Speed', 'WAP Speed', 'True Speed'].includes(label)) return Number(value).toFixed(1);
+  return Number(value).toFixed(0);
+}
+
+function _getStreamAxisMode() {
+  const btnDist = document.getElementById('xaxis-distance');
+  return btnDist && btnDist.classList.contains('active') ? 'distance' : 'time';
+}
+
+function _streamLabelsForAxis(chart, mode) {
+  return mode === 'distance' && chart._distLabels ? chart._distLabels : chart._timeLabels;
+}
+
+function _streamDataForAxis(ds, mode) {
+  return mode === 'distance' && ds._distData ? ds._distData : ds._timeData;
+}
+
+function _syncStreamToggleButtons(chart, activeKey = null) {
+  const container = document.getElementById('metric-toggles');
+  if (!container || !chart) return;
+  container.querySelectorAll('button[data-metric-key]').forEach((btn) => {
+    const key = btn.dataset.metricKey;
+    const datasets = chart._sidewaysMode && chart._normalStreamConfig
+      ? chart._normalStreamConfig.datasets
+      : chart.data.datasets;
+    const dsIndex = datasets.findIndex(ds => ds._metricKey === key);
+    const isActive = chart._sidewaysMode
+      ? chart._sidewaysVisibleKeys && chart._sidewaysVisibleKeys.has(key)
+      : (dsIndex >= 0 && chart.isDatasetVisible(dsIndex));
+    const color = btn.dataset.metricColor || '#888';
+    btn.style.background = isActive ? color + '18' : 'transparent';
+    btn.style.color = isActive ? color : '#888';
+    btn.style.borderColor = isActive ? color : '#444';
+    btn.dataset.active = isActive ? '1' : '0';
+  });
+}
+
+function _makeSidewaysScale(source, normalScales, axisIndex, totalAxes, isRun) {
+  const original = normalScales[source.yAxisID] || {};
+  const scale = {
+    ...original,
+    type: 'linear',
+    axis: 'x',
+    position: axisIndex % 2 === 0 ? 'top' : 'bottom',
+    grid: {
+      ...(original.grid || {}),
+      drawOnChartArea: axisIndex === 0,
+      color: axisIndex === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.015)',
+    },
+    title: {
+      ...(original.title || {}),
+      display: true,
+      text: `${source.label} (${_streamMetricUnit(source.label, isRun)})`,
+      color: source.borderColor || (original.title && original.title.color) || '#888',
+      font: { size: 10, family: 'ui-monospace, monospace' },
+    },
+      ticks: {
+        ...(original.ticks || {}),
+        color: source.borderColor || (original.ticks && original.ticks.color) || '#888',
+        font: { size: 10, family: 'ui-monospace, monospace' },
+        minRotation: 90,
+        maxRotation: 90,
+        maxTicksLimit: 6,
+        callback: v => _formatStreamTick(source.label, v),
+      },
+  };
+  if (source.yAxisID === 'yPace' && isRun) scale.reverse = true;
+  if (scale.display === false) scale.display = true;
+  if (axisIndex > 1 || totalAxes > 3) {
+    scale.title.display = axisIndex < 2;
+  }
+  return scale;
+}
+
+function _buildSidewaysDataset(source, labels, axisMode) {
+  const values = _streamDataForAxis(source, axisMode) || [];
+  const points = [];
+  const n = Math.min(labels.length, values.length);
+  for (let i = 0; i < n; i += 1) {
+    const value = values[i];
+    if (value === null || value === undefined || Number.isNaN(Number(value))) continue;
+    points.push({ x: Number(value), y: labels[i] });
+  }
+  if (!points.length) return null;
+  return {
+    label: source.label,
+    data: points,
+    borderColor: source.borderColor,
+    backgroundColor: source.backgroundColor || source.borderColor,
+    borderWidth: source.borderWidth || 1.5,
+    borderDash: source.borderDash || [],
+    pointRadius: 0,
+    tension: source.tension || 0.2,
+    fill: false,
+    parsing: false,
+    xAxisID: `x${source.yAxisID}`,
+    _metricKey: source._metricKey,
+    _sourceLabel: source.label,
+  };
+}
+
+function setStreamChartSidewaysMode(chart, enabled, preferredKey = null) {
+  if (!chart || !chart._isStreamChart) return;
+
+  if (!chart._normalStreamConfig) {
+    chart._normalStreamConfig = {
+      labels: chart.data.labels,
+      datasets: chart.data.datasets,
+      scales: chart.options.scales,
+      interaction: chart.options.interaction,
+      onHover: chart.options.onHover,
+      tooltip: chart.options.plugins.tooltip,
+    };
+  }
+
+  if (!enabled) {
+    const normal = chart._normalStreamConfig;
+    chart._sidewaysMode = false;
+    chart.data.labels = normal.labels;
+    chart.data.datasets = normal.datasets;
+    if (chart._sidewaysVisibleKeys) {
+      normal.datasets.forEach((ds, i) => {
+        if (!ds._metricKey || ds._isThreshold) return;
+        chart.setDatasetVisibility(i, chart._sidewaysVisibleKeys.has(ds._metricKey));
+        ds.hidden = !chart._sidewaysVisibleKeys.has(ds._metricKey);
+      });
+    }
+    chart.options.scales = normal.scales;
+    chart.options.interaction = normal.interaction;
+    chart.options.onHover = normal.onHover;
+    chart.options.plugins.tooltip = normal.tooltip;
+    _syncStreamToggleButtons(chart);
+    chart.update('none');
+    return;
+  }
+
+  const normal = chart._normalStreamConfig;
+  const normalDatasets = normal.datasets || [];
+  const metricDatasets = normalDatasets.filter(ds => ds._metricKey && !ds._isThreshold);
+  if (!metricDatasets.length) return;
+
+  if (!chart._sidewaysMode) {
+    chart._sidewaysVisibleKeys = new Set(
+      metricDatasets
+        .filter((ds, i) => {
+          const normalIndex = normalDatasets.indexOf(ds);
+          return chart.isDatasetVisible(normalIndex);
+        })
+        .map(ds => ds._metricKey)
+    );
+  }
+  if (preferredKey) {
+    if (chart._sidewaysVisibleKeys.has(preferredKey)) {
+      chart._sidewaysVisibleKeys.delete(preferredKey);
+    } else {
+      chart._sidewaysVisibleKeys.add(preferredKey);
+    }
+  }
+  if (!chart._sidewaysVisibleKeys.size) {
+    const fallback = metricDatasets[0];
+    chart._sidewaysVisibleKeys.add(fallback._metricKey);
+  }
+
+  const axisMode = _getStreamAxisMode();
+  const labels = _streamLabelsForAxis(chart, axisMode) || [];
+  const selectedSources = metricDatasets.filter(ds => chart._sidewaysVisibleKeys.has(ds._metricKey));
+  const sidewaysDatasets = selectedSources
+    .map(ds => _buildSidewaysDataset(ds, labels, axisMode))
+    .filter(Boolean);
+  if (!sidewaysDatasets.length) return;
+
+  chart._sidewaysMode = true;
+  chart.data.labels = labels;
+  chart.data.datasets = sidewaysDatasets;
+  chart.options.onHover = null;
+  chart.options.interaction = { mode: 'index', axis: 'y', intersect: false };
+  chart.options.plugins.tooltip = {
+    callbacks: {
+      title: (items) => items && items[0] ? `${axisMode === 'distance' ? 'Distance' : 'Time'}: ${items[0].raw.y}` : '',
+      label: (item) => _streamMetricTooltip(item.dataset._sourceLabel || item.dataset.label, item.raw.x, chart._isRunSport),
+    },
+  };
+  const uniqueAxisSources = [];
+  for (const source of selectedSources) {
+    if (!uniqueAxisSources.find(ds => ds.yAxisID === source.yAxisID)) uniqueAxisSources.push(source);
+  }
+  const sidewaysScales = {};
+  uniqueAxisSources.forEach((source, i) => {
+    sidewaysScales[`x${source.yAxisID}`] = _makeSidewaysScale(source, normal.scales, i, uniqueAxisSources.length, chart._isRunSport);
+  });
+  chart.options.scales = {
+    ...sidewaysScales,
+    y: {
+      type: 'category',
+      labels,
+      reverse: true,
+      title: {
+        display: true,
+        text: axisMode === 'distance' ? 'Distance (km)' : 'Time',
+        color: '#888',
+        font: { size: 10, family: 'ui-monospace, monospace' },
+      },
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: {
+        color: '#888',
+        font: { size: 10, family: 'ui-monospace, monospace' },
+        maxTicksLimit: 6,
+      },
+    },
+  };
+  _syncStreamToggleButtons(chart);
+  chart.update('none');
+}
+
 
 /**
  * Render a multi-metric stream chart (HR, Pace, GAP, Altitude, Cadence, Power).
@@ -518,10 +760,16 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   const crosshairPlugin = {
     id: 'crosshair',
     afterDraw(ch) {
-      const active = ch.tooltip._active;
+      const active = typeof ch.getActiveElements === 'function'
+        ? ch.getActiveElements()
+        : (ch.tooltip && typeof ch.tooltip.getActiveElements === 'function'
+          ? ch.tooltip.getActiveElements()
+          : []);
       if (!active || !active.length) return;
+      if (!ch.chartArea || !ch.scales || !ch.scales.x) return;
       const { ctx, chartArea: { top, bottom }, scales: { x } } = ch;
       const xPos = x.getPixelForValue(active[0].index);
+      if (!Number.isFinite(xPos)) return;
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(xPos, top);
@@ -563,19 +811,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
             label: (item) => {
               const ds = item.dataset;
               const v = item.parsed.y;
-              if (v === null || v === undefined) return null;
-              if (ds.label === 'Heart Rate') return ` HR: ${Math.round(v)} bpm`;
-              if (ds.label === 'Pace')        return ` Pace: ${_fmtMMSS(v)}/km`;
-              if (ds.label === 'Speed')       return ` Speed: ${v.toFixed(1)} km/h`;
-              if (ds.label === 'GAP')         return ` GAP: ${_fmtMMSS(v)}/km`;
-              if (ds.label === 'WAP')         return ` WAP: ${_fmtMMSS(v)}/km`;
-              if (ds.label === 'WAP Speed')   return ` WAP: ${v.toFixed(1)} km/h`;
-              if (ds.label === 'True Pace')   return ` True Pace: ${_fmtMMSS(v)}/km`;
-              if (ds.label === 'True Speed')  return ` True Speed: ${v.toFixed(1)} km/h`;
-              if (ds.label === 'Altitude')    return ` Alt: ${Math.round(v)} m`;
-              if (ds.label === 'Cadence')     return ` Cadence: ${Math.round(v)} ${isRun ? 'spm' : 'rpm'}`;
-              if (ds.label === 'Power')       return ` Power: ${Math.round(v)} W`;
-              return ` ${ds.label}: ${v}`;
+              return _streamMetricTooltip(ds.label, v, isRun);
             },
           },
         },
@@ -587,6 +823,8 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   // Store label arrays for x-axis toggle
   chart._distLabels = distLabels && distLabels.length > 0 ? distLabels : null;
   chart._timeLabels = timeLabels.length > 0 ? timeLabels : null;
+  chart._isStreamChart = true;
+  chart._isRunSport = isRun;
   window._activeStreamChart = chart;
   _activitySync.chart = chart;
 
@@ -623,6 +861,7 @@ function initMetricToggles(chart, containerId, available, sportType) {
     const btn = document.createElement('button');
     btn.textContent = label;
     btn.dataset.metricKey = key;
+    btn.dataset.metricColor = color;
     btn.dataset.active = defaultOn ? '1' : '0';
     btn.style.cssText = `
       padding: 3px 10px;
@@ -650,6 +889,10 @@ function initMetricToggles(chart, containerId, available, sportType) {
       const c = window._activeStreamChart || chart;
       if (!c) {
         setActive(btn.dataset.active !== '1');
+        return;
+      }
+      if (c._sidewaysMode) {
+        setStreamChartSidewaysMode(c, true, key);
         return;
       }
       const dsIndex = c.data.datasets.findIndex(ds => ds._metricKey === key);
@@ -683,6 +926,11 @@ function setXAxis(mode) {
 
   const chart = window._activeStreamChart;
   if (!chart) return;
+
+  if (chart._sidewaysMode) {
+    setStreamChartSidewaysMode(chart, true);
+    return;
+  }
 
   const labels = mode === 'distance' ? chart._distLabels : chart._timeLabels;
   if (!labels) return;
