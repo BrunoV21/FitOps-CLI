@@ -986,6 +986,7 @@ function renderVo2maxChart(canvasId, data) {
     data: { labels, datasets },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
@@ -1081,6 +1082,7 @@ function renderPaceEvolutionChart(canvasId, data) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
@@ -1175,6 +1177,7 @@ function renderTrainingLoadChart(canvasId, labels, series) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
@@ -1300,6 +1303,7 @@ function renderWeeklyVolumeChart(canvasId, weeklyData, options = {}) {
     data: { labels, datasets },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'top', labels: { usePointStyle: true, padding: 16 } },
