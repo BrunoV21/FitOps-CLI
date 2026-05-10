@@ -201,11 +201,48 @@ def _weather_summary(w) -> dict:
 
 
 def _downsample_streams(streams: dict, target: int = 500) -> dict:
-    n = max((len(v) for v in streams.values()), default=0)
-    if n <= target:
+    list_streams = {k: v for k, v in streams.items() if isinstance(v, list)}
+    if not list_streams:
         return streams
-    step = max(1, n // target)
-    return {k: v[::step] for k, v in streams.items()}
+
+    base_key = next(
+        (
+            key
+            for key in ("time", "distance", "latlng", "velocity_smooth", "heartrate")
+            if isinstance(streams.get(key), list) and streams.get(key)
+        ),
+        None,
+    )
+    if base_key is None:
+        base_key = max(list_streams, key=lambda key: len(list_streams[key]))
+
+    base_stream = list_streams[base_key]
+    base_len = len(base_stream)
+    if base_len == 0:
+        return streams
+
+    if base_len <= target:
+        positions = list(range(base_len))
+    else:
+        step = (base_len - 1) / (target - 1)
+        positions = [min(base_len - 1, round(i * step)) for i in range(target)]
+        positions[-1] = base_len - 1
+
+    def _sample(values: list) -> list:
+        value_len = len(values)
+        if value_len == 0:
+            return []
+        if base_len == 1 or value_len == 1:
+            return [values[0] for _ in positions]
+        return [
+            values[min(value_len - 1, round(pos * (value_len - 1) / (base_len - 1)))]
+            for pos in positions
+        ]
+
+    return {
+        key: _sample(value) if isinstance(value, list) else value
+        for key, value in streams.items()
+    }
 
 
 def register(templates: Jinja2Templates) -> APIRouter:
@@ -735,15 +772,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 status_code=404,
             )
 
-        # Downsample to 1000 points for better resolution
-        raw_n = max((len(v) for v in streams.values()), default=0)
-        ds_target = 1000
-        ds_step = max(1, raw_n // ds_target) if raw_n > ds_target else 1
-
-        def _downsample_analysis(s: dict, step: int) -> dict:
-            return {k: v[::step] for k, v in s.items()}
-
-        streams_ds = _downsample_analysis(streams, ds_step) if streams else {}
+        streams_ds = _downsample_streams(streams, target=1000) if streams else {}
 
         # Gear name
         gear_name = None

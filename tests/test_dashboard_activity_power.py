@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from fitops.dashboard.routes.activities import _downsample_streams
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -331,3 +333,33 @@ def test_activity_detail_not_found(client, monkeypatch):
 
     resp = client.get("/activities/00000")
     assert resp.status_code == 404
+
+
+def test_downsample_streams_aligns_all_series_and_keeps_last_point():
+    streams = {
+        "time": list(range(1200)),
+        "distance": [float(i * 10) for i in range(1198)],
+        "latlng": [[40.0 + i * 0.0001, -8.0 - i * 0.0001] for i in range(1199)],
+        "heartrate": [140 + (i % 7) for i in range(1201)],
+    }
+
+    result = _downsample_streams(streams, target=500)
+
+    assert {len(v) for v in result.values()} == {500}
+    assert result["time"][0] == 0
+    assert result["time"][-1] == 1199
+    assert result["distance"][-1] == streams["distance"][-1]
+    assert result["latlng"][-1] == streams["latlng"][-1]
+    assert result["heartrate"][-1] == streams["heartrate"][-1]
+
+
+def test_downsample_streams_preserves_short_streams_without_truncation():
+    streams = {
+        "time": [0, 1, 2, 3],
+        "distance": [0.0, 15.0, 31.0, 47.0],
+        "latlng": [[40.0, -8.0], [40.1, -8.1], [40.2, -8.2], [40.3, -8.3]],
+    }
+
+    result = _downsample_streams(streams, target=500)
+
+    assert result == streams
