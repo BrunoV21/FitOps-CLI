@@ -33,14 +33,9 @@ from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_true_pace_stream,
     compute_wap_factor,
+    compute_wap_stream_points,
     compute_weather_panel,
-    headwind_ms,
-    pace_wind_factor,
-    vo2max_heat_factor,
     weather_row_to_dict,
-)
-from fitops.analytics.weather_pace import (
-    pace_heat_factor as _pace_heat_factor,
 )
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.activities import (
@@ -205,51 +200,6 @@ def _weather_summary(w) -> dict:
     return weather_row_to_dict(w)
 
 
-def _compute_wap_stream(streams: dict, weather) -> list | None:
-    """
-    Compute per-GPS-point WAP pace (s/km) by resolving the headwind component
-    at each moment using local course bearing from the latlng stream.
-
-    Heat factor is constant for the activity; wind factor varies per GPS segment.
-    Uses a 7-point lookahead window to stabilise noisy 1-second GPS bearings.
-    """
-    latlng_pts = streams.get("latlng", [])
-    vel = streams.get("velocity_smooth", [])
-    if not latlng_pts or not vel or not weather:
-        return None
-
-    heat_f = 1.0
-    if weather.temperature_c is not None and weather.humidity_pct is not None:
-        heat_f = _pace_heat_factor(weather.temperature_c, weather.humidity_pct)
-
-    wind_ms = weather.wind_speed_ms or 0.0
-    wind_dir = weather.wind_direction_deg or 0.0
-
-    n = min(len(latlng_pts), len(vel))
-    _LOOK = 7  # lookahead window (seconds ≈ ~25 m at 3.5 m/s)
-
-    last_bearing = 0.0
-    wap: list = []
-
-    for i in range(n):
-        v = vel[i]
-        if not v or v <= 0.1:
-            wap.append(None)
-            continue
-
-        # Bearing over a short forward window to reduce GPS noise
-        j = min(i + _LOOK, n - 1)
-        pt1, pt2 = latlng_pts[i], latlng_pts[j]
-        if pt1[0] != pt2[0] or pt1[1] != pt2[1]:
-            last_bearing = compute_bearing(pt1[0], pt1[1], pt2[0], pt2[1])
-
-        hw = headwind_ms(wind_ms, wind_dir, last_bearing)
-        total_f = heat_f * pace_wind_factor(hw)
-        wap.append((1000.0 / v) / total_f if total_f > 0 else None)
-
-    return wap if any(x is not None for x in wap) else None
-
-
 def _downsample_streams(streams: dict, target: int = 500) -> dict:
     n = max((len(v) for v in streams.values()), default=0)
     if n <= target:
@@ -387,7 +337,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         _weather_obj = _weather_map.get(strava_id)
 
         if streams and _weather_obj:
-            wap_s = _compute_wap_stream(streams, _weather_obj)
+            wap_s = compute_wap_stream_points(streams, _weather_obj)
             if wap_s:
                 streams["wap_pace"] = wap_s
             tp_s = compute_true_pace_stream(streams, _weather_obj)
@@ -757,7 +707,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         _weather_obj = _weather_map.get(strava_id)
 
         if streams and _weather_obj:
-            wap_s = _compute_wap_stream(streams, _weather_obj)
+            wap_s = compute_wap_stream_points(streams, _weather_obj)
             if wap_s:
                 streams["wap_pace"] = wap_s
             tp_s = compute_true_pace_stream(streams, _weather_obj)

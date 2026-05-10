@@ -403,12 +403,13 @@ def compute_weather_panel(
         result["true_pace_fmt"] = true_pace_fmt
         result["true_pace_s_per_km"] = tp_s
 
+        # wap_adjustment_pct: weather-only impact, derived from wap_factor
+        result["wap_adjustment_pct"] = result.get("wap_factor_pct")
+
         # If streams are provided, try to load persisted true_pace stream
         # and also try to compute if not in streams dict (for charts)
         if streams and "true_pace" not in streams:
-            tp_stream = compute_true_pace_stream(
-                streams, weather, course_bearing=course_bearing
-            )
+            tp_stream = compute_true_pace_stream(streams, weather)
             if tp_stream:
                 result["true_pace_stream"] = tp_stream
 
@@ -471,7 +472,9 @@ def compute_weather_panel(
     # True Pace: distance-weighted mean of the true pace stream (grade + heat + wind).
     # Fallback: distance-weighted GAP mean divided by heat factor (no wind).
     true_pace_fmt: str | None = None
-    tp_stream = compute_true_pace_stream(streams, weather, course_bearing=course_bearing)
+    gap_pace_s: float | None = None
+    heat_f: float | None = None
+    tp_stream = compute_true_pace_stream(streams, weather)
     vel_stream = streams.get("velocity_smooth", [])
     if tp_stream:
         # Store the stream for downstream use (e.g. dashboard charts)
@@ -529,10 +532,73 @@ def compute_weather_panel(
     # Expose the numeric true pace in s/km for persistence
     if tp_stream and tp_pairs:
         result["true_pace_s_per_km"] = round(mean_tp, 2)  # type: ignore[possibly-undefined]
-    elif "gap_pace_s" in dir():  # fallback path
-        result["true_pace_s_per_km"] = round(gap_pace_s / heat_f if "heat_f" in dir() else gap_pace_s, 2)
+    elif gap_pace_s is not None:
+        result["true_pace_s_per_km"] = round(gap_pace_s / heat_f if heat_f is not None else gap_pace_s, 2)
+
+    # wap_adjustment_pct: how much slower (positive) or faster (negative)
+    # true pace is vs actual pace, derived from wap_factor.  Positive = harder conditions.
+    result["wap_adjustment_pct"] = result.get("wap_factor_pct")
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# WAP stream (per-point WAP-adjusted pace)
+# ---------------------------------------------------------------------------
+
+
+def compute_wap_stream_points(
+    streams: dict, weather, *, course_bearing: float | None = None
+) -> list | None:
+    """
+    Compute per-GPS-point WAP pace (s/km) by resolving the headwind component
+    at each moment using local course bearing from the latlng stream.
+
+    Heat factor is constant for the activity; wind factor varies per GPS segment.
+    Uses a 7-point lookahead window to stabilise noisy 1-second GPS bearings.
+
+    This is the single source of truth — CLI and dashboard should call this
+    instead of maintaining duplicate private functions.
+    """
+    latlng_pts = streams.get("latlng", [])
+    vel = streams.get("velocity_smooth", [])
+    if not latlng_pts or not vel or not weather:
+        return None
+
+    heat_f = 1.0
+    if weather.temperature_c is not None and weather.humidity_pct is not None:
+        heat_f = pace_heat_factor(weather.temperature_c, weather.humidity_pct)
+
+    wind_ms = weather.wind_speed_ms or 0.0
+    wind_dir = weather.wind_direction_deg or 0.0
+
+    n = min(len(latlng_pts), len(vel))
+    _LOOK = 7  # lookahead window (seconds ≈ ~25 m at 3.5 m/s)
+
+    last_bearing = 0.0
+    wap: list = []
+
+    for i in range(n):
+        v = vel[i]
+        if not v or v <= 0.1:
+            wap.append(None)
+            continue
+
+        # Bearing over a short forward window to reduce GPS noise
+        if course_bearing is not None:
+            bearing = course_bearing
+        else:
+            j = min(i + _LOOK, n - 1)
+            pt1, pt2 = latlng_pts[i], latlng_pts[j]
+            if pt1[0] != pt2[0] or pt1[1] != pt2[1]:
+                last_bearing = compute_bearing(pt1[0], pt1[1], pt2[0], pt2[1])
+            bearing = last_bearing
+
+        hw = headwind_ms(wind_ms, wind_dir, bearing)
+        total_f = heat_f * pace_wind_factor(hw)
+        wap.append((1000.0 / v) / total_f if total_f > 0 else None)
+
+    return wap if any(x is not None for x in wap) else None
 
 
 async def persist_derived_weather(
@@ -596,9 +662,7 @@ async def persist_derived_weather(
     # True Pace: distance-weighted mean
     true_pace_s_per_km: float | None = None
     if streams:
-        tp_stream = compute_true_pace_stream(
-            streams, weather_row, course_bearing=course_bearing
-        )
+        tp_stream = compute_true_pace_stream(streams, weather_row)
         vel_stream = streams.get("velocity_smooth", [])
         if tp_stream and vel_stream:
             tp_pairs = [
