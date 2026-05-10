@@ -260,3 +260,212 @@ def weather_row_to_dict(w) -> dict:
         if w.temperature_c is not None
         else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Compute true pace stream (per-point, grade + heat + wind adjusted)
+# ---------------------------------------------------------------------------
+
+_RUN_SPORT_TYPES = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
+
+
+def compute_true_pace_stream(
+    streams: dict, weather, *, course_bearing: float | None = None
+) -> list | None:
+    """
+    True Pace stream (s/km) = GAP adjusted per-point for weather.
+    Normalises both gradient and conditions — the best single effort metric.
+    Requires both latlng data AND gradient data (grade_adjusted_speed or grade_smooth).
+    """
+    latlng_pts = streams.get("latlng", [])
+    vel = streams.get("velocity_smooth", [])
+    if not latlng_pts or not vel or not weather:
+        return None
+
+    # Build GAP speed (m/s): prefer Strava's stream, fall back to computed
+    gap_raw = streams.get("grade_adjusted_speed", [])
+    grade = streams.get("grade_smooth", [])
+    n_v = len(vel)
+    if gap_raw and len(gap_raw) >= n_v * 0.8:
+        gap_speed = gap_raw
+    elif grade and len(grade) >= n_v * 0.8:
+        gap_speed = [
+            v * (1 + 0.033 * g) if (v and v > 0.1) else 0.0
+            for v, g in zip(vel, grade, strict=False)
+        ]
+    else:
+        return None  # No gradient data available
+
+    heat_f = 1.0
+    if weather.temperature_c is not None and weather.humidity_pct is not None:
+        heat_f = pace_heat_factor(weather.temperature_c, weather.humidity_pct)
+
+    wind_ms = weather.wind_speed_ms or 0.0
+    wind_dir = weather.wind_direction_deg or 0.0
+
+    n = min(len(latlng_pts), len(vel), len(gap_speed))
+    _LOOK = 7
+    last_bearing = 0.0
+    result: list = []
+
+    for i in range(n):
+        gs = gap_speed[i] if i < len(gap_speed) else 0.0
+        if not gs or gs <= 0.1:
+            result.append(None)
+            continue
+
+        if course_bearing is not None:
+            bearing = course_bearing
+        else:
+            j = min(i + _LOOK, n - 1)
+            pt1, pt2 = latlng_pts[i], latlng_pts[j]
+            if pt1[0] != pt2[0] or pt1[1] != pt2[1]:
+                last_bearing = compute_bearing(pt1[0], pt1[1], pt2[0], pt2[1])
+            bearing = last_bearing
+
+        hw = headwind_ms(wind_ms, wind_dir, bearing)
+        weather_f = heat_f * pace_wind_factor(hw)
+        result.append((1000.0 / gs) / weather_f if weather_f > 0 else None)
+
+    return result if any(x is not None for x in result) else None
+
+
+# ---------------------------------------------------------------------------
+# Compute weather panel (shared by dashboard + stamp)
+# ---------------------------------------------------------------------------
+
+
+def compute_weather_panel(
+    weather,
+    streams: dict,
+    *,
+    average_speed_ms: float | None = None,
+    is_run: bool = True,
+    start_latlng: str | None = None,
+    end_latlng: str | None = None,
+    average_heartrate: float | None = None,
+) -> dict:
+    """Compute all weather-panel fields (true pace, WAP, HR heat, etc.).
+
+    Single source of truth used by both the dashboard route and the stamp
+    generator — eliminates duplicated logic and ensures consistent values.
+
+    Returns a dict with keys:
+      true_pace_fmt, wap_factor, wap_factor_pct, wap_fmt,
+      hr_heat_pct, hr_heat_bpm, course_bearing, plus all weather_row_to_dict fields.
+    """
+    import json as _json
+
+    result = weather_row_to_dict(weather)
+
+    # Course bearing for wind component
+    course_bearing: float | None = None
+    if start_latlng and end_latlng:
+        try:
+            s = _json.loads(start_latlng)
+            e = _json.loads(end_latlng)
+            if len(s) == 2 and len(e) == 2:
+                course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
+        except (ValueError, TypeError, IndexError):
+            pass
+
+    # WAP factor (grade-agnostic overall weather adjustment)
+    wap_factor = 1.0
+    if weather.temperature_c is not None and weather.humidity_pct is not None:
+        wap_factor = compute_wap_factor(
+            temp_c=weather.temperature_c,
+            rh_pct=weather.humidity_pct,
+            wind_speed_ms_val=weather.wind_speed_ms or 0.0,
+            wind_dir_deg=weather.wind_direction_deg or 0.0,
+            course_bearing=course_bearing,
+        )
+
+    result["wap_factor"] = round(wap_factor, 4)
+    result["wap_factor_pct"] = round((wap_factor - 1.0) * 100, 1)
+
+    # WAP formatted pace/speed
+    wap_fmt = None
+    if average_speed_ms and average_speed_ms > 0:
+        if is_run:
+            actual_pace_s = 1000.0 / average_speed_ms
+            wap_s = actual_pace_s / wap_factor
+            m, s_rem = divmod(int(wap_s), 60)
+            wap_fmt = f"{m}:{s_rem:02d}/km"
+        else:
+            wap_speed_kmh = average_speed_ms * 3.6 * wap_factor
+            wap_fmt = f"{wap_speed_kmh:.1f} km/h"
+    result["wap_fmt"] = wap_fmt
+
+    # HR heat/humidity impact
+    hr_heat_pct: float | None = None
+    hr_heat_bpm: int | None = None
+    if weather.temperature_c is not None and weather.humidity_pct is not None:
+        vo2_factor = vo2max_heat_factor(weather.temperature_c, weather.humidity_pct)
+        if vo2_factor < 0.99:  # meaningful reduction (>1%)
+            hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
+            if average_heartrate and average_heartrate > 0:
+                hr_heat_bpm = round(
+                    average_heartrate * (1.0 / vo2_factor - 1.0)
+                )
+    result["hr_heat_pct"] = hr_heat_pct
+    result["hr_heat_bpm"] = hr_heat_bpm
+
+    # True Pace: distance-weighted mean of the true pace stream (grade + heat + wind).
+    # Fallback: distance-weighted GAP mean divided by heat factor (no wind).
+    true_pace_fmt: str | None = None
+    tp_stream = compute_true_pace_stream(streams, weather, course_bearing=course_bearing)
+    vel_stream = streams.get("velocity_smooth", [])
+    if tp_stream:
+        # Store the stream for downstream use (e.g. dashboard charts)
+        result["true_pace_stream"] = tp_stream
+        tp_pairs = [
+            (p, v)
+            for p, v in zip(tp_stream, vel_stream, strict=False)
+            if p is not None and p > 0 and v and v > 0.1
+        ]
+        if tp_pairs:
+            paces, vels = zip(*tp_pairs, strict=False)
+            total_w = sum(vels)
+            mean_tp = sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
+            if is_run:
+                m_tp, s_tp = divmod(int(round(mean_tp)), 60)
+                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+            else:
+                true_pace_fmt = f"{3600.0 / mean_tp:.1f} km/h"
+    else:
+        # Fallback: grade-only GAP + heat
+        vel_raw = streams.get("velocity_smooth", [])
+        grade_raw = streams.get("grade_smooth", [])
+        if vel_raw and grade_raw:
+            wt_pairs = [
+                (v * (1 + 0.033 * g), v)
+                for v, g in zip(vel_raw, grade_raw, strict=False)
+                if v and v > 0.1
+            ]
+        else:
+            wt_pairs = [(v, v) for v in vel_raw if v and v > 0.1]
+        if wt_pairs:
+            gap_speeds, weights = zip(*wt_pairs, strict=False)
+            total_w = sum(weights)
+            mean_gap_ms = (
+                sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False))
+                / total_w
+            )
+            heat_f = (
+                pace_heat_factor(weather.temperature_c, weather.humidity_pct)
+                if weather.temperature_c is not None and weather.humidity_pct is not None
+                else 1.0
+            )
+            if is_run:
+                gap_pace_s = 1000.0 / mean_gap_ms
+                m_tp, s_tp = divmod(int(round(gap_pace_s / heat_f)), 60)
+                true_pace_fmt = f"{m_tp}:{s_tp:02d}/km"
+            else:
+                true_pace_fmt = f"{mean_gap_ms * heat_f * 3.6:.1f} km/h"
+
+    result["true_pace_fmt"] = true_pace_fmt
+    result["course_bearing"] = (
+        round(course_bearing, 0) if course_bearing is not None else None
+    )
+
+    return result
