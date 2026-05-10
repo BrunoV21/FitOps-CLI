@@ -375,8 +375,12 @@ async def stamp_activity(
                     select(ActivityStream).where(
                         ActivityStream.activity_id == activity.id,
                         ActivityStream.stream_type.in_(
-                            ["velocity_smooth", "grade_smooth", "latlng",
-                             "grade_adjusted_speed"]
+                            [
+                                "velocity_smooth",
+                                "grade_smooth",
+                                "latlng",
+                                "grade_adjusted_speed",
+                            ]
                         ),
                     )
                 )
@@ -385,6 +389,7 @@ async def stamp_activity(
                     streams_dict[row.stream_type] = row.data
 
                 from fitops.analytics.weather_pace import persist_derived_weather
+
                 try:
                     await persist_derived_weather(
                         session, weather_row, activity, streams_dict or None
@@ -397,8 +402,12 @@ async def stamp_activity(
                 select(ActivityStream).where(
                     ActivityStream.activity_id == activity.id,
                     ActivityStream.stream_type.in_(
-                        ["velocity_smooth", "grade_smooth", "latlng",
-                         "grade_adjusted_speed"]
+                        [
+                            "velocity_smooth",
+                            "grade_smooth",
+                            "latlng",
+                            "grade_adjusted_speed",
+                        ]
                     ),
                 )
             )
@@ -407,6 +416,7 @@ async def stamp_activity(
                 streams_dict[srow.stream_type] = srow.data
 
             from fitops.analytics.weather_pace import compute_weather_panel
+
             weather = compute_weather_panel(
                 weather_row,
                 streams_dict,
@@ -519,7 +529,10 @@ async def stamp_activity(
             if wt_pairs:
                 gap_speeds, weights = zip(*wt_pairs, strict=False)
                 total_w = sum(weights)
-                _mean_gap_ms = sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False)) / total_w
+                _mean_gap_ms = (
+                    sum(gs * wt for gs, wt in zip(gap_speeds, weights, strict=False))
+                    / total_w
+                )
 
     if (
         race_result

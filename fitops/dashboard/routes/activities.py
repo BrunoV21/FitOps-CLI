@@ -30,9 +30,7 @@ from fitops.analytics.training_scores import (
     compute_anaerobic_score,
 )
 from fitops.analytics.weather_pace import (
-    compute_bearing,
     compute_true_pace_stream,
-    compute_wap_factor,
     compute_wap_stream_points,
     compute_weather_panel,
     weather_row_to_dict,
@@ -57,6 +55,7 @@ from fitops.dashboard.queries.workouts import (
     get_workout_names_for_activities,
 )
 from fitops.db.models.activity import Activity
+from fitops.db.models.activity_weather import ActivityWeather
 from fitops.db.session import get_async_session
 
 router = APIRouter()
@@ -570,10 +569,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
             # Lazy-persist derived values on first read
             try:
                 from fitops.analytics.weather_pace import persist_derived_weather
+
                 async with get_async_session() as _wp_session:
                     from sqlalchemy import select as _sel
+
                     _wp_result = await _wp_session.execute(
-                        _sel(ActivityWeather).where(ActivityWeather.activity_id == strava_id)
+                        _sel(ActivityWeather).where(
+                            ActivityWeather.activity_id == strava_id
+                        )
                     )
                     _wp_row = _wp_result.scalar_one_or_none()
                     if _wp_row:
@@ -773,6 +776,32 @@ def register(templates: Jinja2Templates) -> APIRouter:
             )
 
         streams_ds = _downsample_streams(streams, target=1000) if streams else {}
+        ds_step = 1
+        if streams_ds and streams:
+            base_key = next(
+                (
+                    key
+                    for key in (
+                        "time",
+                        "distance",
+                        "latlng",
+                        "velocity_smooth",
+                        "heartrate",
+                    )
+                    if isinstance(streams.get(key), list) and streams.get(key)
+                ),
+                None,
+            )
+            if base_key is None:
+                base_key = next(
+                    (key for key, value in streams.items() if isinstance(value, list)),
+                    None,
+                )
+            if base_key and isinstance(streams_ds.get(base_key), list):
+                raw_len = len(streams.get(base_key, []))
+                ds_len = len(streams_ds.get(base_key, []))
+                if raw_len > 0 and ds_len > 0:
+                    ds_step = max(1, math.ceil(raw_len / ds_len))
 
         # Gear name
         gear_name = None

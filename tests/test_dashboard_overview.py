@@ -74,4 +74,3 @@ def test_overview_run_view_filters_heatmap(client, monkeypatch):
 
     assert resp.status_code == 200
     heatmap_mock.assert_awaited_once_with(42, since=None, sport_types=RUNNING_SPORTS)
-

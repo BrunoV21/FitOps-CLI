@@ -625,7 +625,9 @@ async def test_refresh_activity_weather_cache_uses_strava_activity_id(monkeypatc
 
     persist_mock = AsyncMock()
 
-    monkeypatch.setattr("fitops.cli.activities.get_async_session", lambda: _SessionCtx())
+    monkeypatch.setattr(
+        "fitops.cli.activities.get_async_session", lambda: _SessionCtx()
+    )
     monkeypatch.setattr(
         "fitops.analytics.weather_pace.persist_derived_weather",
         persist_mock,

@@ -463,9 +463,7 @@ def compute_weather_panel(
         if vo2_factor < 0.99:  # meaningful reduction (>1%)
             hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
             if average_heartrate and average_heartrate > 0:
-                hr_heat_bpm = round(
-                    average_heartrate * (1.0 / vo2_factor - 1.0)
-                )
+                hr_heat_bpm = round(average_heartrate * (1.0 / vo2_factor - 1.0))
     result["hr_heat_pct"] = hr_heat_pct
     result["hr_heat_bpm"] = hr_heat_bpm
 
@@ -514,7 +512,8 @@ def compute_weather_panel(
             )
             heat_f = (
                 pace_heat_factor(weather.temperature_c, weather.humidity_pct)
-                if weather.temperature_c is not None and weather.humidity_pct is not None
+                if weather.temperature_c is not None
+                and weather.humidity_pct is not None
                 else 1.0
             )
             if is_run:
@@ -533,7 +532,9 @@ def compute_weather_panel(
     if tp_stream and tp_pairs:
         result["true_pace_s_per_km"] = round(mean_tp, 2)  # type: ignore[possibly-undefined]
     elif gap_pace_s is not None:
-        result["true_pace_s_per_km"] = round(gap_pace_s / heat_f if heat_f is not None else gap_pace_s, 2)
+        result["true_pace_s_per_km"] = round(
+            gap_pace_s / heat_f if heat_f is not None else gap_pace_s, 2
+        )
 
     # wap_adjustment_pct: how much slower (positive) or faster (negative)
     # true pace is vs actual pace, derived from wap_factor.  Positive = harder conditions.
@@ -653,7 +654,9 @@ async def persist_derived_weather(
     hr_heat_pct: float | None = None
     hr_heat_bpm: int | None = None
     if weather_row.temperature_c is not None and weather_row.humidity_pct is not None:
-        vo2_factor = vo2max_heat_factor(weather_row.temperature_c, weather_row.humidity_pct)
+        vo2_factor = vo2max_heat_factor(
+            weather_row.temperature_c, weather_row.humidity_pct
+        )
         if vo2_factor < 0.99:
             hr_heat_pct = round((1.0 / vo2_factor - 1.0) * 100, 1)
             if average_heartrate and average_heartrate > 0:
@@ -673,7 +676,9 @@ async def persist_derived_weather(
             if tp_pairs:
                 paces, vels = zip(*tp_pairs, strict=False)
                 total_w = sum(vels)
-                mean_tp = sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
+                mean_tp = (
+                    sum(p * v for p, v in zip(paces, vels, strict=False)) / total_w
+                )
                 true_pace_s_per_km = round(mean_tp, 2)
 
             # Persist true_pace stream
@@ -713,7 +718,9 @@ async def persist_derived_weather(
                     / total_w
                 )
                 heat_f = (
-                    pace_heat_factor(weather_row.temperature_c, weather_row.humidity_pct)
+                    pace_heat_factor(
+                        weather_row.temperature_c, weather_row.humidity_pct
+                    )
                     if weather_row.temperature_c is not None
                     and weather_row.humidity_pct is not None
                     else 1.0
@@ -723,7 +730,9 @@ async def persist_derived_weather(
 
     # Write to ActivityWeather row
     weather_row.wap_factor = round(wap_factor, 4)
-    weather_row.course_bearing = round(course_bearing, 0) if course_bearing is not None else None
+    weather_row.course_bearing = (
+        round(course_bearing, 0) if course_bearing is not None else None
+    )
     weather_row.hr_heat_pct = hr_heat_pct
     weather_row.hr_heat_bpm = hr_heat_bpm
     weather_row.true_pace_s_per_km = true_pace_s_per_km

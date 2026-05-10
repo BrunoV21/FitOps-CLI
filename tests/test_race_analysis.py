@@ -1053,6 +1053,7 @@ def test_dashboard_race_session_not_found(client, monkeypatch):
 
 def test_dashboard_race_session_detail(client, monkeypatch):
     """GET /race/sessions/1 should return 200 with session data rendered."""
+
     async def _fake_get_detail(session_id):
         return {
             "session": {

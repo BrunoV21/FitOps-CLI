@@ -96,7 +96,9 @@ async def get_wap_history(
         wap_s = actual_pace_s / wap_factor if wap_factor > 0 else actual_pace_s
 
         # Use persisted true_pace_s_per_km if available
-        true_pace_s = weather.true_pace_s_per_km if weather.true_pace_s_per_km else wap_s
+        true_pace_s = (
+            weather.true_pace_s_per_km if weather.true_pace_s_per_km else wap_s
+        )
 
         history.append(
             {
@@ -146,7 +148,7 @@ async def upsert_activity_weather(
     activity_id: int,
     weather_dict: dict,
     source: str = "open-meteo",
-    activity = None,
+    activity=None,
     streams: dict | None = None,
 ) -> dict:
     """Insert or update ActivityWeather row, then persist derived values."""
@@ -193,7 +195,13 @@ async def upsert_activity_weather(
             # If no streams provided, try loading from DB
             if streams is None and activity.streams_fetched:
                 from fitops.db.models.activity_stream import ActivityStream as _AS
-                stream_types = ["velocity_smooth", "grade_smooth", "latlng", "grade_adjusted_speed"]
+
+                stream_types = [
+                    "velocity_smooth",
+                    "grade_smooth",
+                    "latlng",
+                    "grade_adjusted_speed",
+                ]
                 stream_result = await session.execute(
                     select(_AS).where(
                         _AS.activity_id == activity.id,
@@ -204,6 +212,7 @@ async def upsert_activity_weather(
 
             try:
                 from fitops.analytics.weather_pace import persist_derived_weather
+
                 await persist_derived_weather(session, row, activity, streams)
             except Exception:
                 pass  # Non-critical: derived values will be lazy-computed on read

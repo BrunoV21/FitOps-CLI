@@ -167,8 +167,8 @@ async def run_compliance_for_activity(
     # Inject true_pace stream so actuals include weather+grade adjusted pace
     if is_run and act is not None and "true_pace" not in streams_dict:
         try:
-            from fitops.dashboard.queries.weather import get_weather_for_activities
             from fitops.analytics.weather_pace import compute_true_pace_stream
+            from fitops.dashboard.queries.weather import get_weather_for_activities
 
             _weather_map = await get_weather_for_activities([act.strava_id])
             _weather_obj = _weather_map.get(act.strava_id)

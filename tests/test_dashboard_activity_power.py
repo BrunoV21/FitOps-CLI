@@ -229,7 +229,9 @@ def test_activity_detail_no_power(client, monkeypatch):
     assert resp.status_code == 200
 
 
-def test_activity_detail_weather_panel_hides_true_pace_header_badge(client, monkeypatch):
+def test_activity_detail_weather_panel_hides_true_pace_header_badge(
+    client, monkeypatch
+):
     act = _fake_activity(power=False)
 
     monkeypatch.setattr(

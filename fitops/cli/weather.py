@@ -280,7 +280,9 @@ def show_weather(
             else None,
             "actual_pace": _fmt_pace(actual_pace_s) if actual_pace_s else None,
             "wap": _fmt_pace(wap_s) if wap_s else None,
-            "true_pace": _fmt_pace(weather.true_pace_s_per_km) if weather.true_pace_s_per_km else None,
+            "true_pace": _fmt_pace(weather.true_pace_s_per_km)
+            if weather.true_pace_s_per_km
+            else None,
         }
 
     result = asyncio.run(_load())

@@ -47,9 +47,7 @@ async def _replace_activity_streams(
     )
     for stream_type, stream_obj in stream_data.items():
         data_list = (
-            stream_obj.get("data", [])
-            if isinstance(stream_obj, dict)
-            else stream_obj
+            stream_obj.get("data", []) if isinstance(stream_obj, dict) else stream_obj
         )
         session.add(
             ActivityStream.from_strava_stream(activity_db_id, stream_type, data_list)
@@ -416,6 +414,8 @@ def get_activity(
         if streams and _weather_obj:
             from fitops.analytics.weather_pace import (
                 compute_true_pace_stream as _compute_true_pace_stream,
+            )
+            from fitops.analytics.weather_pace import (
                 compute_wap_stream_points as _compute_wap_stream,
             )
 
@@ -587,7 +587,8 @@ def get_activity(
                 _weather_obj,
                 streams,
                 average_speed_ms=row.average_speed_ms,
-                is_run=(row.sport_type or "") in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"},
+                is_run=(row.sport_type or "")
+                in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"},
                 start_latlng=row.start_latlng,
                 end_latlng=row.end_latlng,
                 average_heartrate=row.average_heartrate,
