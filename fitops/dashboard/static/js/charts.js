@@ -210,6 +210,8 @@ function _fmtMMSS(s) {
 function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   const ctx = document.getElementById(canvasId);
   if (!ctx || !streams) return null;
+  const existingChart = Chart.getChart(ctx);
+  if (existingChart) existingChart.destroy();
 
   const RUN_SPORTS = new Set(['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike']);
   const isRun = RUN_SPORTS.has(sportType);
@@ -601,6 +603,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
 function initMetricToggles(chart, containerId, available, sportType) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  container.innerHTML = '';
 
   const _isRun = new Set(['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike']).has(sportType);
   const METRICS = [
@@ -654,9 +657,10 @@ function initMetricToggles(chart, containerId, available, sportType) {
         setActive(btn.dataset.active !== '1');
         return;
       }
-      const nowVisible = !c.isDatasetVisible(dsIndex);
-      if (nowVisible) { c.show(dsIndex); } else { c.hide(dsIndex); }
-      setActive(nowVisible);
+      const nextVisible = !c.isDatasetVisible(dsIndex);
+      c.setDatasetVisibility(dsIndex, nextVisible);
+      c.update('none');
+      setActive(nextVisible);
     });
 
     container.appendChild(btn);
