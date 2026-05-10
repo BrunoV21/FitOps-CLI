@@ -537,6 +537,13 @@ code {
 /* ── Chart Containers ───────────────────────────────────────── */
 canvas { max-height: 400px; }
 .stream-chart-canvas { max-height: none; }
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
 
 /* ── Heatmap Legend ─────────────────────────────────────────── */
 .heatmap-legend {
