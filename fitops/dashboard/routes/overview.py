@@ -241,7 +241,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "perf": (_tr.performance_trend or {}).get("pace_trend"),
                 }
         heatmap_data = (
-            await get_activity_heatmap_data(athlete_id, since=None)
+            await get_activity_heatmap_data(
+                athlete_id, since=None, sport_types=sport_types
+            )
             if athlete_id
             else []
         )

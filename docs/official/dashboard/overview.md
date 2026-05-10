@@ -11,7 +11,7 @@ Two controls at the top of the page shape everything on the screen:
 - **Period** — This Week / This Month / This Year / All Time
 - **Sport** — Run / Cycle / Total (all sports)
 
-Change either and the stats, recent activity list, and load widget all update immediately.
+Change either and the stats, recent activity list, and activity heatmap all update immediately. The heatmap only shows activities that match the active sport filter.
 
 ## Stats Bar
 
