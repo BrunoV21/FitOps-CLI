@@ -227,6 +227,89 @@ def test_activity_detail_no_power(client, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_activity_detail_weather_panel_hides_true_pace_header_badge(client, monkeypatch):
+    act = _fake_activity(power=False)
+
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_settings",
+        lambda: _fake_settings(),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_detail",
+        AsyncMock(return_value=act),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_laps",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_streams",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_activity_calibration",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_weather_for_activities",
+        AsyncMock(
+            return_value={
+                99001: MagicMock(
+                    source="open-meteo",
+                    temperature_c=14.0,
+                    apparent_temp_c=14.0,
+                    humidity_pct=70.0,
+                    wind_speed_ms=2.9,
+                    wind_direction_deg=180.0,
+                    precipitation_mm=0.1,
+                    wbgt_c=10.0,
+                    weather_code=61,
+                    pace_heat_factor=1.0,
+                    wap_factor=0.993,
+                    course_bearing=180.0,
+                    hr_heat_pct=None,
+                    hr_heat_bpm=None,
+                    true_pace_s_per_km=217.0,
+                )
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_athlete_settings",
+        _fake_athlete_settings,
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.compute_activity_analytics",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.compute_activity_performance_insights",
+        lambda *_: [],
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_all_workouts",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_workout_for_activity",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_race_plan_for_activity",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities.get_athlete",
+        AsyncMock(return_value=None),
+    )
+
+    resp = client.get("/activities/99001")
+    assert resp.status_code == 200
+    assert "Conditions" in resp.text
+    assert "WAP" not in resp.text
+    assert "-0.7%" not in resp.text
+
+
 def test_activity_detail_not_found(client, monkeypatch):
     """GET /activities/{id} returns 404 when the activity doesn't exist."""
     monkeypatch.setattr(

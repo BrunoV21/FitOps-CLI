@@ -139,13 +139,8 @@ def compose_stamp(
 
         # Line 1: Pace
         true_pace_fmt = weather.get("true_pace_fmt")
-        true_pace_pct = weather.get("true_pace_pct")
         if true_pace_fmt:
-            pct_str = ""
-            if true_pace_pct is not None and abs(true_pace_pct) >= 0.05:
-                sign = "+" if true_pace_pct > 0 else ""
-                pct_str = f" ({sign}{true_pace_pct:.1f}%)"
-            lines.append(f"Pace {true_pace_fmt}{pct_str}")
+            lines.append(f"Pace {true_pace_fmt}")
 
         # Line 2: Temp · Hum
         row2_th: list[str] = []
@@ -424,10 +419,6 @@ async def stamp_activity(
             # Remove stream data (not needed by stamp composer)
             weather.pop("true_pace_stream", None)
 
-            # Stamp uses wap_factor_pct for the weather percentage
-            wap_pct = weather.get("wap_factor_pct")
-            if wap_pct is not None:
-                weather["true_pace_pct"] = round(wap_pct, 1)
     except Exception:
         pass
 
@@ -546,13 +537,6 @@ async def stamp_activity(
             cal_true_pace_s = (1000.0 / cal_gap_ms) / _heat_f
             m_tp, s_tp = divmod(int(round(cal_true_pace_s)), 60)
             weather["true_pace_fmt"] = f"{m_tp}:{s_tp:02d}/km"
-            corrected_pace_s = race_result.get("corrected_avg_pace_s_per_km")
-            if corrected_pace_s and corrected_pace_s > 0:
-                pct = (corrected_pace_s / cal_true_pace_s - 1.0) * 100
-                if abs(pct) >= 0.05:
-                    weather["true_pace_pct"] = round(pct, 1)
-                else:
-                    weather.pop("true_pace_pct", None)
         except Exception:
             pass
 

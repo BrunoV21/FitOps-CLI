@@ -188,14 +188,6 @@ def print_activity_detail(activity: dict) -> None:
         if weather_parts:
             console.print(f"  Weather{flag_str}   {',  '.join(weather_parts)}")
 
-        wap_fmt = weather.get("wap_fmt")
-        wap_pct = weather.get("wap_factor_pct")
-        if wap_fmt and wap_pct is not None:
-            direction = "harder" if wap_pct > 0 else "easier"
-            console.print(
-                f"  Adj Pace   {wap_fmt}  [dim]({wap_pct:+.1f}% conditions {direction})[/dim]"
-            )
-
     console.print()
 
     # Tip footer — show available sub-commands
