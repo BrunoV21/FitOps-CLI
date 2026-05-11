@@ -126,7 +126,7 @@ def vo2max_heat_factor(temp_c: float, rh_pct: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Combined WAP factor
+# WAP factor
 # ---------------------------------------------------------------------------
 
 
@@ -138,16 +138,16 @@ def compute_wap_factor(
     course_bearing: float | None,
 ) -> float:
     """
-    Combined weather adjustment factor for pace.
+    Heat/humidity adjustment factor for pace.
     WAP = actual_pace_s_per_km / wap_factor
-    wap_factor > 1 means conditions were hard (adjusted pace is faster).
+    wap_factor > 1 means heat/humidity made conditions hard.
+
+    Wind is intentionally excluded from WAP. Wind varies with course bearing and
+    is handled in True Pace, where local route direction and GAP are available.
+    The wind parameters remain in the signature for API compatibility.
     """
-    heat = pace_heat_factor(temp_c, rh_pct)
-    wind = 1.0
-    if course_bearing is not None:
-        hw = headwind_ms(wind_speed_ms_val, wind_dir_deg, course_bearing)
-        wind = pace_wind_factor(hw)
-    return heat * wind
+    _ = (wind_speed_ms_val, wind_dir_deg, course_bearing)
+    return pace_heat_factor(temp_c, rh_pct)
 
 
 # ---------------------------------------------------------------------------
@@ -359,14 +359,22 @@ def compute_weather_panel(
     result = weather_row_to_dict(weather)
 
     # ── Fast path: use persisted derived values if available ──
-    # When weather was stored (or lazy-computed), wap_factor, course_bearing,
-    # hr_heat_pct, hr_heat_bpm, true_pace_s_per_km are already on the
-    # ActivityWeather row.  Use them instead of recomputing.
+    # When weather was stored (or lazy-computed), course_bearing, hr_heat_pct,
+    # hr_heat_bpm, true_pace_s_per_km are already on the ActivityWeather row.
+    # WAP is always derived from temperature/humidity at read time so older rows
+    # with wind-inclusive wap_factor do not leak into the display.
     has_persisted = getattr(weather, "wap_factor", None) is not None
 
     if has_persisted:
-        # Fill in persisted derived values directly
-        wap_factor = weather.wap_factor or 1.0
+        wap_factor = 1.0
+        if weather.temperature_c is not None and weather.humidity_pct is not None:
+            wap_factor = compute_wap_factor(
+                temp_c=weather.temperature_c,
+                rh_pct=weather.humidity_pct,
+                wind_speed_ms_val=weather.wind_speed_ms or 0.0,
+                wind_dir_deg=weather.wind_direction_deg or 0.0,
+                course_bearing=weather.course_bearing,
+            )
         result["wap_factor"] = round(wap_factor, 4)
         result["wap_factor_pct"] = round((wap_factor - 1.0) * 100, 1)
 
@@ -428,7 +436,7 @@ def compute_weather_panel(
         except (ValueError, TypeError, IndexError):
             pass
 
-    # WAP factor (grade-agnostic overall weather adjustment)
+    # WAP factor (grade-agnostic, heat/humidity-only weather adjustment)
     wap_factor = 1.0
     if weather.temperature_c is not None and weather.humidity_pct is not None:
         wap_factor = compute_wap_factor(
@@ -552,52 +560,30 @@ def compute_wap_stream_points(
     streams: dict, weather, *, course_bearing: float | None = None
 ) -> list | None:
     """
-    Compute per-GPS-point WAP pace (s/km) by resolving the headwind component
-    at each moment using local course bearing from the latlng stream.
+    Compute per-point WAP pace (s/km) using heat/humidity only.
 
-    Heat factor is constant for the activity; wind factor varies per GPS segment.
-    Uses a 7-point lookahead window to stabilise noisy 1-second GPS bearings.
+    Wind is deliberately left to True Pace, which combines GAP and local route
+    bearing. WAP is the weather-only companion to actual pace and should not
+    double-count wind.
 
     This is the single source of truth — CLI and dashboard should call this
     instead of maintaining duplicate private functions.
     """
-    latlng_pts = streams.get("latlng", [])
+    _ = course_bearing
     vel = streams.get("velocity_smooth", [])
-    if not latlng_pts or not vel or not weather:
+    if not vel or not weather:
         return None
 
     heat_f = 1.0
     if weather.temperature_c is not None and weather.humidity_pct is not None:
         heat_f = pace_heat_factor(weather.temperature_c, weather.humidity_pct)
 
-    wind_ms = weather.wind_speed_ms or 0.0
-    wind_dir = weather.wind_direction_deg or 0.0
-
-    n = min(len(latlng_pts), len(vel))
-    _LOOK = 7  # lookahead window (seconds ≈ ~25 m at 3.5 m/s)
-
-    last_bearing = 0.0
     wap: list = []
-
-    for i in range(n):
-        v = vel[i]
+    for v in vel:
         if not v or v <= 0.1:
             wap.append(None)
             continue
-
-        # Bearing over a short forward window to reduce GPS noise
-        if course_bearing is not None:
-            bearing = course_bearing
-        else:
-            j = min(i + _LOOK, n - 1)
-            pt1, pt2 = latlng_pts[i], latlng_pts[j]
-            if pt1[0] != pt2[0] or pt1[1] != pt2[1]:
-                last_bearing = compute_bearing(pt1[0], pt1[1], pt2[0], pt2[1])
-            bearing = last_bearing
-
-        hw = headwind_ms(wind_ms, wind_dir, bearing)
-        total_f = heat_f * pace_wind_factor(hw)
-        wap.append((1000.0 / v) / total_f if total_f > 0 else None)
+        wap.append((1000.0 / v) / heat_f if heat_f > 0 else None)
 
     return wap if any(x is not None for x in wap) else None
 
@@ -639,7 +625,7 @@ async def persist_derived_weather(
         except (ValueError, TypeError, IndexError):
             pass
 
-    # WAP factor
+    # WAP factor (heat/humidity only; wind belongs to True Pace)
     wap_factor = 1.0
     if weather_row.temperature_c is not None and weather_row.humidity_pct is not None:
         wap_factor = compute_wap_factor(

@@ -35,7 +35,7 @@ def gap_factor(grade_decimal: float) -> float:
 
 
 def _neutral_wap() -> float:
-    """WAP factor at neutral conditions (15 deg C, 40% RH, no wind) = 1.0."""
+    """WAP factor at neutral temperature/humidity = 1.0."""
     return compute_wap_factor(15.0, 40.0, 0.0, 0.0, None)
 
 

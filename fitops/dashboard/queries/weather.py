@@ -68,30 +68,27 @@ async def get_wap_history(
 
         actual_pace_s = 1000.0 / act.average_speed_ms  # s/km
 
-        # Use persisted wap_factor if available, otherwise compute
+        # WAP is heat/humidity-only. Recompute it from weather inputs even when
+        # an older persisted wap_factor exists, because historical rows may
+        # include wind from the previous model.
         wap_factor = 1.0
-        if weather.wap_factor is not None:
-            wap_factor = weather.wap_factor
-            course_bearing = weather.course_bearing
-        else:
-            # Compute course bearing from start→end latlng if available
-            course_bearing = None
-            if act.start_latlng and act.end_latlng:
-                try:
-                    s = json.loads(act.start_latlng)
-                    e = json.loads(act.end_latlng)
-                    if len(s) == 2 and len(e) == 2:
-                        course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
-                except (json.JSONDecodeError, TypeError, IndexError):
-                    pass
-            if weather.temperature_c is not None and weather.humidity_pct is not None:
-                wap_factor = compute_wap_factor(
-                    temp_c=weather.temperature_c,
-                    rh_pct=weather.humidity_pct,
-                    wind_speed_ms_val=weather.wind_speed_ms or 0.0,
-                    wind_dir_deg=weather.wind_direction_deg or 0.0,
-                    course_bearing=course_bearing,
-                )
+        course_bearing = weather.course_bearing
+        if course_bearing is None and act.start_latlng and act.end_latlng:
+            try:
+                s = json.loads(act.start_latlng)
+                e = json.loads(act.end_latlng)
+                if len(s) == 2 and len(e) == 2:
+                    course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
+            except (json.JSONDecodeError, TypeError, IndexError):
+                pass
+        if weather.temperature_c is not None and weather.humidity_pct is not None:
+            wap_factor = compute_wap_factor(
+                temp_c=weather.temperature_c,
+                rh_pct=weather.humidity_pct,
+                wind_speed_ms_val=weather.wind_speed_ms or 0.0,
+                wind_dir_deg=weather.wind_direction_deg or 0.0,
+                course_bearing=course_bearing,
+            )
 
         wap_s = actual_pace_s / wap_factor if wap_factor > 0 else actual_pace_s
 

@@ -138,7 +138,7 @@ These frustrations come up repeatedly across communities regardless of which pla
 
 **No weather analysis.** None of the four platforms factors weather into performance analysis. Users who set a PR on a cold calm day and run the same course on a hot humid day have no tool to compare those efforts equivalently — outside of FitOps.
 
-**No per-km race simulation.** Race simulation on these platforms means a flat even-split pace calculator at best. None account for per-segment elevation, temperature, humidity, or wind when producing a pacing plan.
+**No per-km race simulation.** Race simulation on these platforms means a flat even-split pace calculator at best. None account for per-segment elevation, temperature, or humidity when producing a pacing plan.
 
 **Limited or no scripting/automation.** Of the four, only Intervals.icu has a public API that developers actively use. TrainingPeaks, Strava, and Garmin all make personal automation difficult or impossible. The appetite for automation is evident in the Intervals.icu community's Python and TypeScript tooling built on top of the API.
 

@@ -122,7 +122,7 @@ fitops weather show 12345678901
 
 | Field | Description |
 |-------|-------------|
-| `wap_factor` | Combined heat + wind adjustment factor (>1 means conditions made it harder) |
+| `wap_factor` | Heat/humidity adjustment factor (>1 means temperature and humidity made it harder) |
 | `course_bearing_deg` | Bearing from activity start to end (degrees, 0=N) — used for headwind/tailwind calc |
 | `vo2max_heat_factor` | Aerobic capacity multiplier (1.0 = full capacity, 0.90 = 10% reduced) |
 | `actual_pace` | Activity average pace (mm:ss/km) from Strava |
@@ -216,7 +216,7 @@ fitops weather forecast --lat 51.5074 --lng -0.1278 --date 2026-04-19 --json
 | `pace_heat_factor` | Pace multiplier from heat/humidity (1.0 = no effect) |
 | `vo2max_heat_factor` | VO2max capacity multiplier (1.0 = full capacity) |
 | `headwind_ms` | Headwind component (m/s, positive = into runner's face). Only if `--course-bearing` provided |
-| `wap_factor` | Combined heat + wind factor. Only if temp and humidity available |
+| `wap_factor` | Heat/humidity factor. Only if temp and humidity available; wind is handled by True Pace |
 
 ---
 

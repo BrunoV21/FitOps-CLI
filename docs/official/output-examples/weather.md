@@ -46,7 +46,7 @@ Weather  activity 17972016511  open-meteo
   WAP (adj. pace)                 4:47/km
 ```
 
-**Reading the output:** WAP factor of 1.0021 means conditions added ~0.2% effort. Near-neutral — cool day, light wind. Actual and weather-adjusted pace are the same.
+**Reading the output:** WAP factor of 1.0021 means temperature and humidity added ~0.2% effort. Near-neutral conditions mean actual and weather-adjusted pace are effectively the same.
 
 ---
 
@@ -84,7 +84,7 @@ Location: 51.5074, -0.1278
   wap_factor         1.0540  — conditions 5.4% harder than neutral
 ```
 
-**Reading the output:** A 5.4% WAP factor means the race effort is notably harder than neutral. If your target is 4:00/km in neutral conditions, expect to run ~4:13/km at equivalent effort.
+**Reading the output:** A 5.4% WAP factor means heat and humidity make the race effort notably harder than neutral. If your target is 4:00/km in neutral temperature and humidity, expect to run ~4:13/km at equivalent effort.
 
 ---
 

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from fitops.analytics.weather_pace import (
     compute_bearing,
     compute_true_pace_stream,
@@ -168,10 +170,15 @@ def test_compute_wap_factor_cold_no_wind():
     assert abs(factor - 1.0) < 0.01
 
 
-def test_compute_wap_factor_hot_headwind():
-    """Hot humid conditions + headwind → factor > 1.05."""
-    factor = compute_wap_factor(28.0, 75.0, 5.0, 0.0, 0.0)  # wind from N, running N
-    assert factor > 1.05
+def test_compute_wap_factor_hot_humid_ignores_wind():
+    """WAP is heat/humidity-only; wind belongs to True Pace."""
+    headwind = compute_wap_factor(28.0, 75.0, 5.0, 0.0, 0.0)
+    tailwind = compute_wap_factor(28.0, 75.0, 5.0, 180.0, 0.0)
+    no_wind = compute_wap_factor(28.0, 75.0, 0.0, 0.0, None)
+
+    assert headwind == pytest.approx(no_wind)
+    assert tailwind == pytest.approx(no_wind)
+    assert no_wind > 1.05
 
 
 def test_compute_true_pace_stream_uses_local_bearing_by_default():
@@ -256,3 +263,35 @@ def test_compute_weather_panel_true_pace_uses_local_bearing_not_course_bearing()
 
     assert tp_stream == local_tp
     assert tp_stream != constant_tp
+
+
+def test_compute_weather_panel_wap_ignores_persisted_wind_inclusive_factor():
+    weather = SimpleNamespace(
+        temperature_c=14.1,
+        humidity_pct=86.0,
+        wind_speed_ms=2.93,
+        wind_direction_deg=189.0,
+        weather_code=None,
+        apparent_temp_c=None,
+        precipitation_mm=None,
+        wbgt_c=None,
+        pace_heat_factor=None,
+        source="test",
+        wap_factor=0.9926,
+        course_bearing=56.0,
+        hr_heat_pct=None,
+        hr_heat_bpm=None,
+        true_pace_s_per_km=217.25,
+    )
+
+    panel = compute_weather_panel(
+        weather,
+        {},
+        average_speed_ms=4.509,
+        is_run=True,
+    )
+
+    heat_only = pace_heat_factor(14.1, 86.0)
+    assert panel["wap_factor"] == pytest.approx(round(heat_only, 4))
+    assert panel["wap_fmt"] == "3:40/km"
+    assert panel["true_pace_fmt"] == "3:37/km"

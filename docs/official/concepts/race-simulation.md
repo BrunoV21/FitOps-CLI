@@ -33,9 +33,8 @@ This is the same GAP model used in activity analysis. On a hilly course, the sim
 For each kilometre, FitOps applies a **weather factor** accounting for:
 
 - **Heat and humidity** — via WBGT (Wet Bulb Globe Temperature). A hot humid segment gets a penalty on top of the elevation adjustment.
-- **Wind** — headwind vs tailwind per segment, based on the course bearing at that point and the wind direction. Headwinds cost more than tailwinds save (Pugh 1971 asymmetry).
 
-Weather can be provided manually (`--temp`, `--humidity`, `--wind`) or auto-fetched from Open-Meteo using a date and race start hour.
+Weather can be provided manually (`--temp`, `--humidity`) or auto-fetched from Open-Meteo using a date and race start hour.
 
 See [Weather & Pace](./weather-pace.md) for the full WAP and GAP models.
 

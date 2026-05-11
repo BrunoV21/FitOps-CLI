@@ -1197,7 +1197,7 @@ def print_weather_forecast(forecast: dict) -> None:
         )
 
     wap_str = "-"
-    wap_meaning = "provide --course-bearing for full WAP"
+    wap_meaning = "requires temp + humidity"
     if wap is not None:
         wap_str = f"{wap:.4f}"
         wap_pct = (wap - 1) * 100

@@ -90,18 +90,18 @@ The asymmetry reflects aerodynamic reality: a 5 m/s headwind (~18 km/h) costs ro
 
 ## WAP — Weather-Adjusted Pace
 
-**WAP** (Weather-Adjusted Pace) removes the combined effect of heat, humidity, and wind from your actual pace:
+**WAP** (Weather-Adjusted Pace) removes the effect of heat and humidity from your actual pace:
 
 ```
-wap_factor = pace_heat_factor × pace_wind_factor
+wap_factor = pace_heat_factor
 WAP = actual_pace_s_per_km / wap_factor
 ```
 
-A `wap_factor` greater than 1.0 means conditions were harder than neutral — WAP will be faster than your actual pace.
+A `wap_factor` greater than 1.0 means heat and humidity made conditions harder than neutral — WAP will be faster than your actual pace.
 
-**Example:** You ran 5:12/km in 28°C heat with a headwind. `wap_factor = 1.12`. WAP = 5:12 / 1.12 ≈ 4:39/km. That's your equivalent effort in neutral conditions.
+**Example:** You ran 5:12/km in warm, humid conditions. `wap_factor = 1.06`. WAP = 5:12 / 1.06 ≈ 4:54/km. That's your equivalent effort in neutral temperature and humidity.
 
-WAP appears in `fitops weather show` output. If course bearing is not recorded (point-to-point GPS not available), wind correction is omitted and only heat/humidity are factored in.
+WAP appears in `fitops weather show` output. Wind is not included in WAP; it is handled by True Pace, where route bearing and grade are available.
 
 ---
 
@@ -116,7 +116,7 @@ True Pace = GAP adjusted for weather
 In practice, True Pace is computed from the activity stream by:
 
 1. Computing GAP per GPS point (removes uphill/downhill effort)
-2. Applying the WAP factor for the activity conditions (removes heat and wind)
+2. Applying heat/humidity and local wind adjustment for the activity conditions
 
 The result is a pace metric that reflects your physiological effort independent of terrain and weather — making pace zones, LT2 inference, and cross-activity comparisons more accurate.
 

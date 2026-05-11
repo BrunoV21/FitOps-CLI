@@ -119,7 +119,7 @@ fitops workouts simulate long-run --course 1 --date 2026-04-20 --hour 8
 
 For each segment, the simulation computes:
 - The terrain effect from the course's elevation profile at that segment's distance slice
-- The weather effect (heat + wind) from the date/conditions provided
+- The heat/humidity effect from the date/conditions provided
 - A GAP- and WAP-adjusted target pace for the segment
 
 This gives you a realistic per-segment pace plan before race or workout day — not just a flat pace target, but one that accounts for the actual course and expected conditions.

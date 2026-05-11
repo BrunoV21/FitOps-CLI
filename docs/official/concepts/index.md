@@ -24,13 +24,13 @@ FitOps isn't just a data viewer — it applies established sports science models
 
 **Zones** are only as accurate as the thresholds behind them. FitOps supports three calculation methods (LTHR, max HR, Karvonen/HRR) and can automatically infer your LTHR and max HR from rolling-window HR analysis across all your cached stream data — no lab test required.
 
-**Weather-adjusted pace** is unique to FitOps. Running the same route at 30°C and 80% humidity is a fundamentally different physiological effort than running it at 12°C. WAP applies a physics-based model (Pugh 1971 wind drag, WBGT heat stress) to normalise pace across conditions — making month-to-month comparisons and VO2max trending far more reliable.
+**Weather-adjusted pace** is unique to FitOps. Running the same route at 30°C and 80% humidity is a fundamentally different physiological effort than running it at 12°C. WAP applies a WBGT heat stress model to normalise pace across temperature and humidity, while True Pace handles wind together with grade — making month-to-month comparisons and VO2max trending far more reliable.
 
 **True Pace** combines both GAP and WAP adjustments into a single effort-normalised metric. This is what FitOps uses for LT2 inference and long-term performance trending.
 
 **Workouts and compliance scoring** let you define structured sessions in plain Markdown and measure how well you executed them. Each `##` heading in a workout file becomes a scoreable segment mapped against your actual HR stream. The compliance formula weights time-in-zone and average deviation from target to give each segment a 0–1 score.
 
-**Race simulation** applies the GAP and WAP models to a full course. Import a GPX file, set a target time, and FitOps produces a per-km split plan accounting for every climb, descent, headwind, and heat penalty along the route.
+**Race simulation** applies the GAP and WAP models to a full course. Import a GPX file, set a target time, and FitOps produces a per-km split plan accounting for every climb, descent, and heat penalty along the route.
 
 **Training notes** are plain Markdown files that serve as your coaching journal. Linked to activities, tagged for filtering, and queryable by CLI — they give both you and any AI assistant persistent, structured context that survives across sessions.
 

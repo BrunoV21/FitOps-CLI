@@ -235,26 +235,27 @@ def show_weather(
 
         d = weather.to_dict()
 
-        # Use persisted derived values if available, otherwise compute
+        # WAP is heat/humidity-only. Recompute it from weather inputs even when
+        # an older persisted wap_factor exists, because historical rows may
+        # include wind from the previous model.
         course_bearing: float | None = None
         if weather.wap_factor is not None:
-            wap_factor = weather.wap_factor
             course_bearing = weather.course_bearing
-        else:
+        if course_bearing is None:
             if act and act.start_latlng and act.end_latlng:
                 s = _parse_latlng(act.start_latlng)
                 e = _parse_latlng(act.end_latlng)
                 if s and e:
                     course_bearing = compute_bearing(s[0], s[1], e[0], e[1])
-            wap_factor = 1.0
-            if weather.temperature_c is not None and weather.humidity_pct is not None:
-                wap_factor = compute_wap_factor(
-                    temp_c=weather.temperature_c,
-                    rh_pct=weather.humidity_pct,
-                    wind_speed_ms_val=weather.wind_speed_ms or 0.0,
-                    wind_dir_deg=weather.wind_direction_deg or 0.0,
-                    course_bearing=course_bearing,
-                )
+        wap_factor = 1.0
+        if weather.temperature_c is not None and weather.humidity_pct is not None:
+            wap_factor = compute_wap_factor(
+                temp_c=weather.temperature_c,
+                rh_pct=weather.humidity_pct,
+                wind_speed_ms_val=weather.wind_speed_ms or 0.0,
+                wind_dir_deg=weather.wind_direction_deg or 0.0,
+                course_bearing=course_bearing,
+            )
 
         actual_pace_s: float | None = None
         wap_s: float | None = None

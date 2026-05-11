@@ -23,7 +23,7 @@ Training platforms like TrainingPeaks and Intervals.icu are great web apps, but 
 - **Your data lives in their cloud.** You can't query it programmatically, pipe it into a script, or let an AI agent read it without an expensive API.
 - **Strava has sold user location data** to third parties and published private coaching notes without consent. The "free" version hides analytics behind a premium paywall.
 - **No weather context.** A 4:50/km run on a 30°C humid day is a very different effort from the same pace on a 10°C morning. No platform adjusts for this except FitOps.
-- **Race simulation is shallow.** Pace calculators exist, but nothing adjusts splits per-kilometre for actual elevation, headwind, and heat on race day.
+- **Race simulation is shallow.** Pace calculators exist, but nothing adjusts splits per-kilometre for actual elevation and heat on race day.
 
 FitOps is built around the principle that **your training data should be yours to query, in any way you want, locally.**
 
@@ -48,9 +48,9 @@ FitOps is built around the principle that **your training data should be yours t
 
 **Unique to FitOps:**
 
-- **Weather-Adjusted Pace (WAP)** — per-activity historical weather from Open-Meteo (no API key), WBGT heat stress model, Pugh 1971 wind drag. Makes a hot run directly comparable to a cool one.
+- **Weather-Adjusted Pace (WAP)** — per-activity historical weather from Open-Meteo (no API key) and WBGT heat stress modelling. WAP normalises temperature and humidity; wind is handled in True Pace.
 - **True Pace** — a single effort-normalised metric combining GAP (grade) and WAP (weather), enabling cross-season VO2max trending without noise.
-- **Race simulation engine** — per-km split plan adjusted for actual elevation, temperature, humidity, and wind. Supports pacer strategy and forecast weather for race day.
+- **Race simulation engine** — per-km split plan adjusted for actual elevation, temperature, and humidity. Supports pacer strategy and forecast weather for race day.
 - **Workout simulation on course** — simulate how a structured workout plays out on a GPX course with terrain and weather per segment.
 - **AI-native design** — the dashboard and CLI are two views into the same SQLite database. An agent can query anything a human can see, and vice versa.
 
