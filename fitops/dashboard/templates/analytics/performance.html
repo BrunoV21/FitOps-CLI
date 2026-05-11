@@ -240,29 +240,30 @@
     </div>
     {% endif %}
   </div>
-  {% if perf_metrics and perf_metrics.running and perf_metrics.running.max_hr_estimate %}
+  {% if perf_metrics and perf_metrics.running and perf_metrics.running.aerobic_efficiency_trend %}
   {% set run = perf_metrics.running %}
+  {% set eff = run.aerobic_efficiency_trend %}
   <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:32px;flex-wrap:wrap;">
     <div>
-      <p class="panel-sub" style="margin-bottom:4px;">Max HR estimate</p>
-      <p style="font-size:18px;font-weight:700;color:var(--text-primary);">{{ run.max_hr_estimate }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm</span></p>
+      <p class="panel-sub" style="margin-bottom:4px;">Aerobic Efficiency Trend</p>
+      <p style="font-size:18px;font-weight:700;color:{% if eff.efficiency_change_pct >= 3 %}var(--accent-green){% elif eff.efficiency_change_pct <= -3 %}var(--accent-red){% else %}var(--text-primary){% endif %};">{{ "%+.1f"|format(eff.efficiency_change_pct) }}<span style="font-size:12px;font-weight:400;color:var(--text-muted);">%</span></p>
+      <p class="panel-sub">{{ eff.trend_label }}</p>
     </div>
-    {% if run.aerobic_threshold_hr %}
     <div>
-      <p class="panel-sub" style="margin-bottom:4px;">Aerobic Threshold HR</p>
-      <p style="font-size:18px;font-weight:700;color:var(--accent-green);">{{ run.aerobic_threshold_hr }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm &middot; 75% HRmax</span></p>
+      <p class="panel-sub" style="margin-bottom:4px;">HR at {{ eff.benchmark_pace_per_km }}</p>
+      <p style="font-size:18px;font-weight:700;color:{% if eff.hr_change_bpm < 0 %}var(--accent-green){% elif eff.hr_change_bpm > 0 %}var(--accent-red){% else %}var(--text-primary){% endif %};">{{ eff.recent_hr_at_benchmark_bpm }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm</span></p>
+      <p class="panel-sub">{% if eff.hr_change_bpm < 0 %}{{ eff.hr_change_bpm|abs }} bpm lower{% elif eff.hr_change_bpm > 0 %}{{ eff.hr_change_bpm }} bpm higher{% else %}unchanged{% endif %}</p>
     </div>
-    {% endif %}
-    {% if run.anaerobic_threshold_hr %}
     <div>
-      <p class="panel-sub" style="margin-bottom:4px;">Anaerobic Threshold HR</p>
-      <p style="font-size:18px;font-weight:700;color:var(--accent-amber);">{{ run.anaerobic_threshold_hr }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm &middot; 85% HRmax</span></p>
+      <p class="panel-sub" style="margin-bottom:4px;">Baseline at same pace</p>
+      <p style="font-size:18px;font-weight:700;color:var(--text-primary);">{{ eff.baseline_hr_at_benchmark_bpm }} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">bpm</span></p>
+      <p class="panel-sub">early window estimate</p>
     </div>
-    {% endif %}
   </div>
-  <p class="panel-sub" style="margin-top:6px;">HR thresholds from 98th-percentile peak HR across last {{ perf_metrics.activity_count }} runs</p>
+  <p class="panel-sub" style="margin-top:6px;">Speed per heartbeat across {{ eff.activity_count }} runs &middot; lower HR at the same pace suggests improving aerobic durability</p>
+  {% elif perf_metrics and perf_metrics.running %}
+  <p class="panel-sub" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">Aerobic efficiency trend appears after at least 6 runs with pace and heart-rate data in this window.</p>
   {% endif %}
-  <p class="panel-sub" style="margin-top:10px;">Grade-adjusted paces from HR streams &middot; run <code>fitops analytics zones --infer</code> to update</p>
 </div>
 {% endif %}
 

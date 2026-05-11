@@ -58,9 +58,19 @@ def test_performance_page_renders_with_context(client, monkeypatch):
                         "running_economy_ml_kg_km": 202.3,
                         "pace_efficiency_score": 88.5,
                         "variability_index": 0.115,
-                        "max_hr_estimate": 184,
-                        "aerobic_threshold_hr": 138,
-                        "anaerobic_threshold_hr": 156,
+                        "aerobic_efficiency_trend": {
+                            "activity_count": 12,
+                            "benchmark_pace_s_per_km": 300.0,
+                            "benchmark_pace_per_km": "5:00/km",
+                            "baseline_hr_at_benchmark_bpm": 152.0,
+                            "recent_hr_at_benchmark_bpm": 146.0,
+                            "hr_change_bpm": -6.0,
+                            "hr_change_pct": -3.9,
+                            "efficiency_change_pct": 4.1,
+                            "baseline_efficiency_factor": 0.01974,
+                            "recent_efficiency_factor": 0.02055,
+                            "trend_label": "improving",
+                        },
                     },
                     cycling=None,
                 ),
@@ -143,6 +153,10 @@ def test_performance_page_renders_with_context(client, monkeypatch):
     assert "Current Load" in resp.text
     assert "Trend Snapshot" in resp.text
     assert "Profile Link" in resp.text
+    assert "Aerobic Efficiency Trend" in resp.text
+    assert "HR at 5:00/km" in resp.text
+    assert "Max HR estimate" not in resp.text
+    assert "Grade-adjusted paces from HR streams" not in resp.text
     assert "VO₂max Over Time" in resp.text
 
 

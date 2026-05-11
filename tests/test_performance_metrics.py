@@ -114,8 +114,43 @@ async def test_compute_performance_metrics_run_filters_by_days(patched_session):
     assert result.running is not None
     assert result.cycling is None
     assert result.running["running_economy_ml_kg_km"] is not None
-    assert result.running["max_hr_estimate"] == 174
+    assert result.running["aerobic_efficiency_trend"] is None
     assert result.overall_reliability is not None
+
+
+async def test_compute_performance_metrics_run_aerobic_efficiency_trend(
+    patched_session,
+):
+    from fitops.analytics.performance_metrics import compute_performance_metrics
+
+    await _seed_athlete(patched_session)
+    for i, hr in enumerate([150.0, 150.0, 150.0, 140.0, 140.0, 140.0], start=1):
+        await _seed_activity(
+            patched_session,
+            sport_type="Run",
+            id=1100 + i,
+            start_date=f"2026-04-0{i}T07:00:00Z",
+            start_date_local=f"2026-04-0{i}T08:00:00Z",
+            distance=10_000.0,
+            moving_time=3_333,
+            elapsed_time=3_360,
+            average_speed=3.0,
+            average_heartrate=hr,
+            max_heartrate=170,
+        )
+
+    result = await compute_performance_metrics(athlete_id=42, sport="Run", days=365)
+
+    assert result is not None
+    assert result.running is not None
+    trend = result.running["aerobic_efficiency_trend"]
+    assert trend is not None
+    assert trend["trend_label"] == "improving"
+    assert trend["benchmark_pace_per_km"] == "5:33/km"
+    assert trend["baseline_hr_at_benchmark_bpm"] == 150.0
+    assert trend["recent_hr_at_benchmark_bpm"] == 140.0
+    assert trend["hr_change_bpm"] == -10.0
+    assert trend["efficiency_change_pct"] == 7.1
 
 
 async def test_compute_performance_metrics_ride(patched_session):

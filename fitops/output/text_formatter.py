@@ -985,9 +985,6 @@ def print_performance(data: dict) -> None:
         "running_economy_ml_kg_km": "Running economy",
         "pace_efficiency_score": "Pace efficiency",
         "variability_index": "Pace variability",
-        "max_hr_estimate": "Max HR estimate",
-        "aerobic_threshold_hr": "Aerobic threshold HR",
-        "anaerobic_threshold_hr": "Anaerobic threshold HR",
         "ftp_estimate_watts": "FTP estimate",
         "power_to_weight_w_kg": "Power-to-weight",
         "normalized_power_ratio": "Normalized power ratio",
@@ -997,6 +994,19 @@ def print_performance(data: dict) -> None:
     running = p.get("running") or {}
     if running:
         for k, v in running.items():
+            if k == "aerobic_efficiency_trend" and v:
+                change = v.get("efficiency_change_pct")
+                hr_change = v.get("hr_change_bpm")
+                pace = v.get("benchmark_pace_per_km")
+                recent_hr = v.get("recent_hr_at_benchmark_bpm")
+                if change is not None:
+                    console.print(f"  Aerobic efficiency {change:+.1f}%")
+                if hr_change is not None and pace and recent_hr is not None:
+                    direction = "lower" if hr_change < 0 else "higher"
+                    console.print(
+                        f"  HR at {pace:<10} {recent_hr} bpm  [dim]({abs(hr_change):.1f} bpm {direction})[/dim]"
+                    )
+                continue
             if v is not None:
                 console.print(f"  {label_map.get(k, k):<20} {v}")
     cycling = p.get("cycling") or {}

@@ -33,6 +33,91 @@ def _cv(values: list[float]) -> float:
     return std / mean
 
 
+def _format_pace_from_speed(speed_ms: float) -> str | None:
+    if speed_ms <= 0:
+        return None
+    pace_s = 1000.0 / speed_ms
+    return f"{int(pace_s // 60)}:{int(pace_s % 60):02d}/km"
+
+
+def _weighted_mean(rows: list[dict], key: str) -> float | None:
+    total_weight = sum(row["weight"] for row in rows)
+    if total_weight <= 0:
+        return None
+    return sum(row[key] * row["weight"] for row in rows) / total_weight
+
+
+def _compute_aerobic_efficiency_trend(activities: list[Activity]) -> dict | None:
+    """Compare early-vs-recent speed per heartbeat for runs in the window."""
+    rows = []
+    fallback_date = datetime.min.replace(tzinfo=UTC)
+    for activity in sorted(activities, key=lambda a: a.start_date or fallback_date):
+        if (
+            not activity.average_speed_ms
+            or activity.average_speed_ms <= 0
+            or not activity.average_heartrate
+            or activity.average_heartrate <= 0
+        ):
+            continue
+        rows.append(
+            {
+                "speed_ms": float(activity.average_speed_ms),
+                "avg_hr_bpm": float(activity.average_heartrate),
+                "weight": max(float(activity.distance_m or 0), 1.0),
+            }
+        )
+
+    if len(rows) < 6:
+        return None
+
+    mid = len(rows) // 2
+    baseline = rows[:mid]
+    recent = rows[mid:]
+
+    baseline_speed = _weighted_mean(baseline, "speed_ms")
+    baseline_hr = _weighted_mean(baseline, "avg_hr_bpm")
+    recent_speed = _weighted_mean(recent, "speed_ms")
+    recent_hr = _weighted_mean(recent, "avg_hr_bpm")
+    if not all([baseline_speed, baseline_hr, recent_speed, recent_hr]):
+        return None
+
+    baseline_efficiency = baseline_speed / baseline_hr
+    recent_efficiency = recent_speed / recent_hr
+    if baseline_efficiency <= 0 or recent_efficiency <= 0:
+        return None
+
+    benchmark_speed = recent_speed
+    baseline_hr_at_benchmark = benchmark_speed / baseline_efficiency
+    recent_hr_at_benchmark = benchmark_speed / recent_efficiency
+    if baseline_hr_at_benchmark <= 0:
+        return None
+
+    hr_change_bpm = recent_hr_at_benchmark - baseline_hr_at_benchmark
+    efficiency_change_pct = (recent_efficiency / baseline_efficiency - 1) * 100
+    hr_change_pct = hr_change_bpm / baseline_hr_at_benchmark * 100
+
+    if efficiency_change_pct >= 3:
+        label = "improving"
+    elif efficiency_change_pct <= -3:
+        label = "declining"
+    else:
+        label = "stable"
+
+    return {
+        "activity_count": len(rows),
+        "benchmark_pace_s_per_km": round(1000.0 / benchmark_speed, 1),
+        "benchmark_pace_per_km": _format_pace_from_speed(benchmark_speed),
+        "baseline_hr_at_benchmark_bpm": round(baseline_hr_at_benchmark, 1),
+        "recent_hr_at_benchmark_bpm": round(recent_hr_at_benchmark, 1),
+        "hr_change_bpm": round(hr_change_bpm, 1),
+        "hr_change_pct": round(hr_change_pct, 1),
+        "efficiency_change_pct": round(efficiency_change_pct, 1),
+        "baseline_efficiency_factor": round(baseline_efficiency, 5),
+        "recent_efficiency_factor": round(recent_efficiency, 5),
+        "trend_label": label,
+    }
+
+
 @dataclass
 class PerformanceMetricsResult:
     sport: str
@@ -91,9 +176,6 @@ async def compute_performance_metrics(
             for a in activities
             if a.average_speed_ms and a.average_speed_ms > 0
         ]
-        # Only use peak HR (max_heartrate field), not average HR — pooling them biases 98th percentile low
-        all_hr = [float(a.max_heartrate) for a in activities if a.max_heartrate]
-
         avg_pace = sum(paces) / len(paces) if paces else None
         # Proper running economy: VO2 demand (ml/kg/min) / speed (km/min) = ml/kg/km
         # Uses Daniels VO2 demand quadratic, same formula as VDOT calculation
@@ -109,21 +191,11 @@ async def compute_performance_metrics(
         efficiency = round(max(0.0, 100 - pace_cv * 100), 1) if paces else None
         variability = round(pace_cv, 4) if paces else None
 
-        max_hr_est = aerobic_thr = anaerobic_thr = None
-        if all_hr:
-            raw = _percentile(all_hr, 98)
-            if raw:
-                max_hr_est = round(raw)
-                aerobic_thr = round(max_hr_est * 0.75)
-                anaerobic_thr = round(max_hr_est * 0.85)
-
         running = {
             "running_economy_ml_kg_km": economy,
             "pace_efficiency_score": efficiency,
             "variability_index": variability,
-            "max_hr_estimate": max_hr_est,
-            "aerobic_threshold_hr": aerobic_thr,
-            "anaerobic_threshold_hr": anaerobic_thr,
+            "aerobic_efficiency_trend": _compute_aerobic_efficiency_trend(activities),
         }
         overall_reliability = round(efficiency / 100, 3) if efficiency else None
         cycling = None
