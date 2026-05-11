@@ -1106,6 +1106,7 @@ def test_dashboard_race_session_detail(client, monkeypatch):
     assert "Test Race Session" in resp.text
     assert 'class="panel comparison-panel"' in resp.text
     assert 'id="comparison-legend"' in resp.text
+    assert resp.text.count('class="chart-fullscreen-btn"') >= 2
     assert "const mobileChartState = { current: mobileQuery.matches }" in resp.text
 
 

@@ -104,6 +104,8 @@ The session detail page animates each athlete along the course on a map alongsid
 
 On phones, the pace/HR comparison panel switches to a stacked layout: the chart selector buttons sit above the explanatory label, the chart height is reduced to fit the viewport better, and athlete labels move into compact chips above the chart so the plot area stays readable.
 
+The gap chart and the pace/HR comparison chart use the shared dashboard fullscreen control, so you can expand either panel for a larger view during review.
+
 **Architecture: server-driven.** When a session is created or an athlete is added, the backend pre-computes a canonical replay timeline and persists it on the `race_sessions` row (`replay_frames_json`, `replay_time_step_s`). The frontend is a pure renderer — it reads the frames out of a JSON literal embedded in the template and indexes into them during animation, GIF export, and leaderboard updates. No interpolation happens in the browser, which guarantees that the map position, leaderboard rank, and gap always agree.
 
 GIF export reuses that same timeline, but renders at the live map's viewport area and current `devicePixelRatio` instead of a fixed small canvas. Tile requests use retina variants on high-DPI screens, and the export expands the source timeline to a minimum 60 fps playback cadence so long sessions do not get frame-dropped down to a coarse animation. The leaderboard overlay also scales from the export viewport, with larger fonts and wider stat columns in portrait ratios such as `9:16`, so standings remain readable on phone-sized outputs.

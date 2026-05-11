@@ -192,7 +192,10 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">Gap to Leader</span>
-      <span class="panel-meta">leader at 0 s — others show seconds behind</span>
+      <div style="display:flex; align-items:center; gap:0.75rem;">
+        <span class="panel-meta">leader at 0 s — others show seconds behind</span>
+        <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+      </div>
     </div>
     <canvas id="gap-chart" style="max-height:380px;"></canvas>
   </div>
@@ -208,6 +211,7 @@
       <button class="replay-btn active" id="toggle-pace" onclick="showChart('pace')">Pace</button>
       <button class="replay-btn" id="toggle-hr" onclick="showChart('hr')" style="display:none;">Heart Rate</button>
       <span class="panel-meta" id="chart-meta" style="margin-left:0.5rem;">min/km — lower is faster</span>
+      <button class="chart-fullscreen-btn" onclick="_fsPanel(this)" title="Full screen"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
     </div>
   </div>
   <div class="comparison-legend" id="comparison-legend"></div>
