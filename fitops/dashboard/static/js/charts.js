@@ -327,6 +327,261 @@ function _buildSidewaysDataset(source, labels, axisMode) {
   };
 }
 
+function _streamChartIndexAtPixel(chart, xPixel) {
+  if (!chart || !chart.scales || !chart.scales.x) return null;
+  const labels = chart.data && chart.data.labels ? chart.data.labels : [];
+  if (!labels.length) return null;
+  const raw = chart.scales.x.getValueForPixel(xPixel);
+  const idx = Number.isFinite(raw) ? Math.round(raw) : labels.indexOf(raw);
+  if (!Number.isFinite(idx) || idx < 0) return null;
+  return Math.max(0, Math.min(labels.length - 1, idx));
+}
+
+function _streamChartEventInArea(chart, event) {
+  if (!chart || !chart.chartArea || !event) return false;
+  const { left, right, top, bottom } = chart.chartArea;
+  return event.x >= left && event.x <= right && event.y >= top && event.y <= bottom;
+}
+
+function _captureStreamScaleBounds(scales) {
+  const out = {};
+  for (const [id, scale] of Object.entries(scales || {})) {
+    out[id] = {
+      min: scale.min,
+      max: scale.max,
+      suggestedMin: scale.suggestedMin,
+      suggestedMax: scale.suggestedMax,
+    };
+  }
+  return out;
+}
+
+function _restoreStreamScaleBounds(scale, bounds) {
+  if (!scale || !bounds) return;
+  ['min', 'max', 'suggestedMin', 'suggestedMax'].forEach((key) => {
+    if (bounds[key] === undefined) {
+      delete scale[key];
+    } else {
+      scale[key] = bounds[key];
+    }
+  });
+}
+
+function _syncStreamZoomResetButton(chart) {
+  const btn = document.getElementById('stream-zoom-reset');
+  if (!btn) return;
+  btn.hidden = !(chart && chart._streamZoomRange);
+}
+
+function _streamPointValue(point) {
+  if (point === null || point === undefined) return null;
+  const value = typeof point === 'object' ? point.y : point;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function _updateStreamZoomYRanges(chart) {
+  if (!chart || !chart._streamZoomRange || !chart._streamOriginalScaleBounds) return;
+  const [start, end] = chart._streamZoomRange;
+  const lo = Math.min(start, end);
+  const hi = Math.max(start, end);
+  const scales = chart.options.scales || {};
+
+  for (const [scaleId, scale] of Object.entries(scales)) {
+    if (scaleId === 'x') continue;
+    _restoreStreamScaleBounds(scale, chart._streamOriginalScaleBounds[scaleId]);
+
+    const values = [];
+    chart.data.datasets.forEach((ds, dsIndex) => {
+      if (!ds.yAxisID || ds.yAxisID !== scaleId || ds._isThreshold) return;
+      if (!chart.isDatasetVisible(dsIndex)) return;
+      const data = ds.data || [];
+      for (let i = lo; i <= hi && i < data.length; i += 1) {
+        const value = _streamPointValue(data[i]);
+        if (value !== null) values.push(value);
+      }
+    });
+    if (!values.length) continue;
+
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    const span = Math.max(1, max - min);
+    const pad = span * 0.08;
+    min -= pad;
+    max += pad;
+    if (scaleId !== 'yHR') min = Math.max(0, min);
+    scale.min = min;
+    scale.max = max;
+    delete scale.suggestedMin;
+    delete scale.suggestedMax;
+  }
+}
+
+function _applyStreamZoomRange(chart, start, end) {
+  if (!chart || chart._sidewaysMode || !chart.options.scales || !chart.options.scales.x) return;
+  const labels = chart.data.labels || [];
+  if (!labels.length) return;
+  const lo = Math.max(0, Math.min(start, end));
+  const hi = Math.min(labels.length - 1, Math.max(start, end));
+  if (hi - lo < 2) return;
+
+  if (!chart._streamOriginalScaleBounds) {
+    chart._streamOriginalScaleBounds = _captureStreamScaleBounds(chart.options.scales);
+  }
+  chart._streamZoomRange = [lo, hi];
+  chart.options.scales.x.min = lo;
+  chart.options.scales.x.max = hi;
+  _updateStreamZoomYRanges(chart);
+  _syncStreamZoomResetButton(chart);
+  chart.update('none');
+}
+
+function _clearStreamZoom(chart, shouldUpdate = true) {
+  if (!chart || !chart.options.scales) return;
+  if (chart._streamOriginalScaleBounds) {
+    for (const [scaleId, scale] of Object.entries(chart.options.scales)) {
+      _restoreStreamScaleBounds(scale, chart._streamOriginalScaleBounds[scaleId]);
+    }
+  } else if (chart.options.scales.x) {
+    delete chart.options.scales.x.min;
+    delete chart.options.scales.x.max;
+  }
+  chart._streamZoomRange = null;
+  if (chart._streamZoomState) {
+    chart._streamZoomState.dragging = false;
+    chart._streamZoomState.dragStart = null;
+    chart._streamZoomState.dragCurrent = null;
+    chart._streamZoomState.clickStart = null;
+    chart._streamZoomState.clickCurrent = null;
+  }
+  _syncStreamZoomResetButton(chart);
+  if (shouldUpdate) chart.update('none');
+}
+
+function resetStreamZoom() {
+  _clearStreamZoom(window._activeStreamChart);
+}
+
+function _clearStreamZoomSelectionState(state) {
+  if (!state) return;
+  state.dragging = false;
+  state.dragStart = null;
+  state.dragCurrent = null;
+  state.moved = false;
+  state.clickStart = null;
+  state.clickCurrent = null;
+}
+
+function _drawStreamZoomSelection(chart, start, end, fillStyle, strokeStyle) {
+  if (!chart || !chart.scales || !chart.scales.x || start === null || end === null) return;
+  const { ctx, chartArea } = chart;
+  if (!chartArea) return;
+  const x0 = chart.scales.x.getPixelForValue(start);
+  const x1 = chart.scales.x.getPixelForValue(end);
+  if (!Number.isFinite(x0) || !Number.isFinite(x1)) return;
+  const left = Math.max(chartArea.left, Math.min(x0, x1));
+  const right = Math.min(chartArea.right, Math.max(x0, x1));
+  ctx.save();
+  ctx.fillStyle = fillStyle;
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = 1;
+  ctx.fillRect(left, chartArea.top, Math.max(1, right - left), chartArea.bottom - chartArea.top);
+  ctx.strokeRect(left, chartArea.top, Math.max(1, right - left), chartArea.bottom - chartArea.top);
+  ctx.restore();
+}
+
+const streamRangeZoomPlugin = {
+  id: 'streamRangeZoom',
+  afterEvent(chart, args) {
+    if (!chart._isStreamChart || chart._sidewaysMode || !args || !args.event) return;
+    const event = args.event;
+    const type = event.type;
+    const state = chart._streamZoomState || (chart._streamZoomState = {
+      dragging: false,
+      dragStart: null,
+      dragCurrent: null,
+      moved: false,
+      clickStart: null,
+      clickCurrent: null,
+      justDragged: false,
+    });
+    const inArea = _streamChartEventInArea(chart, event);
+    const idx = _streamChartIndexAtPixel(chart, event.x);
+
+    if (type === 'dblclick') {
+      _clearStreamZoomSelectionState(state);
+      _clearStreamZoom(chart);
+      args.changed = true;
+      return;
+    }
+
+    if ((type === 'mousedown' || type === 'touchstart') && inArea && idx !== null) {
+      if (state.clickStart !== null) {
+        state.clickCurrent = idx;
+        args.changed = true;
+        return;
+      }
+      state.dragging = true;
+      state.dragStart = idx;
+      state.dragCurrent = idx;
+      state.moved = false;
+      args.changed = true;
+      return;
+    }
+
+    if ((type === 'mousemove' || type === 'touchmove') && state.dragging && idx !== null) {
+      state.dragCurrent = idx;
+      state.moved = Math.abs(state.dragCurrent - state.dragStart) >= 2;
+      args.changed = true;
+      return;
+    }
+
+    if ((type === 'mousemove' || type === 'touchmove') && state.clickStart !== null && inArea && idx !== null) {
+      state.clickCurrent = idx;
+      args.changed = true;
+      return;
+    }
+
+    if ((type === 'mouseup' || type === 'touchend') && state.dragging) {
+      const end = idx !== null ? idx : state.dragCurrent;
+      if (state.moved && end !== null) {
+        _applyStreamZoomRange(chart, state.dragStart, end);
+        state.justDragged = true;
+        setTimeout(() => { state.justDragged = false; }, 0);
+      }
+      state.dragging = false;
+      state.dragStart = null;
+      state.dragCurrent = null;
+      state.moved = false;
+      args.changed = true;
+      return;
+    }
+
+    if (type === 'click' && inArea && idx !== null) {
+      if (state.justDragged) return;
+      if (state.clickStart === null) {
+        state.clickStart = idx;
+        state.clickCurrent = idx;
+      } else {
+        _applyStreamZoomRange(chart, state.clickStart, idx);
+        state.clickStart = null;
+        state.clickCurrent = null;
+      }
+      args.changed = true;
+    }
+  },
+  afterDraw(chart) {
+    if (!chart._isStreamChart || chart._sidewaysMode) return;
+    const state = chart._streamZoomState;
+    if (!state) return;
+    if (state.dragging && state.dragStart !== null && state.dragCurrent !== null) {
+      _drawStreamZoomSelection(chart, state.dragStart, state.dragCurrent, 'rgba(0,255,135,0.10)', 'rgba(0,255,135,0.55)');
+    } else if (state.clickStart !== null && state.clickCurrent !== null) {
+      _drawStreamZoomSelection(chart, state.clickStart, state.clickCurrent, 'rgba(0,255,135,0.14)', 'rgba(0,255,135,0.70)');
+    }
+  },
+};
+
 function setStreamChartSidewaysMode(chart, enabled, preferredKey = null) {
   if (!chart || !chart._isStreamChart) return;
 
@@ -784,11 +1039,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   const chart = new Chart(ctx, {
     type: 'line',
     data: { labels: xLabels, datasets },
-    plugins: [crosshairPlugin],
+    plugins: [crosshairPlugin, streamRangeZoomPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
+      events: ['mousemove', 'mouseout', 'click', 'dblclick', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend'],
       interaction: { mode: 'index', intersect: false },
       onHover: (event, activeElements) => {
         if (_activitySync._busy || !_activitySync.hoverMarker) return;
@@ -827,6 +1083,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   chart._isRunSport = isRun;
   window._activeStreamChart = chart;
   _activitySync.chart = chart;
+  _syncStreamZoomResetButton(chart);
 
   return chart;
 }
@@ -902,6 +1159,7 @@ function initMetricToggles(chart, containerId, available, sportType) {
       }
       const nextVisible = !c.isDatasetVisible(dsIndex);
       c.setDatasetVisibility(dsIndex, nextVisible);
+      _updateStreamZoomYRanges(c);
       c.update('none');
       setActive(nextVisible);
     });
@@ -935,6 +1193,7 @@ function setXAxis(mode) {
   const labels = mode === 'distance' ? chart._distLabels : chart._timeLabels;
   if (!labels) return;
 
+  _clearStreamZoom(chart, false);
   chart.data.labels = labels;
 
   // Swap each dataset's data array to match the new axis mode so the trace

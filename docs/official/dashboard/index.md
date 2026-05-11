@@ -2,7 +2,7 @@
 
 The FitOps Dashboard is a local web interface that makes your training data visual and interactive. Everything the CLI can tell you — your activity history, fitness metrics, race plans, workouts, journal, and backups — is available here in a browser, served entirely from your own machine.
 
-Across the dashboard, data tables keep their full structure on mobile and switch to polished horizontal scrolling when needed, with touch-friendly swipe behavior instead of crushed columns. Chart expand buttons use the shared fullscreen helper; on activity stream charts, mobile fullscreen switches into a sideways multi-stream view with swapped axes for easier reading.
+Across the dashboard, data tables keep their full structure on mobile and switch to polished horizontal scrolling when needed, with touch-friendly swipe behavior instead of crushed columns. Chart expand buttons use the shared fullscreen helper; on activity stream charts, mobile fullscreen keeps the normal multi-stream view and moves the stream toggles into a compact row above the plot.
 
 ## Starting the Dashboard
 

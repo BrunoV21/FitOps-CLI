@@ -29,6 +29,9 @@ const _da = {
   config: null,
   dragStartX: null,
   dragging: false,
+  clickStartX: null,
+  clickCurrentX: null,
+  justDragged: false,
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -703,52 +706,130 @@ function _daAttachRangeEvents() {
     if (ei - si < 3) {
       daClearRange();
     } else {
+      _da.clickStartX = null;
+      _da.clickCurrentX = null;
       _da.rangeStart = si;
       _da.rangeEnd = ei;
+      _da.justDragged = true;
+      setTimeout(() => { _da.justDragged = false; }, 0);
       _daOnRangeSelected(si, ei);
       _da.charts.forEach(c => c.update('none'));
     }
   });
 
+  const clearClickSelection = () => {
+    _da.clickStartX = null;
+    _da.clickCurrentX = null;
+  };
+
+  const startDragOrPrepareSecondClick = (e, chart) => {
+    if (e.button != null && e.button !== 0) return;
+    const idx = _daCanvasToIdx(e, chart);
+    if (_da.clickStartX != null) {
+      _da.clickCurrentX = idx;
+      _da.rangeStart = _da.clickStartX;
+      _da.rangeEnd = idx;
+      _da.charts.forEach(c => c.update('none'));
+      return;
+    }
+    _da.dragging = true;
+    _da.dragStartX = idx;
+    _da.rangeStart = idx;
+    _da.rangeEnd = idx;
+  };
+
+  const updateSelectionPreview = (e, chart) => {
+    const idx = _daCanvasToIdx(e, chart);
+    if (_da.dragging) {
+      _da.rangeEnd = idx;
+      _da.charts.forEach(c => c.update('none'));
+      return;
+    }
+    if (_da.clickStartX != null) {
+      _da.clickCurrentX = idx;
+      _da.rangeStart = _da.clickStartX;
+      _da.rangeEnd = idx;
+      _da.charts.forEach(c => c.update('none'));
+      return;
+    }
+    _daSyncAll(idx);
+  };
+
+  const finishDrag = (e, chart) => {
+    if (!_da.dragging) return;
+    _da.dragging = false;
+    const endIdx = _daCanvasToIdx(e, chart);
+    const si = Math.min(_da.dragStartX, endIdx);
+    const ei = Math.max(_da.dragStartX, endIdx);
+    if (ei - si < 3) {
+      daClearRange();
+      return;
+    }
+    clearClickSelection();
+    _da.rangeStart = si;
+    _da.rangeEnd = ei;
+    _da.justDragged = true;
+    setTimeout(() => { _da.justDragged = false; }, 0);
+    _daOnRangeSelected(si, ei);
+    _da.charts.forEach(c => c.update('none'));
+  };
+
+  const handleClickSelection = (e, chart) => {
+    if (_da.justDragged) return;
+    const idx = _daCanvasToIdx(e, chart);
+    if (_da.clickStartX == null) {
+      _da.clickStartX = idx;
+      _da.clickCurrentX = idx;
+      _da.rangeStart = idx;
+      _da.rangeEnd = idx;
+      _da.charts.forEach(c => c.update('none'));
+      return;
+    }
+    const si = Math.min(_da.clickStartX, idx);
+    const ei = Math.max(_da.clickStartX, idx);
+    clearClickSelection();
+    if (ei - si < 3) {
+      daClearRange();
+      return;
+    }
+    _da.rangeStart = si;
+    _da.rangeEnd = ei;
+    _daOnRangeSelected(si, ei);
+    _da.charts.forEach(c => c.update('none'));
+  };
+
+  const clearRangeFromDoubleClick = () => {
+    _da.dragging = false;
+    _da.dragStartX = null;
+    clearClickSelection();
+    daClearRange();
+  };
+
   for (const chart of _da.charts) {
     const canvas = chart.canvas;
 
     canvas.addEventListener('mousemove', (e) => {
-      const idx = _daCanvasToIdx(e, chart);
-      if (_da.dragging) {
-        _da.rangeEnd = idx;
-        _da.charts.forEach(c => c.update('none'));
-      } else {
-        _daSyncAll(idx);
-      }
+      updateSelectionPreview(e, chart);
     });
 
     canvas.addEventListener('mouseleave', () => {
-      if (!_da.dragging) _daClearCrosshair();
+      if (!_da.dragging && _da.clickStartX == null) _daClearCrosshair();
     });
 
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      _da.dragging = true;
-      _da.dragStartX = _daCanvasToIdx(e, chart);
-      _da.rangeStart = _da.dragStartX;
-      _da.rangeEnd = _da.dragStartX;
+      startDragOrPrepareSecondClick(e, chart);
     });
 
     canvas.addEventListener('mouseup', (e) => {
-      if (!_da.dragging) return;
-      _da.dragging = false;
-      const endIdx = _daCanvasToIdx(e, chart);
-      const si = Math.min(_da.dragStartX, endIdx);
-      const ei = Math.max(_da.dragStartX, endIdx);
-      if (ei - si < 3) {
-        daClearRange();
-        return;
-      }
-      _da.rangeStart = si;
-      _da.rangeEnd = ei;
-      _daOnRangeSelected(si, ei);
-      _da.charts.forEach(c => c.update('none'));
+      finishDrag(e, chart);
+    });
+
+    canvas.addEventListener('click', (e) => {
+      handleClickSelection(e, chart);
+    });
+
+    canvas.addEventListener('dblclick', () => {
+      clearRangeFromDoubleClick();
     });
   }
 }
@@ -766,6 +847,8 @@ function _daCanvasToIdx(e, chart) {
 function daClearRange() {
   _da.rangeStart = null;
   _da.rangeEnd = null;
+  _da.clickStartX = null;
+  _da.clickCurrentX = null;
   _da.charts.forEach(c => c.update('none'));
   const el = document.getElementById('da-range-stats');
   if (el) el.classList.remove('visible');

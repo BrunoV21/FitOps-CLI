@@ -169,7 +169,7 @@
 
 </div>
 
-<script src="/static/js/charts.js?v=20260510-sideways-rotated-labels"></script>
+<script src="/static/js/charts.js?v=20260511-stream-range-zoom-dblclick"></script>
 {% block scripts %}{% endblock %}
 
 <script>
@@ -201,9 +201,7 @@ function _applyChartLandscapeFallback(el) {
   el.classList.add('mobile-chart-landscape');
   var canvas = el.querySelector('#stream-chart');
   var chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
-  if (chart && typeof setStreamChartSidewaysMode === 'function') {
-    setStreamChartSidewaysMode(chart, true);
-  }
+  if (chart) setTimeout(function() { chart.resize(); }, 50);
 }
 
 function _clearChartLandscapeFallback(el) {

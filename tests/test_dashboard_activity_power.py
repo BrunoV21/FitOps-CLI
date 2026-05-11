@@ -8,11 +8,15 @@ Covers:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from fitops.dashboard.routes.activities import _downsample_streams
+from fitops.dashboard.routes.activities import (
+    _deep_analysis_summary_stats,
+    _downsample_streams,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -335,6 +339,50 @@ def test_activity_detail_not_found(client, monkeypatch):
 
     resp = client.get("/activities/00000")
     assert resp.status_code == 404
+
+
+def test_deep_analysis_summary_stats_include_average_pace_metrics_and_stay_even():
+    act = SimpleNamespace(
+        distance_m=10_000.0,
+        moving_time_s=2_550,
+        average_speed_ms=4.0,
+        average_heartrate=158.0,
+        average_cadence=88.0,
+        average_watts=None,
+        est_power_avg_w=252.0,
+        weighted_average_watts=None,
+        est_power_np_w=265.0,
+        total_elevation_gain_m=84.0,
+        training_stress_score=72.34,
+        calories=None,
+        max_heartrate=181.0,
+    )
+    streams = {
+        "true_pace": [250.0, 260.0, None],
+        "wap_pace": [252.0, 254.0],
+    }
+
+    stats = _deep_analysis_summary_stats(
+        act,
+        streams,
+        "Run",
+        "4:12/km",
+        {"true_pace_fmt": "3:37/km", "wap_fmt": "3:40/km"},
+    )
+    by_label = {stat["label"]: stat for stat in stats}
+
+    assert len(stats) % 2 == 0
+    assert by_label["True Pace"]["value"] == "3:37/km"
+    assert by_label["GAP"]["value"] == "4:12/km"
+    assert by_label["WAP"]["value"] == "3:40/km"
+    assert by_label["Avg Cadence"]["key"] == "cadence"
+    assert by_label["Avg Cadence"]["value"] == 88
+    assert by_label["Avg Cadence"]["unit"] == "spm"
+    assert "step rate" in by_label["Avg Cadence"]["description"]
+    assert by_label["Avg Power"]["value"] == 252
+    assert by_label["Norm Power"]["value"] == 265
+    assert "temperature and humidity only" in by_label["WAP"]["description"]
+    assert "local wind" in by_label["True Pace"]["description"]
 
 
 def test_downsample_streams_aligns_all_series_and_keeps_last_point():

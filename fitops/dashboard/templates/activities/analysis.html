@@ -31,38 +31,17 @@
 
     {# Quick Metrics #}
     <div class="da-quick-metrics">
-      {% if activity.distance_km %}
+      {% for stat in deep_summary_stats %}
       <div class="da-metric-cell">
-        <div class="da-metric-label">Distance</div>
-        <div class="da-metric-value">{{ activity.distance_km }}<span class="da-metric-unit">km</span></div>
+        <div class="da-metric-label">
+          <span>{{ stat.label }}</span>
+          {% if stat.description %}<i class="da-tip" data-tip="{{ stat.description }}">?</i>{% endif %}
+        </div>
+        <div class="da-metric-value{% if stat.value|string|length > 6 %} da-metric-value--compact{% endif %}">
+          {{ stat.value }}{% if stat.unit %}<span class="da-metric-unit">{{ stat.unit }}</span>{% endif %}
+        </div>
       </div>
-      {% endif %}
-      <div class="da-metric-cell">
-        <div class="da-metric-label">Duration</div>
-        <div class="da-metric-value" style="font-size:13px;">{{ activity.duration }}</div>
-      </div>
-      {% if activity.avg_hr %}
-      <div class="da-metric-cell">
-        <div class="da-metric-label">Avg HR</div>
-        <div class="da-metric-value">{{ activity.avg_hr }}<span class="da-metric-unit">bpm</span></div>
-      </div>
-      {% endif %}
-      <div class="da-metric-cell">
-        <div class="da-metric-label">{{ "Pace" if is_run else "Speed" }}</div>
-        <div class="da-metric-value" style="font-size:13px;">{{ activity.pace }}</div>
-      </div>
-      {% if activity.elevation_m %}
-      <div class="da-metric-cell">
-        <div class="da-metric-label">Elevation</div>
-        <div class="da-metric-value">{{ activity.elevation_m }}<span class="da-metric-unit">m</span></div>
-      </div>
-      {% endif %}
-      {% if activity.avg_watts %}
-      <div class="da-metric-cell">
-        <div class="da-metric-label">Avg Power</div>
-        <div class="da-metric-value">{{ activity.avg_watts }}<span class="da-metric-unit">W</span></div>
-      </div>
-      {% endif %}
+      {% endfor %}
     </div>
 
     {# Range Selection Stats (hidden until selection) #}
@@ -293,7 +272,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/deep-analysis.js"></script>
+<script src="/static/js/deep-analysis.js?v=20260511-range-click-preview"></script>
 <script>
 (function() {
   const streams = {{ streams_json | safe }};

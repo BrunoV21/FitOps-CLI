@@ -82,6 +82,193 @@ def _pace_str(speed_ms: float | None, sport_type: str) -> str:
     return f"{speed_ms * 3.6:.1f} km/h"
 
 
+def _fmt_pace_per_km(seconds: float | int | None) -> str | None:
+    if seconds is None:
+        return None
+    try:
+        pace_s = float(seconds)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(pace_s) or pace_s <= 0:
+        return None
+    m, s = divmod(int(round(pace_s)), 60)
+    return f"{m}:{s:02d}/km"
+
+
+def _avg_positive(values) -> float | None:
+    valid = []
+    for value in values or []:
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(n) and n > 0:
+            valid.append(n)
+    if not valid:
+        return None
+    return sum(valid) / len(valid)
+
+
+def _deep_analysis_summary_stats(
+    activity,
+    streams: dict | None,
+    sport_type: str,
+    avg_gap: str | None = None,
+    weather_metrics: dict | None = None,
+) -> list[dict]:
+    """Build the Deep Analysis stat cards, keeping the two-column grid paired."""
+    if activity is None:
+        return []
+
+    is_run = sport_type in {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
+    streams = streams or {}
+    weather_metrics = weather_metrics or {}
+    stats: list[dict] = []
+    seen: set[str] = set()
+    descriptions = {
+        "distance": "Total activity distance from the recorded GPS/activity summary.",
+        "duration": "Moving time for the activity, excluding pauses where available.",
+        "avg_hr": "Average heart rate across the activity.",
+        "avg_pace": "Recorded average pace from the activity summary.",
+        "avg_speed": "Recorded average speed from the activity summary.",
+        "true_pace": "Effort-normalized pace using GAP plus heat, humidity, and local wind.",
+        "gap": "Grade-adjusted pace: pace normalized for uphill and downhill terrain.",
+        "wap": "Weather-adjusted pace using temperature and humidity only; wind is included in True Pace.",
+        "cadence": "Average step rate for runs or pedal cadence for rides.",
+        "avg_power": "Average power, using stored estimated running power when device power is unavailable.",
+        "np": "Normalized Power: intensity-weighted average power for variable efforts.",
+        "elevation": "Total elevation gain recorded for the activity.",
+        "tss": "Training Stress Score for the session.",
+        "calories": "Calories recorded or estimated for the activity.",
+        "max_hr": "Maximum heart rate recorded during the activity.",
+    }
+
+    def num(attr: str) -> float | None:
+        value = getattr(activity, attr, None)
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            return None
+        return n if math.isfinite(n) else None
+
+    def add(key: str, label: str, value, unit: str = "") -> None:
+        if key in seen or value is None or value == "—":
+            return
+        stats.append(
+            {
+                "key": key,
+                "label": label,
+                "value": value,
+                "unit": unit,
+                "description": descriptions.get(key),
+            }
+        )
+        seen.add(key)
+
+    distance_m = num("distance_m")
+    moving_time_s = num("moving_time_s")
+    avg_speed_ms = num("average_speed_ms")
+    avg_hr = num("average_heartrate")
+    avg_cadence = num("average_cadence")
+    avg_watts = num("average_watts")
+    est_power_avg_w = num("est_power_avg_w")
+    weighted_avg_watts = num("weighted_average_watts")
+    est_power_np_w = num("est_power_np_w")
+    elevation_m = num("total_elevation_gain_m")
+    tss = num("training_stress_score")
+    calories = num("calories")
+    max_hr = num("max_heartrate")
+
+    add(
+        "distance",
+        "Distance",
+        round(distance_m / 1000, 2) if distance_m else None,
+        "km",
+    )
+    add(
+        "duration",
+        "Duration",
+        _fmt_seconds(round(moving_time_s) if moving_time_s else None),
+    )
+
+    add(
+        "avg_hr",
+        "Avg HR",
+        round(avg_hr) if avg_hr else None,
+        "bpm",
+    )
+    add(
+        "avg_pace" if is_run else "avg_speed",
+        "Avg Pace" if is_run else "Avg Speed",
+        _pace_str(avg_speed_ms, sport_type),
+    )
+
+    if is_run:
+        add(
+            "true_pace",
+            "True Pace",
+            weather_metrics.get("true_pace_fmt")
+            or _fmt_pace_per_km(_avg_positive(streams.get("true_pace", []))),
+        )
+        add("gap", "GAP", avg_gap)
+        add(
+            "wap",
+            "WAP",
+            weather_metrics.get("wap_fmt")
+            or _fmt_pace_per_km(_avg_positive(streams.get("wap_pace", []))),
+        )
+
+    add(
+        "cadence",
+        "Avg Cadence",
+        round(avg_cadence) if avg_cadence else None,
+        "spm" if is_run else "rpm",
+    )
+    add(
+        "avg_power",
+        "Avg Power",
+        round(avg_watts)
+        if avg_watts
+        else (round(est_power_avg_w) if est_power_avg_w else None),
+        "W",
+    )
+    add(
+        "np",
+        "Norm Power",
+        round(weighted_avg_watts)
+        if weighted_avg_watts
+        else (round(est_power_np_w) if est_power_np_w else None),
+        "W",
+    )
+    add(
+        "elevation",
+        "Elevation",
+        round(elevation_m) if elevation_m else None,
+        "m",
+    )
+    add(
+        "tss",
+        "TSS",
+        round(tss, 1) if tss else None,
+    )
+    add(
+        "calories",
+        "Calories",
+        round(calories) if calories else None,
+        "kcal",
+    )
+    add(
+        "max_hr",
+        "Max HR",
+        round(max_hr) if max_hr else None,
+        "bpm",
+    )
+
+    if len(stats) % 2 == 1:
+        stats = stats[:-1]
+    return stats
+
+
 def _aerobic_label(score: float) -> str:
     return aerobic_label(score)
 
@@ -837,6 +1024,33 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         avg_gap = compute_avg_gap(streams, activity_view.sport_type)
 
+        # Weather panel values are the activity-level source of truth for
+        # overall True Pace/WAP. Do not average the chart stream for summary
+        # cards, because that can disagree with the main activity page.
+        weather_panel = None
+        w = _weather_obj
+        if w:
+            weather_panel = compute_weather_panel(
+                w,
+                streams,
+                average_speed_ms=activity_view.average_speed_ms,
+                is_run=is_run,
+                start_latlng=activity.start_latlng,
+                end_latlng=activity.end_latlng,
+                average_heartrate=activity_view.average_heartrate,
+            )
+            tp_s = weather_panel.pop("true_pace_stream", None)
+            if tp_s and "true_pace" not in streams:
+                streams["true_pace"] = tp_s
+
+        deep_summary_stats = _deep_analysis_summary_stats(
+            activity_view,
+            streams,
+            activity_view.sport_type,
+            avg_gap,
+            weather_panel,
+        )
+
         # Linked workout + segments
         workout_data = None
         segments_for_map: list[dict] = []
@@ -1023,12 +1237,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 if curve:
                     power_curve_json = json.dumps(curve)
 
-        # Weather panel
-        weather_panel = None
         _ath_settings = get_athlete_settings()
-        w = _weather_obj
-        if w:
-            weather_panel = _weather_summary(w)
 
         return templates.TemplateResponse(
             request,
@@ -1040,6 +1249,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "laps": laps_json_list,
                 "analytics": analytics,
                 "avg_gap": avg_gap,
+                "deep_summary_stats": deep_summary_stats,
                 "has_polyline": bool(activity.map_summary_polyline),
                 "streams_json": json.dumps(streams_ds),
                 "has_streams": bool(streams),

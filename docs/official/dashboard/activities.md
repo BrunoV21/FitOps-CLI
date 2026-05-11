@@ -67,7 +67,13 @@ Power is computed at sync time and cached; the page never recomputes it on load.
 - Elevation profile
 - Power (hidden by default — click the **Pwr** toggle to show the wattage series)
 
-On mobile, expanding the stream chart fullscreen switches it into a sideways view: time or distance moves to the vertical axis, selected stream values move to horizontal axes, and the stream selector moves to the right edge so you can show or hide multiple streams while keeping the wider reading layout.
+On mobile, expanding the stream chart fullscreen keeps the normal multi-stream chart layout and places the stream toggles in a compact row above the plot. Use the toggles to show or hide heart rate, pace, GAP, WAP, True Pace, altitude, cadence, or power without losing the wider fullscreen chart area.
+
+On desktop and mobile, drag across the stream chart or tap two positions to zoom into a specific time or distance range. After the first tap or click, the highlighted range follows the pointer until the second tap or click confirms the zoom. The visible y-axes rescale to the selected section, and **Reset Zoom** or a double-click restores the full activity.
+
+The **Deep Analysis** view uses the same range selection feel across its stacked charts. Drag or click two points to inspect a range; the highlight follows the pointer after the first click, and double-click clears the selected range.
+
+The Deep Analysis sidebar also shows paired average stats for the session, including available values such as average heart rate, average pace or speed, True Pace, GAP, WAP, cadence, power, normalized power, elevation, and TSS. Overall True Pace and WAP use the same activity-level values shown on the main activity page.
 
 ![Activity Analysis — streams, HR drift, scatter plots](../assets/dashboard-activity-analysis.png)
 
