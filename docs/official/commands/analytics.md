@@ -190,9 +190,7 @@ fitops analytics performance --sport Ride
 | `running_economy_ml_kg_km` | Estimated oxygen cost per km (proxy from average pace) |
 | `pace_efficiency_score` | 0–100 score based on pace consistency across recent runs |
 | `variability_index` | Coefficient of variation across pace values |
-| `max_hr_estimate` | 98th percentile HR from recent activities |
-| `aerobic_threshold_hr` | 75% of estimated max HR |
-| `anaerobic_threshold_hr` | 85% of estimated max HR |
+| `aerobic_efficiency_trend` | Early-vs-recent speed per heartbeat trend, including estimated HR change at the recent benchmark pace |
 
 **Cycling metrics:**
 

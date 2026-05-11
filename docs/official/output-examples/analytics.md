@@ -112,6 +112,8 @@ Performance Metrics  Run
   Reliability    0.852
   Running economy      174.9 ml/kg/km
   Pace efficiency      85.2
+  Aerobic efficiency +4.1%
+  HR at 5:00/km    146.0 bpm  (6.0 bpm lower)
   Load           CTL 42.1  ATL 51.3  TSB -9.2
   Trend          volume building, pace improving
 ```

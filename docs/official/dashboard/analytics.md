@@ -45,15 +45,15 @@ The top row on the page brings together:
 | Pace variability | Coefficient of variation of paces — lower means more even training |
 | Reliability | Pace efficiency expressed as a 0–1 fraction |
 
-### HR Thresholds (within Running Intensity Thresholds panel)
+### Aerobic Efficiency Trend (within Running Intensity Thresholds panel)
 
 | Metric | How it's derived |
 |--------|-----------------|
-| Max HR estimate | 98th-percentile peak HR across the last 50 runs |
-| Aerobic threshold HR | 75% of Max HR estimate |
-| Anaerobic threshold HR | 85% of Max HR estimate |
+| Aerobic efficiency trend | Change in speed per heartbeat between the early and recent halves of the selected run window |
+| HR at benchmark pace | Estimated recent heart rate at the current benchmark pace |
+| Baseline at same pace | Estimated early-window heart rate at that same benchmark pace |
 
-These sit alongside the pace-based LT1/LT2/vVO₂max thresholds so you can cross-reference pace zones with HR zones during a run.
+This sits alongside the pace-based LT1/LT2/vVO₂max thresholds so you can see whether the same run pace now costs fewer heartbeats. A lower recent HR at the benchmark pace suggests improving aerobic durability.
 
 ### Cycling metrics
 
