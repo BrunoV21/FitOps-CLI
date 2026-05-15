@@ -305,6 +305,18 @@
         <button id="stream-zoom-reset" class="xaxis-btn stream-zoom-reset" onclick="resetStreamZoom()" hidden>Reset Zoom</button>
       </div>
       <canvas id="stream-chart"></canvas>
+      <div class="stream-mobile-scrubber" id="stream-mobile-scrubber">
+        <input
+          id="stream-scrub-range"
+          class="stream-scrub-range"
+          type="range"
+          min="0"
+          max="0"
+          value="0"
+          step="1"
+          aria-label="Chart scrubber">
+        <span id="stream-scrub-label" class="stream-scrub-label">0:00</span>
+      </div>
     </div>
   </div>
 </div>

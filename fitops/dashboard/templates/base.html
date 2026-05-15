@@ -199,9 +199,7 @@ function _isMobileChartFullscreenTarget(el) {
 function _applyChartLandscapeFallback(el) {
   if (!el || !_isMobileChartFullscreenTarget(el)) return;
   el.classList.add('mobile-chart-landscape');
-  var canvas = el.querySelector('#stream-chart');
-  var chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
-  if (chart) setTimeout(function() { chart.resize(); }, 50);
+  _resizeChartsIn(el, 50);
 }
 
 function _clearChartLandscapeFallback(el) {
@@ -212,6 +210,7 @@ function _clearChartLandscapeFallback(el) {
   if (chart && typeof setStreamChartSidewaysMode === 'function') {
     setStreamChartSidewaysMode(chart, false);
   }
+  _resizeChartsIn(el, 80);
 }
 
 function _syncChartLandscapeFallback(el) {
@@ -225,6 +224,17 @@ function _syncChartLandscapeFallback(el) {
 
 function _getFullscreenElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function _resizeChartsIn(root, delay) {
+  if (typeof Chart === 'undefined') return;
+  var scope = root || document;
+  setTimeout(function() {
+    scope.querySelectorAll('canvas').forEach(function(c) {
+      var chart = Chart.getChart(c);
+      if (chart) chart.resize();
+    });
+  }, delay || 0);
 }
 
 function _requestChartFullscreen(el) {
@@ -291,15 +301,15 @@ function _onChartFullscreenChange() {
   var el = _getFullscreenElement();
   if (el) {
     _syncChartLandscapeFallback(el);
-    el.querySelectorAll('canvas').forEach(function(c) {
-      var chart = typeof Chart !== 'undefined' && Chart.getChart(c);
-      if (chart) setTimeout(function() { chart.resize(); }, 50);
-    });
+    _resizeChartsIn(el, 50);
+    _resizeChartsIn(el, 180);
   } else {
     document.querySelectorAll('.mobile-chart-landscape').forEach(function(node) {
       _clearChartLandscapeFallback(node);
     });
     _unlockChartLandscape();
+    _resizeChartsIn(document, 80);
+    _resizeChartsIn(document, 260);
   }
 }
 document.addEventListener('fullscreenchange', _onChartFullscreenChange);

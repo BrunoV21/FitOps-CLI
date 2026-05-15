@@ -373,6 +373,63 @@ function _syncStreamZoomResetButton(chart) {
   btn.hidden = !(chart && chart._streamZoomRange);
 }
 
+function _isCoarseStreamPointer(event = null) {
+  const nativeEvent = event && event.native ? event.native : event;
+  if (nativeEvent && nativeEvent.type && nativeEvent.type.startsWith('touch')) return true;
+  return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+}
+
+function _setStreamChartActiveIndex(chart, idx) {
+  if (!chart || idx === null || idx === undefined) return;
+  const labels = chart.data && chart.data.labels ? chart.data.labels : [];
+  if (!labels.length) return;
+  const safeIdx = Math.max(0, Math.min(labels.length - 1, Number(idx)));
+  if (!Number.isFinite(safeIdx)) return;
+
+  const active = chart.data.datasets
+    .map((_, datasetIndex) => ({ datasetIndex, index: safeIdx }))
+    .filter((item) => !chart.data.datasets[item.datasetIndex]._isThreshold && chart.isDatasetVisible(item.datasetIndex));
+  if (typeof chart.setActiveElements === 'function') chart.setActiveElements(active);
+  if (chart.tooltip && typeof chart.tooltip.setActiveElements === 'function') {
+    const x = chart.scales && chart.scales.x ? chart.scales.x.getPixelForValue(safeIdx) : 0;
+    chart.tooltip.setActiveElements(active, { x, y: chart.chartArea ? chart.chartArea.top : 0 });
+  }
+
+  const ll = _activitySync.latlng;
+  if (_activitySync.hoverMarker && ll && ll[safeIdx]) {
+    _activitySync.hoverMarker.setLatLng(ll[safeIdx]).setStyle({ opacity: 1, fillOpacity: 1 });
+  }
+  _syncStreamMobileScrubber(chart, safeIdx);
+  chart.update('none');
+}
+
+function _syncStreamMobileScrubber(chart, activeIdx = null) {
+  const wrap = document.getElementById('stream-mobile-scrubber');
+  const input = document.getElementById('stream-scrub-range');
+  const label = document.getElementById('stream-scrub-label');
+  if (!wrap || !input || !label || !chart) return;
+
+  const labels = chart.data && chart.data.labels ? chart.data.labels : [];
+  const max = Math.max(0, labels.length - 1);
+  input.max = String(max);
+  if (activeIdx !== null && activeIdx !== undefined) {
+    input.value = String(Math.max(0, Math.min(max, Number(activeIdx))));
+  } else if (Number(input.value) > max) {
+    input.value = String(max);
+  }
+  label.textContent = labels[Number(input.value)] || '0:00';
+  wrap.hidden = labels.length < 2;
+}
+
+function initStreamMobileScrubber(chart) {
+  const input = document.getElementById('stream-scrub-range');
+  if (!input || !chart) return;
+  _syncStreamMobileScrubber(chart, 0);
+  input.addEventListener('input', () => {
+    _setStreamChartActiveIndex(chart, Number(input.value));
+  });
+}
+
 function _streamPointValue(point) {
   if (point === null || point === undefined) return null;
   const value = typeof point === 'object' ? point.y : point;
@@ -558,6 +615,12 @@ const streamRangeZoomPlugin = {
     }
 
     if (type === 'click' && inArea && idx !== null) {
+      if (_isCoarseStreamPointer(event)) {
+        _clearStreamZoomSelectionState(state);
+        _setStreamChartActiveIndex(chart, idx);
+        args.changed = true;
+        return;
+      }
       if (state.justDragged) return;
       if (state.clickStart === null) {
         state.clickStart = idx;
@@ -1055,6 +1118,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
           return;
         }
         const idx = activeElements[0].index;
+        _syncStreamMobileScrubber(window._activeStreamChart, idx);
         if (idx < ll.length) {
           _activitySync.hoverMarker.setLatLng(ll[idx]).setStyle({ opacity: 1, fillOpacity: 1 });
         }
@@ -1084,6 +1148,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
   window._activeStreamChart = chart;
   _activitySync.chart = chart;
   _syncStreamZoomResetButton(chart);
+  initStreamMobileScrubber(chart);
 
   return chart;
 }
@@ -1207,6 +1272,7 @@ function setXAxis(mode) {
   }
 
   chart.update();
+  _syncStreamMobileScrubber(chart, 0);
 }
 
 /**

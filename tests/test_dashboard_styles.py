@@ -8,7 +8,7 @@ def test_mobile_table_styles_include_touch_scroll_polish():
     assert "-webkit-overflow-scrolling: touch;" in css
     assert "overscroll-behavior-x: contain;" in css
     assert "scrollbar-gutter: stable both-edges;" in css
-    assert "touch-action: pan-x;" in css
+    assert "touch-action: pan-x pan-y;" in css
     assert ".data-table {\n    width: max-content;" in css
     assert "min-width: 100%;" in css
 
@@ -34,6 +34,8 @@ def test_mobile_chart_fullscreen_uses_landscape_lock():
     assert "webkitRequestFullscreen" in base_template
     assert "webkitfullscreenchange" in base_template
     assert "_syncChartLandscapeFallback(el);" in base_template
+    assert "function _resizeChartsIn(root, delay)" in base_template
+    assert "_resizeChartsIn(document, 260);" in base_template
     assert "setStreamChartSidewaysMode(chart, false);" in base_template
     assert "setStreamChartSidewaysMode(chart, true);" not in base_template
     assert "window.addEventListener('orientationchange'" in base_template
@@ -43,9 +45,10 @@ def test_mobile_chart_fullscreen_uses_landscape_lock():
     assert "data-fs-target" in activity_detail
     assert ".analysis-chart:fullscreen" in css
     assert ".analysis-chart:-webkit-full-screen" in css
-    assert "min-height: calc(100vh - 3.5rem);" in css
+    assert "min-height: calc(100dvh - 3.5rem);" in css
     assert "left: 0;" in css
     assert "width: 100vw;" in css
+    assert "height: 100dvh;" in css
     assert "height: 100vh;" in css
     assert "flex-direction: row;" in css
     assert "overflow-x: auto;" in css
@@ -99,6 +102,8 @@ def test_activity_stream_chart_supports_range_zoom():
     assert "_applyStreamZoomRange(chart, state.dragStart, end);" in charts_js
     assert "type === 'dblclick'" in charts_js
     assert "_clearStreamZoomSelectionState(state);" in charts_js
+    assert "_isCoarseStreamPointer(event)" in charts_js
+    assert "_setStreamChartActiveIndex(chart, idx);" in charts_js
     assert "state.clickCurrent = idx;" in charts_js
     assert "_drawStreamZoomSelection(chart, state.clickStart, state.clickCurrent" in charts_js
     assert "_updateStreamZoomYRanges(chart);" in charts_js
@@ -110,8 +115,20 @@ def test_activity_stream_chart_supports_range_zoom():
     assert "'mousedown'" in charts_js
     assert "'touchmove'" in charts_js
     assert 'id="stream-zoom-reset"' in activity_detail
+    assert 'id="stream-mobile-scrubber"' in activity_detail
+    assert 'id="stream-scrub-range"' in activity_detail
+    assert "touch-action: pan-y;" in css
+    assert ".analysis-chart:fullscreen canvas" in css
     assert "touch-action: none;" in css
 
+
+def test_mobile_shell_uses_document_scroll_and_dynamic_viewport_height():
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+
+    assert "height: 100dvh;" in css
+    assert "min-height: 100dvh;" in css
+    assert ".main {\n    padding-top: 44px;\n    overflow: visible;\n  }" in css
+    assert ".app-shell {\n    display: block;" in css
 
 
 def test_dashboard_design_tokens_cover_legacy_template_aliases():

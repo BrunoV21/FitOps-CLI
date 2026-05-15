@@ -10,7 +10,7 @@ A time-series chart showing three lines across your training history:
 - **ATL** (Acute Training Load) — recent fatigue from the past 7–10 days
 - **TSB** (Training Stress Balance) — how fresh or fatigued you are on any given day
 
-Hover over any point on the chart to see the exact values for that date.
+Hover over any point on the chart to see the exact values for that date. On mobile, the chart panels can be expanded fullscreen and are sized to the available browser viewport so the full plot remains visible after entering or exiting fullscreen.
 
 ![Training Load Chart](../assets/dashboard-training-load-detailed.png)
 
@@ -35,6 +35,8 @@ The top row on the page brings together:
 - **Current Load** - CTL, ATL, TSB, and form label from the cached training load snapshot
 - **Trend Snapshot** - a short summary of recent volume and pace/HR direction
 - **Profile Link** - a reminder that VO₂max override, LTHR, threshold pace, and zones all live in Profile
+
+The VO₂max and pace threshold charts use the same fullscreen behavior as Training Load, including mobile viewport-aware sizing.
 
 ### Running Efficiency panel
 
