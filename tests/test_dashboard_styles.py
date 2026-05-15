@@ -113,6 +113,90 @@ def test_activity_stream_chart_supports_range_zoom():
     assert "touch-action: none;" in css
 
 
+
+def test_dashboard_design_tokens_cover_legacy_template_aliases():
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+
+    for token in [
+        "--bg-secondary:",
+        "--bg-card:",
+        "--bg-panel:",
+        "--bg-hover:",
+        "--surface-1:",
+        "--surface-2:",
+        "--surface-3:",
+        "--border-color:",
+        "--text-secondary:",
+        "--accent-green:",
+        "--accent-primary-rgb:",
+    ]:
+        assert token in css
+
+    for selector in [
+        ".stats-grid",
+        ".stat-card",
+        ".stat-value",
+        ".stat-label",
+        ".panel-meta",
+        ".text-muted",
+        ".text-dim",
+        ".alert-amber",
+    ]:
+        assert selector in css
+
+
+def test_mobile_metric_grids_do_not_clip_values():
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+
+    assert (
+        ".panel-metric { font-size: 22px; white-space: normal; "
+        "overflow: visible; overflow-wrap: anywhere; }"
+    ) in css
+    assert ".grid-3 { grid-template-columns: 1fr; }" in css
+    assert "@media (max-width: 480px)" in css
+    assert ".grid-2,\n  .grid-4,\n  .stats-grid" in css
+
+
+def test_notes_use_shared_button_contract():
+    for template_path in [
+        "fitops/dashboard/templates/notes/create.html",
+        "fitops/dashboard/templates/notes/detail.html",
+        "fitops/dashboard/templates/notes/list.html",
+    ]:
+        template = Path(template_path).read_text()
+        assert 'class="btn-primary"' not in template
+        assert 'class="btn-secondary"' not in template
+        assert 'class="btn-danger"' not in template
+
+    notes_list = Path("fitops/dashboard/templates/notes/list.html").read_text()
+    assert 'class="empty-state"' in notes_list
+
+
+def test_mobile_identity_and_filter_markup_are_clean():
+    base_template = Path("fitops/dashboard/templates/base.html").read_text()
+    activity_list = Path("fitops/dashboard/templates/activities/list.html").read_text()
+    workout_simulate = Path(
+        "fitops/dashboard/templates/workouts/simulate.html"
+    ).read_text()
+
+    assert "replace('_', ' ') | title" in base_template
+    assert "race_sessions" not in Path(
+        "fitops/dashboard/templates/race/sessions.html"
+    ).read_text()
+    assert "race_sessions" not in Path(
+        "fitops/dashboard/templates/race/session_create.html"
+    ).read_text()
+    assert "race_sessions" not in Path(
+        "fitops/dashboard/templates/race/session_detail.html"
+    ).read_text()
+    assert "flex-wrap:wrap;" in activity_list
+    assert 'style="flex:1 1 150px;"' in activity_list
+    assert '<div id="course-picker" {% if' not in workout_simulate
+    assert '<div id="activity-picker" {% if' not in workout_simulate
+    assert 'id="course-picker" style="margin-bottom:1rem;{% if' in workout_simulate
+    assert 'id="activity-picker" style="margin-bottom:1rem;{% if' in workout_simulate
+
+
 def test_deep_analysis_chart_supports_click_range_preview_and_double_click_clear():
     deep_analysis_js = Path("fitops/dashboard/static/js/deep-analysis.js").read_text()
     activity_analysis = Path(

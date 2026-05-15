@@ -24,7 +24,7 @@
     </svg>
     <span>FitOps</span>
     <span class="mobile-topbar-sep">/</span>
-    <span class="mobile-topbar-page">{{ self.page_name() }}</span>
+    <span class="mobile-topbar-page">{{ self.page_name() | replace('_', ' ') | title }}</span>
   </div>
 </header>
 

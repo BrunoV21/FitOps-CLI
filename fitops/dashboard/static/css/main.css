@@ -7,22 +7,37 @@
 /* ── Design Tokens ──────────────────────────────────────────── */
 :root {
   --bg:             #000000;
+  --bg-primary:     #000000;
+  --bg-secondary:   #0a0a0a;
+  --bg-card:        #0a0a0a;
+  --bg-panel:       #0a0a0a;
+  --bg-hover:       #111111;
+  --bg-elevated:    #111111;
   --surface:        #0a0a0a;
+  --surface-1:      #0a0a0a;
+  --surface-2:      #111111;
+  --surface-3:      #151515;
   --surface-raised: #111111;
   --border:         #1a1a1a;
+  --border-color:   #1a1a1a;
+  --border-subtle:  #1a1a1a;
   --border-hover:   #2e2e2e;
 
   --text-primary:   #ffffff;
+  --text-secondary: #b8b8b8;
   --text-muted:     #888888;
   --text-dim:       #3a3a3a;
 
   --accent-primary: #00ff87;
+  --accent-primary-rgb: 0,255,135;
+  --accent-green:   #00ff87;
   --accent-blue:    #00aaff;
   --accent-amber:   #ffaa00;
   --accent-red:     #ff3355;
   --accent-purple:  #aa55ff;
 
   --font: 'Geist Mono', 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+  --font-sans: var(--font);
 }
 
 /* ── Reset ──────────────────────────────────────────────────── */
@@ -242,6 +257,11 @@ input, select, textarea { font-family: var(--font); }
   margin-bottom: 16px;
 }
 .panel-header .panel-label { margin-bottom: 0; }
+.panel-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
 .panel-link {
   font-size: 11px;
   color: var(--text-dim);
@@ -290,6 +310,37 @@ input, select, textarea { font-family: var(--font); }
 .stat-row:last-child { border-bottom: none; }
 .stat-key { font-size: 12px; color: var(--text-muted); }
 .stat-val { font-size: 12px; color: var(--text-primary); font-weight: 600; }
+
+/* ── Summary Stat Cards ──────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  margin-bottom: 1px;
+}
+.stat-card {
+  background: var(--bg);
+  border: 1px solid transparent;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.stat-value {
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.stat-label {
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
 
 /* ── Badge ──────────────────────────────────────────────────── */
 .badge {
@@ -415,9 +466,29 @@ input, select, textarea { font-family: var(--font); }
 
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.btn-primary,
+.btn-ghost,
+.btn-secondary,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
   text-transform: uppercase;
   padding: 8px 16px;
   border: 1px solid;
@@ -500,6 +571,7 @@ input, select, textarea { font-family: var(--font); }
   font-size: 12px;
 }
 .alert-red { border-color: var(--accent-red); background: rgba(255,51,85,0.05); color: #ff8899; }
+.alert-amber { border-color: var(--accent-amber); background: rgba(255,170,0,0.05); color: #ffd27a; }
 .alert-title {
   font-size: 10px;
   font-weight: 700;
@@ -948,15 +1020,15 @@ body.sidebar-open .sidebar-backdrop { display: block; }
 
   .main-content { padding: 14px; }
   .panel { padding: 14px 16px; }
-  .panel-metric { font-size: 22px; white-space: nowrap; overflow: hidden; }
+  .panel-metric { font-size: 22px; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
   .col-3, .col-4, .col-6, .col-8, .col-9 { grid-column: span 12; }
   .activity-row-stats { display: none; }
   .form-grid-4, .form-grid-2 { grid-template-columns: 1fr; }
   .fitness-class-row { flex-direction: column; }
 
   /* Collapse fixed-column grids */
+  .grid-3 { grid-template-columns: 1fr; }
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
-  /* grid-3 keeps 3 columns — avoids orphaned empty cell on mobile */
   .ig-4 { grid-template-columns: repeat(2, 1fr); }
   .ig-3 { grid-template-columns: 1fr; }
   .ig-2 { grid-template-columns: 1fr; }
@@ -989,6 +1061,17 @@ body.sidebar-open .sidebar-backdrop { display: block; }
   .data-table td {
     padding: 10px 12px;
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .grid-2,
+  .grid-4,
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .stat-card {
+    padding: 12px 14px;
   }
 }
 
@@ -1701,6 +1784,8 @@ select.field-input option { background: var(--surface); }
   color: var(--text-dim);
 }
 .text-primary { color: var(--text-primary); }
+.text-muted { color: var(--text-muted); }
+.text-dim { color: var(--text-dim); }
 .mono { font-family: var(--font); }
 
 /* Modal */
