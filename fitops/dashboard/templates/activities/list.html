@@ -25,18 +25,20 @@
            oninput="clearTimeout(this._t);this._t=setTimeout(()=>this.form.submit(),500)">
   </div>
   <!-- Row 2: dates + dropdowns + reset -->
-  <div style="display:flex;align-items:center;gap:8px;">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     <input type="date" name="after" class="input-ctrl" title="After date"
+           style="flex:1 1 150px;"
            value="{{ selected_after or '' }}" onchange="this.form.submit()">
     <input type="date" name="before" class="input-ctrl" title="Before date"
+           style="flex:1 1 150px;"
            value="{{ selected_before or '' }}" onchange="this.form.submit()">
-    <select name="sport" class="select-ctrl" onchange="this.form.submit()">
+    <select name="sport" class="select-ctrl" style="flex:1 1 150px;" onchange="this.form.submit()">
       <option value="">All Sports</option>
       {% for s in sports %}
       <option value="{{ s }}" {% if s == selected_sport %}selected{% endif %}>{{ s }}</option>
       {% endfor %}
     </select>
-    <select name="tag" class="select-ctrl" onchange="this.form.submit()">
+    <select name="tag" class="select-ctrl" style="flex:1 1 150px;" onchange="this.form.submit()">
       <option value="">All Tags</option>
       {% for t in [("race","Race"),("trainer","Trainer"),("commute","Commute"),("manual","Manual"),("private","Private")] %}
       <option value="{{ t[0] }}" {% if t[0] == selected_tag %}selected{% endif %}>{{ t[1] }}</option>
@@ -48,7 +50,7 @@
       {% endfor %}
       {% endif %}
     </select>
-    <select name="limit" class="select-ctrl" onchange="this.form.submit()">
+    <select name="limit" class="select-ctrl" style="flex:1 1 150px;" onchange="this.form.submit()">
       {% for l in [25, 50, 100, 200, 500] %}
       <option value="{{ l }}" {% if l == selected_limit %}selected{% endif %}>{{ l }} per page</option>
       {% endfor %}

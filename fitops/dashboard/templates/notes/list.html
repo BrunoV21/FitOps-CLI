@@ -8,7 +8,7 @@
     <p class="page-title">Notes</p>
     <p class="page-subtitle">Training memos, race plans, and coaching notes</p>
   </div>
-  <a href="/notes/create" class="btn-primary">+ New Note</a>
+  <a href="/notes/create" class="btn btn-primary">+ New Note</a>
 </div>
 
 <!-- Filters -->
@@ -89,10 +89,9 @@
 </div>
 
 {% else %}
-<div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
-  <div style="font-size:2rem;margin-bottom:12px;">📝</div>
+<div class="empty-state">
   <p style="font-size:0.95rem;margin-bottom:16px;">No notes yet{% if active_tag %} tagged <strong>{{ active_tag }}</strong>{% endif %}{% if active_q %} matching <strong>{{ active_q }}</strong>{% endif %}.</p>
-  <a href="/notes/create" class="btn-primary">Create your first note</a>
+  <a href="/notes/create" class="btn btn-primary">Create your first note</a>
 </div>
 {% endif %}
 {% endblock %}
