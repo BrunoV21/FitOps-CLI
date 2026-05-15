@@ -72,13 +72,14 @@ The stamp panel lets you embed FitOps analytics into your Strava activity descri
 
 Each stamp footer includes:
 
-- Sport, distance, duration, and average pace
 - Aerobic and anaerobic scores
-- Heart rate (avg and max)
+- Activity-day training load when cached: CTL, ATL, TSB, and form label
 - Power — real watts if available, otherwise estimated power with source label
 - VO2max estimate
-- Suffer score and calories
+- Weather-adjusted pace, race calibration, and linked workout segment details when available
 - A link to the FitOps GitHub repo
+
+Training load values come from the cached snapshot for the activity date. Stamping does not recompute CTL/ATL/TSB; if that day's snapshot is missing, the form section is skipped.
 
 The stamp is appended after any existing description you've written. Re-stamping replaces only the FitOps footer — your own text is preserved.
 

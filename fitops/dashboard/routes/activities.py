@@ -1339,6 +1339,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         client = StravaClient()
         stamped, skipped, failed = [], [], []
+        training_load_cache = {}
 
         async with get_async_session() as session:
             result = await session.execute(select(_Activity))
@@ -1346,7 +1347,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
             for activity in activities:
                 try:
                     await stamp_activity(
-                        client, session, activity, fetch_fresh_desc=True
+                        client,
+                        session,
+                        activity,
+                        fetch_fresh_desc=True,
+                        training_load_cache=training_load_cache,
                     )
                     stamped.append(activity.strava_id)
                 except Exception:

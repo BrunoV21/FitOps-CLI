@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from fitops.analytics.stamp import STAMP_SENTINEL, apply_stamp, compose_stamp
+from fitops.analytics.stamp import (
+    STAMP_SENTINEL,
+    apply_stamp,
+    compose_stamp,
+    get_cached_training_load_for_activity,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,6 +27,8 @@ def _activity(**kwargs) -> MagicMock:
     act.average_speed_ms = 3.7
     act.average_heartrate = 152.0
     act.max_heartrate = 171.0
+    act.athlete_id = 1
+    act.start_date = datetime(2026, 4, 6, 8, 0, tzinfo=UTC)
     act.average_watts = None
     act.max_watts = None
     act.weighted_average_watts = None
@@ -74,6 +82,31 @@ def test_compose_stamp_includes_scores_with_labels():
 def test_compose_stamp_includes_vo2max():
     stamp = compose_stamp(_activity())
     assert "52.3" in stamp
+
+
+def test_compose_stamp_includes_activity_day_training_load():
+    stamp = compose_stamp(
+        _activity(),
+        training_load={
+            "date": "2026-04-06",
+            "ctl": 42.2,
+            "atl": 54.0,
+            "tsb": -11.8,
+            "form_label": "Overreaching — high adaptation, monitor recovery",
+        },
+    )
+
+    assert "Form 2026-04-06" in stamp
+    assert "CTL 42.2 · ATL 54.0 · TSB -11.8" in stamp
+    assert "Overreaching" in stamp
+
+
+def test_compose_stamp_omits_training_load_when_snapshot_missing():
+    stamp = compose_stamp(_activity())
+    assert "Form 2026-04-06" not in stamp
+    assert "CTL" not in stamp
+    assert "ATL" not in stamp
+    assert "TSB" not in stamp
 
 
 def test_compose_stamp_includes_scores():
@@ -152,6 +185,46 @@ def test_apply_stamp_idempotent_sentinel_count():
     first = apply_stamp("Base", "S1")
     second = apply_stamp(first, "S2")
     assert second.count(STAMP_SENTINEL) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_cached_training_load_for_activity_reads_snapshot_without_compute(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "fitops.analytics.training_load.compute_training_load",
+        AsyncMock(side_effect=AssertionError("training load should not recompute")),
+    )
+
+    activity = _activity()
+    snapshot = MagicMock()
+    snapshot.snapshot_date = date(2026, 4, 6)
+    snapshot.ctl = 42.16
+    snapshot.atl = 53.98
+    snapshot.tsb = -11.82
+
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = snapshot
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=result)
+
+    cache = {}
+    first = await get_cached_training_load_for_activity(
+        session, activity, cache=cache
+    )
+    second = await get_cached_training_load_for_activity(
+        session, activity, cache=cache
+    )
+
+    assert first == {
+        "date": "2026-04-06",
+        "ctl": 42.2,
+        "atl": 54.0,
+        "tsb": -11.8,
+        "form_label": "Overreaching — high adaptation, monitor recovery",
+    }
+    assert second == first
+    assert session.execute.await_count == 1
 
 
 # ---------------------------------------------------------------------------

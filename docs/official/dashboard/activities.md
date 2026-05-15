@@ -47,6 +47,8 @@ Click any activity row to open its detail page (`/activities/{id}`). The detail 
 
 When you save an official race result, the activity detail page switches its split table to the corrected version. This is useful for road races where the watch recorded `9.82 km` but the official course was `10.00 km`.
 
+**Stamp controls** update the Strava activity description with the same FitOps footer used by the Profile page backfill tool. When a cached training-load snapshot exists for the activity date, the stamp includes that day's CTL, ATL, TSB, and form label. The activity page does not recompute training load while stamping; missing snapshots simply omit the form section.
+
 **Insights panel** (when streams are available):
 - **HR Drift** — cardiac decoupling percentage. < 5% means your aerobic system held steady; > 10% means you were pushing near your ceiling.
 - **Aerobic training score** — estimated aerobic stimulus for the session

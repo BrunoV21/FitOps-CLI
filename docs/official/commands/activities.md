@@ -403,7 +403,11 @@ fitops activities stamp --all --force
 fitops activities stamp --all --json
 ```
 
-The stamp footer contains: sport, distance, duration, pace, aerobic/anaerobic scores, HR, power (real or estimated), VO2max estimate, suffer score, calories, and a link back to FitOps. If the activity already has a FitOps stamp, it is replaced — user-written description above the stamp is preserved.
+The stamp footer contains FitOps-only analytics such as aerobic/anaerobic scores, VO2max estimate, power (real or estimated), weather-adjusted pace, race calibration, linked workout segment details, and the activity-day training load snapshot (CTL, ATL, TSB, and form label) when a cached snapshot exists for that date. Basic activity details already shown by Strava, such as distance, elapsed time, pace, and heart rate, are not repeated unless they are part of a richer FitOps-derived section.
+
+Training load values are read from `analytics_snapshots` for the activity date. Stamping does not recompute CTL/ATL/TSB; if no cached snapshot exists for that activity day, the form section is omitted.
+
+If the activity already has a FitOps stamp, it is replaced — user-written description above the stamp is preserved.
 
 ---
 

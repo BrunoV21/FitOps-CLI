@@ -964,6 +964,7 @@ def stamp(
         stamped: list[int] = []
         skipped: list[int] = []
         failed: list[int] = []
+        training_load_cache = {}
 
         async with get_async_session() as session:
             if activity_id is not None:
@@ -984,7 +985,13 @@ def stamp(
                     skipped.append(act.strava_id)
                     continue
                 try:
-                    await stamp_activity(client, session, act, fetch_fresh_desc=True)
+                    await stamp_activity(
+                        client,
+                        session,
+                        act,
+                        fetch_fresh_desc=True,
+                        training_load_cache=training_load_cache,
+                    )
                     stamped.append(act.strava_id)
                 except Exception as exc:
                     typer.echo(f"Failed to stamp {act.strava_id}: {exc}", err=True)

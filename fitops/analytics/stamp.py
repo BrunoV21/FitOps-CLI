@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -67,6 +67,7 @@ def compose_stamp(
     weather: dict | None = None,
     race_result: dict | None = None,
     corrected_splits: list[dict] | None = None,
+    training_load: dict | None = None,
 ) -> str:
     from fitops.analytics.training_scores import (
         aerobic_short_label,
@@ -110,6 +111,28 @@ def compose_stamp(
         score_parts.append(f"VO2 {activity.vo2max_estimate:.1f}")
     if score_parts:
         lines.append(" · ".join(score_parts))
+
+    # ── Training load snapshot ───────────────────────────
+    if training_load:
+        snapshot_date = training_load.get("date")
+        title = f"Form {snapshot_date}" if snapshot_date else "Form"
+        lines.append("")
+        lines.append(title)
+        load_parts: list[str] = []
+        ctl = training_load.get("ctl")
+        atl = training_load.get("atl")
+        tsb = training_load.get("tsb")
+        if ctl is not None:
+            load_parts.append(f"CTL {ctl:.1f}")
+        if atl is not None:
+            load_parts.append(f"ATL {atl:.1f}")
+        if tsb is not None:
+            load_parts.append(f"TSB {tsb:.1f}")
+        if load_parts:
+            lines.append(" · ".join(load_parts))
+        form_label = training_load.get("form_label")
+        if form_label:
+            lines.append(str(form_label))
 
     # ── Power ────────────────────────────────────────────
     if activity.average_watts and activity.average_watts > 0:
@@ -289,6 +312,52 @@ def apply_stamp(current_desc: str | None, new_stamp: str) -> str:
     return f"{_STAMP_ANCHOR}\n{new_stamp}"
 
 
+async def get_cached_training_load_for_activity(
+    session: AsyncSession,
+    activity: Activity,
+    *,
+    cache: dict[date, dict | None] | None = None,
+) -> dict | None:
+    """Read the cached total training-load snapshot for an activity's date."""
+    from sqlalchemy import select
+
+    from fitops.analytics.training_load import TrainingLoadResult
+    from fitops.db.models.analytics_snapshot import AnalyticsSnapshot
+
+    activity_date = activity.start_date.date() if activity.start_date else None
+    athlete_id = getattr(activity, "athlete_id", None)
+    if activity_date is None or athlete_id is None:
+        return None
+
+    if cache is not None and activity_date in cache:
+        return cache[activity_date]
+
+    result = await session.execute(
+        select(AnalyticsSnapshot).where(
+            AnalyticsSnapshot.athlete_id == athlete_id,
+            AnalyticsSnapshot.snapshot_date == activity_date,
+            AnalyticsSnapshot.sport_type.is_(None),
+        )
+    )
+    snapshot = result.scalar_one_or_none()
+    if snapshot is None:
+        if cache is not None:
+            cache[activity_date] = None
+        return None
+
+    dummy = TrainingLoadResult()
+    training_load = {
+        "date": snapshot.snapshot_date.isoformat(),
+        "ctl": round(snapshot.ctl or 0.0, 1),
+        "atl": round(snapshot.atl or 0.0, 1),
+        "tsb": round(snapshot.tsb or 0.0, 1),
+        "form_label": dummy.form_label(snapshot.tsb or 0.0),
+    }
+    if cache is not None:
+        cache[activity_date] = training_load
+    return training_load
+
+
 async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
     """Stamp newly-synced activities when stamp_on_sync is enabled.
 
@@ -316,6 +385,7 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
             return
 
         client = StravaClient()
+        training_load_cache: dict[date, dict | None] = {}
         for strava_id in strava_ids:
             activity_result = await session.execute(
                 select(ActivityModel).where(ActivityModel.strava_id == strava_id)
@@ -324,7 +394,13 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
             if activity is None:
                 continue
             try:
-                await stamp_activity(client, session, activity, fetch_fresh_desc=True)
+                await stamp_activity(
+                    client,
+                    session,
+                    activity,
+                    fetch_fresh_desc=True,
+                    training_load_cache=training_load_cache,
+                )
             except Exception:
                 pass
 
@@ -337,6 +413,7 @@ async def stamp_activity(
     workout_data: dict | None = None,
     performance_insights: list[dict] | None = None,
     fetch_fresh_desc: bool = False,
+    training_load_cache: dict[date, dict | None] | None = None,
 ) -> None:
     """Compose stamp, push to Strava, update stamped_at in DB."""
     from sqlalchemy import select
@@ -358,6 +435,8 @@ async def stamp_activity(
 
     # Fetch weather — prefer persisted derived values, lazy-compute if missing
     weather: dict | None = None
+    weather_row = None
+    streams_dict: dict[str, list] = {}
     _is_run = (activity.sport_type or "") in RUN_SPORT_TYPES
     try:
         weather_result = await session.execute(
@@ -471,6 +550,14 @@ async def stamp_activity(
         except Exception:
             pass
 
+    # Fetch activity-date CTL/ATL/TSB from cached snapshots only.
+    try:
+        training_load = await get_cached_training_load_for_activity(
+            session, activity, cache=training_load_cache
+        )
+    except Exception:
+        training_load = None
+
     # Compute race calibration and corrected splits for race activities
     race_result: dict | None = None
     corrected_splits: list[dict] | None = None
@@ -560,6 +647,7 @@ async def stamp_activity(
         weather,
         race_result,
         corrected_splits,
+        training_load,
     )
     new_desc = apply_stamp(base_desc, new_stamp)
 
