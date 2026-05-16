@@ -231,7 +231,7 @@ def compose_stamp(
             if pace:
                 row1.append(f"Pace {pace}")
             tp = _fmt_pace_s(seg.get("avg_true_pace_s"))
-            if tp and tp != pace:
+            if tp:
                 row1.append(f"TP {tp}")
             if row1:
                 lines.append(" · ".join(row1))

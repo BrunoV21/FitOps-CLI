@@ -124,6 +124,26 @@ def test_compose_stamp_shows_true_pace_without_percentage():
     assert "0.7%" not in stamp
 
 
+def test_compose_stamp_shows_segment_true_pace_when_same_as_pace():
+    stamp = compose_stamp(
+        _activity(),
+        workout_data={
+            "name": "Intervals",
+            "segments": [
+                {
+                    "name": "8min interval",
+                    "step_type": "interval",
+                    "distance_m": 2117.0,
+                    "avg_pace_s": 226.6,
+                    "avg_true_pace_s": 226.0,
+                }
+            ],
+        },
+    )
+
+    assert "Dist 2.12 km · Pace 3:46/km · TP 3:46/km" in stamp
+
+
 def test_compose_stamp_real_power_takes_priority():
     act = _activity(average_watts=210.0, est_power_avg_w=200.0)
     stamp = compose_stamp(act)
