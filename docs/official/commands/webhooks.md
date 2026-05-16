@@ -5,7 +5,7 @@ Manage Strava webhook sync.
 Webhooks let Strava call your FitOps backend when an activity is created, updated, or deleted. When webhook sync is enabled, FitOps stops the dashboard's periodic Strava polling and uses these events as the primary sync trigger.
 
 ::: tip
-Strava requires a public callback URL. A local `localhost` dashboard cannot receive Strava webhooks unless you expose it with a tunnel such as ngrok or cloudflared. Deployed dashboards can use their public URL.
+Strava requires a public HTTPS callback URL. Webhook sync is supported for deployed FitOps dashboard servers. The normal local dashboard at `localhost` cannot receive Strava webhooks.
 :::
 
 ## Commands
@@ -18,18 +18,17 @@ The callback URL is the public address Strava calls. It must point to the runnin
 /api/strava/webhook
 ```
 
-Use the URL for the environment that is actually reachable from Strava:
+Use the URL for the deployed dashboard that is actually reachable from Strava:
 
 | Environment | Callback URL |
 |-------------|--------------|
 | HuggingFace Space | `https://<space-host>/api/strava/webhook` |
 | Other deployed server | `https://<your-domain>/api/strava/webhook` |
-| Local dashboard only | Not directly supported by Strava |
-| Local dashboard through a tunnel | `https://<tunnel-host>/api/strava/webhook` |
+| Local dashboard | Not supported for webhook sync; use polling or manual sync |
 
-For local development, `http://localhost:8888/api/strava/webhook` only works for requests from your own machine. Strava cannot reach your laptop's localhost. Use a public tunnel such as ngrok or cloudflared, then pass the tunnel URL to FitOps.
+`http://localhost:8888/api/strava/webhook` only works for requests from your own machine. Strava cannot reach your laptop's localhost. For local FitOps use, keep sync mode as `polling` or `manual`.
 
-You do not need to manually paste the callback URL into the Strava developer dashboard when using `fitops webhooks setup`; FitOps calls Strava's push subscription API for you using the Strava app `client_id` and `client_secret` already saved during auth setup. You still need a Strava API app with valid credentials configured in FitOps.
+`fitops webhooks setup` creates the Strava push subscription through Strava's API using the Strava app `client_id` and `client_secret` already saved during auth setup. If the Strava developer settings page asks for an **Authorization Callback Domain**, use the deployed host only, without `https://` and without the path. For example, for `https://myuser-fitops-dashboard.hf.space/api/strava/webhook`, enter `myuser-fitops-dashboard.hf.space`.
 
 ### `fitops webhooks setup`
 
@@ -42,12 +41,11 @@ fitops webhooks setup --callback-url https://example.com/api/strava/webhook
 Examples:
 
 ```bash
-# Deployed dashboard
+# HuggingFace Space dashboard
 fitops webhooks setup --callback-url https://my-fitops.hf.space/api/strava/webhook
-
-# Local dashboard exposed through a tunnel
-fitops webhooks setup --callback-url https://abc123.ngrok-free.app/api/strava/webhook
 ```
+
+For HF deployments, `fitops deploy hf` prints the exact callback URL and the Strava app callback domain after deployment.
 
 | Flag | Default | Description |
 |------|---------|-------------|
