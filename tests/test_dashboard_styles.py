@@ -22,6 +22,25 @@ def test_mobile_sidebar_layers_above_leaflet_maps():
     assert "body.sidebar-open .sidebar { transform: translateX(0); }" in css
 
 
+def test_workout_compliance_headers_have_mobile_safe_info_tips():
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+    base_template = Path("fitops/dashboard/templates/base.html").read_text()
+    activity_detail = Path(
+        "fitops/dashboard/templates/activities/detail.html"
+    ).read_text()
+    workout_detail = Path("fitops/dashboard/templates/workouts/detail.html").read_text()
+
+    assert ".info-tip" in css
+    assert ".floating-info-tip" in css
+    assert "touch-action: manipulation;" in css
+    assert "document.body.appendChild(tooltip);" in base_template
+    assert "window.addEventListener('scroll', hideInfoTip, true);" in base_template
+    assert "Percent of valid samples in this segment" in activity_detail
+    assert "Compliance score for the segment" in activity_detail
+    assert activity_detail.count('class="info-tip"') == 2
+    assert workout_detail.count('class="info-tip"') == 4
+
+
 def test_mobile_chart_fullscreen_uses_landscape_lock():
     base_template = Path("fitops/dashboard/templates/base.html").read_text()
     css = Path("fitops/dashboard/static/css/main.css").read_text()

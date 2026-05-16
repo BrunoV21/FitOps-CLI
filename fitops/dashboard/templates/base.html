@@ -330,6 +330,92 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// Accessible info tooltips. The floating node lives outside tables so it is not
+// clipped by horizontally scrolling containers on mobile.
+(function () {
+  var activeTrigger = null;
+  var tooltip = null;
+
+  function ensureTooltip() {
+    if (tooltip) return tooltip;
+    tooltip = document.createElement('div');
+    tooltip.id = 'floating-info-tip';
+    tooltip.className = 'floating-info-tip';
+    tooltip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tooltip);
+    return tooltip;
+  }
+
+  function positionTooltip(trigger) {
+    var tip = ensureTooltip();
+    var margin = 10;
+    var gap = 8;
+    var rect = trigger.getBoundingClientRect();
+    var tipRect = tip.getBoundingClientRect();
+    var left = rect.left + rect.width / 2 - tipRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - tipRect.width - margin));
+    var top = rect.top - tipRect.height - gap;
+    if (top < margin) top = rect.bottom + gap;
+    top = Math.max(margin, Math.min(top, window.innerHeight - tipRect.height - margin));
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function showInfoTip(trigger) {
+    var text = trigger.getAttribute('data-tip');
+    if (!text) return;
+    var tip = ensureTooltip();
+    if (activeTrigger) activeTrigger.classList.remove('is-active');
+    activeTrigger = trigger;
+    tip.textContent = text;
+    tip.style.display = 'block';
+    trigger.classList.add('is-active');
+    trigger.setAttribute('aria-describedby', tip.id);
+    requestAnimationFrame(function () { positionTooltip(trigger); });
+  }
+
+  function hideInfoTip() {
+    if (activeTrigger) {
+      activeTrigger.classList.remove('is-active');
+      activeTrigger.removeAttribute('aria-describedby');
+    }
+    activeTrigger = null;
+    if (tooltip) tooltip.style.display = 'none';
+  }
+
+  document.addEventListener('mouseover', function (e) {
+    var trigger = e.target.closest && e.target.closest('.info-tip');
+    if (trigger) showInfoTip(trigger);
+  });
+  document.addEventListener('mouseout', function (e) {
+    var trigger = e.target.closest && e.target.closest('.info-tip');
+    if (trigger && !trigger.contains(e.relatedTarget)) hideInfoTip();
+  });
+  document.addEventListener('focusin', function (e) {
+    var trigger = e.target.closest && e.target.closest('.info-tip');
+    if (trigger) showInfoTip(trigger);
+  });
+  document.addEventListener('focusout', function (e) {
+    var trigger = e.target.closest && e.target.closest('.info-tip');
+    if (trigger) hideInfoTip();
+  });
+  document.addEventListener('click', function (e) {
+    var trigger = e.target.closest && e.target.closest('.info-tip');
+    if (trigger) {
+      e.preventDefault();
+      e.stopPropagation();
+      showInfoTip(trigger);
+    } else {
+      hideInfoTip();
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') hideInfoTip();
+  });
+  window.addEventListener('resize', hideInfoTip);
+  window.addEventListener('scroll', hideInfoTip, true);
+}());
+
 // Sync handler
 async function triggerSync() {
   const btn    = document.getElementById('sync-btn');

@@ -58,6 +58,8 @@ Once you link a workout to a Strava activity (via `fitops workouts link`), the d
 - Per-segment compliance scores — how closely your actual HR matched the zone targets
 - A summary compliance grade for the whole session
 
+The **In Target** and **Score** column headers include help icons. **In Target** is the percentage of valid segment samples inside the target zone or pace/HR range. **Score** is the compliance score, which weights in-target time and average deviation from the target.
+
 ## See Also
 
 - [Concepts → Workouts & Compliance](../concepts/workouts.md)

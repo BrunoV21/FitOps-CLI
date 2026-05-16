@@ -81,6 +81,8 @@ The Deep Analysis sidebar also shows paired average stats for the session, inclu
 
 If streams are not yet cached for an activity, a **Fetch Streams** button appears. Click it to pull the full time-series data from Strava — this enables the charts, HR drift analysis, and zone-time breakdowns.
 
+When a workout is linked to the activity, the workout segment table includes **In Target** and **Score** help icons. **In Target** is the share of valid samples inside the segment's target zone or pace/HR range. **Score** is the compliance score, combining time in target with the average deviation from target.
+
 ## See Also
 
 - [Overview](./overview.md) — the 10 most recent activities also appear on the dashboard home
