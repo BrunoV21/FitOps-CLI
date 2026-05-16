@@ -34,7 +34,9 @@ def create_subscription(callback_url: str, verify_token: str) -> int:
     try:
         return int(payload["id"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise RuntimeError(f"Strava subscription response missing id: {payload}") from exc
+        raise RuntimeError(
+            f"Strava subscription response missing id: {payload}"
+        ) from exc
 
 
 def list_subscriptions() -> list[dict]:

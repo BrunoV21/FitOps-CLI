@@ -124,7 +124,10 @@ def test_activity_stream_chart_supports_range_zoom():
     assert "_isCoarseStreamPointer(event)" in charts_js
     assert "_setStreamChartActiveIndex(chart, idx);" in charts_js
     assert "state.clickCurrent = idx;" in charts_js
-    assert "_drawStreamZoomSelection(chart, state.clickStart, state.clickCurrent" in charts_js
+    assert (
+        "_drawStreamZoomSelection(chart, state.clickStart, state.clickCurrent"
+        in charts_js
+    )
     assert "_updateStreamZoomYRanges(chart);" in charts_js
     assert "chart.options.scales.x.min = lo;" in charts_js
     assert "chart.options.scales.x.max = hi;" in charts_js
@@ -216,15 +219,18 @@ def test_mobile_identity_and_filter_markup_are_clean():
     ).read_text()
 
     assert "replace('_', ' ') | title" in base_template
-    assert "race_sessions" not in Path(
-        "fitops/dashboard/templates/race/sessions.html"
-    ).read_text()
-    assert "race_sessions" not in Path(
-        "fitops/dashboard/templates/race/session_create.html"
-    ).read_text()
-    assert "race_sessions" not in Path(
-        "fitops/dashboard/templates/race/session_detail.html"
-    ).read_text()
+    assert (
+        "race_sessions"
+        not in Path("fitops/dashboard/templates/race/sessions.html").read_text()
+    )
+    assert (
+        "race_sessions"
+        not in Path("fitops/dashboard/templates/race/session_create.html").read_text()
+    )
+    assert (
+        "race_sessions"
+        not in Path("fitops/dashboard/templates/race/session_detail.html").read_text()
+    )
     assert "flex-wrap:wrap;" in activity_list
     assert 'style="flex:1 1 150px;"' in activity_list
     assert '<div id="course-picker" {% if' not in workout_simulate
@@ -250,7 +256,7 @@ def test_deep_analysis_chart_supports_click_range_preview_and_double_click_clear
     assert "canvas.addEventListener('click'" in deep_analysis_js
     assert "canvas.addEventListener('dblclick'" in deep_analysis_js
     assert "daClearRange();" in deep_analysis_js
-    assert '/static/js/deep-analysis.js?v=' in activity_analysis
+    assert "/static/js/deep-analysis.js?v=" in activity_analysis
 
 
 def test_deep_analysis_sidebar_uses_summary_stat_pairs():

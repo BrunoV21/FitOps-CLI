@@ -85,7 +85,9 @@ def _event_key(payload: dict) -> dict:
 async def record_event(payload: dict) -> tuple[int, bool]:
     key = _event_key(payload)
     if not key["object_type"] or not key["object_id"] or not key["aspect_type"]:
-        raise ValueError("Webhook payload missing object_type, object_id or aspect_type.")
+        raise ValueError(
+            "Webhook payload missing object_type, object_id or aspect_type."
+        )
 
     async with get_async_session() as session:
         stmt = select(StravaWebhookEvent).where(
@@ -198,7 +200,10 @@ async def _dispatch_event(event_id: int) -> dict:
         if payload["aspect_type"] == "delete":
             return await delete_activity_by_strava_id(payload["object_id"])
 
-    if payload["object_type"] == "athlete" and payload["updates"].get("authorized") == "false":
+    if (
+        payload["object_type"] == "athlete"
+        and payload["updates"].get("authorized") == "false"
+    ):
         return {"status": "ignored", "action": "athlete_deauthorized"}
 
     return {"status": "ignored", "action": "unsupported_event"}
@@ -221,12 +226,16 @@ async def sync_activity_from_strava(strava_id: int, sync_type: str = "webhook") 
 
     async with get_async_session() as session:
         existing = (
-            await session.execute(select(Activity).where(Activity.strava_id == strava_id))
+            await session.execute(
+                select(Activity).where(Activity.strava_id == strava_id)
+            )
         ).scalar_one_or_none()
         if existing is None:
             activity = Activity.from_strava_data(data, athlete_id)
             activity.aerobic_score = compute_aerobic_score(activity, athlete_settings)
-            activity.anaerobic_score = compute_anaerobic_score(activity, athlete_settings)
+            activity.anaerobic_score = compute_anaerobic_score(
+                activity, athlete_settings
+            )
             session.add(activity)
             await session.flush()
             internal_id = activity.id
@@ -234,11 +243,17 @@ async def sync_activity_from_strava(strava_id: int, sync_type: str = "webhook") 
         else:
             existing.update_from_strava_data(data)
             existing.aerobic_score = compute_aerobic_score(existing, athlete_settings)
-            existing.anaerobic_score = compute_anaerobic_score(existing, athlete_settings)
+            existing.anaerobic_score = compute_anaerobic_score(
+                existing, athlete_settings
+            )
             internal_id = existing.id
             updated = 1
 
-    streams = await fetch_streams_for_activities([internal_id], [strava_id]) if internal_id else {}
+    streams = (
+        await fetch_streams_for_activities([internal_id], [strava_id])
+        if internal_id
+        else {}
+    )
     weather = await fetch_weather_for_strava_ids([strava_id])
 
     try:
@@ -305,7 +320,10 @@ async def fetch_streams_for_activities(
                 st: (so.get("data", []) if isinstance(so, dict) else so)
                 for st, so in stream_data.items()
             }
-            if "gap_pace" not in flat_streams and "grade_adjusted_speed" in flat_streams:
+            if (
+                "gap_pace" not in flat_streams
+                and "grade_adjusted_speed" in flat_streams
+            ):
                 flat_streams["gap_pace"] = [
                     round(1000.0 / v, 2) if v and v > 0.1 else None
                     for v in flat_streams["grade_adjusted_speed"]
@@ -411,7 +429,9 @@ async def fetch_weather_for_strava_ids(strava_ids: list[int]) -> dict:
                 )
                 fetched += 1
         except Exception as exc:
-            logger.warning("webhook: weather fetch failed for %s: %s", activity.strava_id, exc)
+            logger.warning(
+                "webhook: weather fetch failed for %s: %s", activity.strava_id, exc
+            )
             errors += 1
     return {"weather_fetched": fetched, "weather_errors": errors}
 
@@ -420,22 +440,54 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
     deleted: dict[str, int] = {}
     async with get_async_session() as session:
         activity = (
-            await session.execute(select(Activity).where(Activity.strava_id == strava_id))
+            await session.execute(
+                select(Activity).where(Activity.strava_id == strava_id)
+            )
         ).scalar_one_or_none()
         if activity is None:
             await session.execute(
-                sa_delete(ActivityWeather).where(ActivityWeather.activity_id == strava_id)
+                sa_delete(ActivityWeather).where(
+                    ActivityWeather.activity_id == strava_id
+                )
             )
             return {"status": "processed", "action": "delete", "already_deleted": True}
 
         internal_id = activity.id
         statements = [
-            ("activity_streams", sa_delete(ActivityStream).where(ActivityStream.activity_id == internal_id)),
-            ("activity_laps", sa_delete(ActivityLap).where(ActivityLap.activity_id == internal_id)),
-            ("activity_weather", sa_delete(ActivityWeather).where(ActivityWeather.activity_id == strava_id)),
-            ("activity_calibrations", sa_delete(ActivityCalibration).where(ActivityCalibration.activity_id == internal_id)),
-            ("workout_activity_links", sa_delete(WorkoutActivityLink).where(WorkoutActivityLink.activity_id == internal_id)),
-            ("workout_segments", sa_delete(WorkoutSegment).where(WorkoutSegment.activity_id == internal_id)),
+            (
+                "activity_streams",
+                sa_delete(ActivityStream).where(
+                    ActivityStream.activity_id == internal_id
+                ),
+            ),
+            (
+                "activity_laps",
+                sa_delete(ActivityLap).where(ActivityLap.activity_id == internal_id),
+            ),
+            (
+                "activity_weather",
+                sa_delete(ActivityWeather).where(
+                    ActivityWeather.activity_id == strava_id
+                ),
+            ),
+            (
+                "activity_calibrations",
+                sa_delete(ActivityCalibration).where(
+                    ActivityCalibration.activity_id == internal_id
+                ),
+            ),
+            (
+                "workout_activity_links",
+                sa_delete(WorkoutActivityLink).where(
+                    WorkoutActivityLink.activity_id == internal_id
+                ),
+            ),
+            (
+                "workout_segments",
+                sa_delete(WorkoutSegment).where(
+                    WorkoutSegment.activity_id == internal_id
+                ),
+            ),
         ]
         for name, stmt in statements:
             result = await session.execute(stmt)
@@ -447,19 +499,32 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
             .values(activity_id=None, linked_at=None)
         )
         await session.execute(
-            update(RacePlan).where(RacePlan.activity_id == internal_id).values(activity_id=None)
+            update(RacePlan)
+            .where(RacePlan.activity_id == internal_id)
+            .values(activity_id=None)
         )
         await session.execute(
             update(Note).where(Note.activity_id == strava_id).values(activity_id=None)
         )
 
         primary_sessions = (
-            await session.execute(
-                select(RaceSession.id).where(RaceSession.primary_activity_id == strava_id)
+            (
+                await session.execute(
+                    select(RaceSession.id).where(
+                        RaceSession.primary_activity_id == strava_id
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if primary_sessions:
-            for model in (RaceSessionAthlete, RaceSessionGap, RaceSessionEvent, RaceSessionSegment):
+            for model in (
+                RaceSessionAthlete,
+                RaceSessionGap,
+                RaceSessionEvent,
+                RaceSessionSegment,
+            ):
                 await session.execute(
                     sa_delete(model).where(model.session_id.in_(primary_sessions))
                 )
@@ -474,9 +539,7 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
             .values(activity_id=None)
         )
 
-        await session.execute(
-            sa_delete(Activity).where(Activity.id == internal_id)
-        )
+        await session.execute(sa_delete(Activity).where(Activity.id == internal_id))
         deleted["activities"] = 1
 
         if get_settings().athlete_id:

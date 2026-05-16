@@ -69,7 +69,7 @@ Power is computed at sync time and cached; the page never recomputes it on load.
 - Elevation profile
 - Power (hidden by default — click the **Pwr** toggle to show the wattage series)
 
-On mobile, the stream chart includes a scrubber below the plot so you can move through the activity without accidentally starting a zoom selection. Expanding the stream chart fullscreen keeps the normal multi-stream chart layout and places the stream toggles in a compact row above the plot. Use the toggles to show or hide heart rate, pace, GAP, WAP, True Pace, altitude, cadence, or power without losing the wider fullscreen chart area.
+On mobile, the stream chart includes a scrubber below the plot so you can move through the activity without accidentally starting a zoom selection. When the chart is zoomed, the scrubber is constrained to that selected time or distance range, so horizontal movement stays inside the visible section. Expanding the stream chart fullscreen keeps the normal multi-stream chart layout and places the stream toggles in a compact row above the plot. Use the toggles to show or hide heart rate, pace, GAP, WAP, True Pace, altitude, cadence, or power without losing the wider fullscreen chart area.
 
 On desktop, drag across the stream chart or click two positions to zoom into a specific time or distance range. On mobile, drag across the chart to zoom; a simple tap or scrub only moves the hover position. The visible y-axes rescale to the selected section, and **Reset Zoom** or a double-click restores the full activity.
 
