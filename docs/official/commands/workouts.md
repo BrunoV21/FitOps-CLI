@@ -229,6 +229,29 @@ fitops workouts history --limit 10 --sport Run
 
 ---
 
+### `fitops workouts summary`
+
+Show a stored-data summary of completed workout sessions.
+
+```bash
+fitops workouts summary
+fitops workouts summary --period month --sport run
+fitops workouts summary --period all --json
+```
+
+The summary reads from saved `workout_activity_links`, `workout_segments`, and linked `activities` rows. It does not rescore workouts, fetch streams, or recompute compliance during the read.
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--period week\|month\|year\|all` | `month` | Time window for completed linked activities |
+| `--sport TYPE` | `total` | `run`, `cycle`, `total`, or an exact Strava sport type |
+
+The JSON output includes `_meta`, a `summary` object, and a `data_availability` block that marks `recomputed` as `false`.
+
+---
+
 ## Compliance Scoring
 
 Each segment gets a `compliance_score` (0.0–1.0) computed as:

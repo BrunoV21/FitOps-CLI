@@ -7,6 +7,7 @@ from datetime import UTC
 import typer
 from sqlalchemy import desc, select
 
+from fitops.analytics.workout_summary import get_workout_summary, normalize_period
 from fitops.backup.event_sync import trigger_cli
 from fitops.config.settings import get_settings
 from fitops.db.migrations import init_db
@@ -22,6 +23,7 @@ from fitops.output.text_formatter import (
     print_workout_detail,
     print_workout_history,
     print_workout_simulate,
+    print_workout_summary,
     print_workouts_list,
 )
 from fitops.utils.exceptions import NotAuthenticatedError
@@ -432,6 +434,57 @@ def history(
         typer.echo(json.dumps(out, indent=2, default=str))
     else:
         print_workout_history(out)
+
+
+@app.command("summary")
+def summary(
+    period: str = typer.Option(
+        "month",
+        "--period",
+        help="Summary period: week, month, year, or all.",
+    ),
+    sport: str | None = typer.Option(
+        None,
+        "--sport",
+        help="Sport filter: run, cycle, total, or an exact Strava sport type.",
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Summarize completed workout sessions from stored scores and activity rows."""
+    init_db()
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+
+    period = normalize_period(period)
+    summary_data = asyncio.run(
+        get_workout_summary(
+            settings.athlete_id,
+            period=period,
+            sport=sport or "total",
+        )
+    )
+    filters = {"period": period, "sport": sport or "total"}
+    out = {
+        "_meta": make_meta(
+            total_count=summary_data["summary"]["completed_sessions"],
+            filters_applied=filters,
+        ),
+        "summary": summary_data,
+        "data_availability": {
+            "source": "stored workout_activity_links, workout_segments, and activities",
+            "recomputed": False,
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_workout_summary(out)
 
 
 @app.command("compliance")

@@ -8,11 +8,88 @@
     <p class="page-title">Workouts</p>
     <p class="page-subtitle">Linked workout definitions and compliance scores</p>
   </div>
-  <div style="display:flex;gap:8px;">
-    <a href="/workouts/create" class="btn">+ Create Workout</a>
-    <a href="/workouts/simulate" class="btn">Simulate on Route</a>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+      <a href="/workouts/create" class="btn">+ Create Workout</a>
+      <a href="/workouts/simulate" class="btn">Simulate on Route</a>
+    </div>
+    <div class="period-tabs">
+      {% for p, lbl in [('week','This Week'),('month','This Month'),('year','This Year'),('all','All Time')] %}
+      <a href="/workouts?period={{ p }}&view={{ view }}" class="period-tab {% if period == p %}active{% endif %}">{{ lbl }}</a>
+      {% endfor %}
+    </div>
+    <div class="period-tabs">
+      <a href="/workouts?period={{ period }}&view=run" class="period-tab {% if view == 'run' %}active{% endif %}">Run</a>
+      <a href="/workouts?period={{ period }}&view=cycle" class="period-tab {% if view == 'cycle' %}active{% endif %}">Cycle</a>
+      <a href="/workouts?period={{ period }}&view=total" class="period-tab {% if view == 'total' %}active{% endif %}">Total</a>
+    </div>
   </div>
 </div>
+
+{% if workout_summary %}
+{% set ws = workout_summary.summary %}
+<div class="stats-block">
+  <div class="grid-4">
+    <div class="panel panel--accent-blue" style="--delay:0ms">
+      <p class="panel-label">Completed — {{ workout_summary.period_label }}</p>
+      <p class="panel-metric">{{ ws.completed_sessions }}</p>
+      <p class="panel-sub">{{ ws.unique_completed_workouts }} different workouts</p>
+    </div>
+    <div class="panel panel--accent" style="--delay:40ms">
+      <p class="panel-label">Average Compliance</p>
+      <p class="panel-metric">{% if ws.avg_compliance_pct is not none %}{{ ws.avg_compliance_pct }}<span class="panel-unit">%</span>{% else %}—{% endif %}</p>
+      <p class="panel-sub">{{ ws.scored_sessions }} scored · {{ ws.compliance_coverage_pct }}% coverage</p>
+    </div>
+    <div class="panel panel--accent-amber" style="--delay:80ms">
+      <p class="panel-label">Workout Time</p>
+      <p class="panel-metric panel-metric--md">{{ ws.total_duration_formatted }}</p>
+      <p class="panel-sub">{{ ws.total_distance_km }} km total distance</p>
+    </div>
+    <div class="panel panel--accent-purple" style="--delay:120ms">
+      <p class="panel-label">Segments In Target</p>
+      <p class="panel-metric">{% if ws.segments_in_target_pct is not none %}{{ ws.segments_in_target_pct }}<span class="panel-unit">%</span>{% else %}—{% endif %}</p>
+      <p class="panel-sub">{{ ws.segment_count }} stored segments</p>
+    </div>
+  </div>
+  <div class="grid-4">
+    <div class="panel" style="--delay:140ms">
+      <p class="panel-label">Library</p>
+      <p class="panel-metric">{{ ws.total_definitions }}</p>
+      <p class="panel-sub">{{ ws.unlinked_definitions }} unlinked · {{ ws.planned_definitions }} planned</p>
+    </div>
+    <div class="panel panel--accent-blue" style="--delay:160ms">
+      <p class="panel-label">Most Repeated</p>
+      {% if ws.most_repeated_workout %}
+      <p class="panel-metric--sm" style="margin-top:10px;color:var(--text-primary);font-weight:700;line-height:1.25;">{{ ws.most_repeated_workout.name }}</p>
+      <p class="panel-sub">{{ ws.most_repeated_workout.sessions }} sessions</p>
+      {% else %}
+      <p class="panel-metric">—</p>
+      <p class="panel-sub">No completed workouts</p>
+      {% endif %}
+    </div>
+    <div class="panel panel--accent" style="--delay:180ms">
+      <p class="panel-label">Best Compliance</p>
+      {% if ws.best_compliance_workout %}
+      <p class="panel-metric--sm" style="margin-top:10px;color:var(--text-primary);font-weight:700;line-height:1.25;">{{ ws.best_compliance_workout.name }}</p>
+      <p class="panel-sub">{{ ws.best_compliance_workout.avg_compliance_pct }}% · {{ ws.best_compliance_workout.sessions }} scored</p>
+      {% else %}
+      <p class="panel-metric">—</p>
+      <p class="panel-sub">No scored workouts</p>
+      {% endif %}
+    </div>
+    <div class="panel panel--accent-amber" style="--delay:200ms">
+      <p class="panel-label">Latest Completed</p>
+      {% if ws.latest_completed %}
+      <p class="panel-metric--sm" style="margin-top:10px;color:var(--text-primary);font-weight:700;line-height:1.25;">{{ ws.latest_completed.name }}</p>
+      <p class="panel-sub">Activity {{ ws.latest_completed.activity_id }}</p>
+      {% else %}
+      <p class="panel-metric">—</p>
+      <p class="panel-sub">No linked activity yet</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% if workouts %}
 <div class="table-wrap">

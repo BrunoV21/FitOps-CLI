@@ -1372,6 +1372,61 @@ def print_workout_history(data: dict) -> None:
     console.print(table)
 
 
+def print_workout_summary(data: dict) -> None:
+    summary_data = data.get("summary") or {}
+    summary = summary_data.get("summary") or {}
+    period_label = summary_data.get("period_label") or "Selected Period"
+
+    console.print(f"\n[bold]Workout Summary[/bold]  [dim]{period_label}[/dim]\n")
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    table.add_column("Context")
+
+    avg_compliance = summary.get("avg_compliance_pct")
+    segments_in_target = summary.get("segments_in_target_pct")
+    most_repeated = summary.get("most_repeated_workout") or {}
+    best_compliance = summary.get("best_compliance_workout") or {}
+
+    table.add_row(
+        "Completed sessions",
+        str(summary.get("completed_sessions", 0)),
+        f"{summary.get('unique_completed_workouts', 0)} different workouts",
+    )
+    table.add_row(
+        "Average compliance",
+        f"{avg_compliance}%" if avg_compliance is not None else "-",
+        f"{summary.get('scored_sessions', 0)} scored sessions",
+    )
+    table.add_row(
+        "Workout time",
+        summary.get("total_duration_formatted") or "-",
+        f"{summary.get('total_distance_km', 0)} km",
+    )
+    table.add_row(
+        "Segments in target",
+        f"{segments_in_target}%" if segments_in_target is not None else "-",
+        f"{summary.get('segment_count', 0)} stored segments",
+    )
+    table.add_row(
+        "Most repeated",
+        most_repeated.get("name") or "-",
+        f"{most_repeated.get('sessions', 0)} sessions"
+        if most_repeated
+        else "No completed workouts",
+    )
+    table.add_row(
+        "Best compliance",
+        best_compliance.get("name") or "-",
+        f"{best_compliance.get('avg_compliance_pct')}%"
+        if best_compliance
+        else "No scored workouts",
+    )
+
+    console.print(table)
+
+
 def print_workout_compliance(data: dict) -> None:
     workout_name = data.get("workout_name") or "Workout"
     overall = data.get("overall_compliance_score")

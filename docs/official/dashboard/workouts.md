@@ -4,12 +4,25 @@ The Workouts page (`/workouts`) is where you build structured training sessions,
 
 ## Workout Library
 
-The main workouts list shows every workout you've created. Each entry displays:
+The Workouts page starts with a summary dashboard for the selected period and sport. It shows:
+
+- Completed workout sessions
+- Number of different workouts completed
+- Average compliance from stored scores
+- Total workout time and distance
+- Scored coverage, so you can see how many sessions have compliance data
+- Segment in-target rate from stored segment scores
+- Most repeated workout, best compliance workout, and latest completed workout
+
+Use the period tabs (`This Week`, `This Month`, `This Year`, `All Time`) and sport tabs (`Run`, `Cycle`, `Total`) to change the dashboard. The cards use saved workout links, saved segment compliance, and activity summary rows; the page does not rescore workouts or fetch streams while rendering.
+
+Below the dashboard, the main workouts list shows every workout you've created. Each entry displays:
 
 - Workout name and sport type
-- Target duration
-- Tags (e.g. `threshold`, `long run`, `recovery`)
-- A link to the detail view
+- Last linked date
+- Number of linked sessions
+- Average stored compliance score
+- Stored segment count
 
 Click a workout to open its full detail — the structured segments, any linked Strava activities, and the compliance breakdown.
 

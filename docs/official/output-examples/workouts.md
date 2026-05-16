@@ -74,6 +74,29 @@ fitops workouts history --limit 5
 
 ---
 
+## `fitops workouts summary`
+
+```bash
+fitops workouts summary --period month
+```
+
+```
+Workout Summary  This Month
+
+  Metric                 Value        Context
+ ─────────────────────────────────────────────────
+  Completed sessions     8            5 different workouts
+  Average compliance     84%          7 scored sessions
+  Workout time           6:42:00      74.3 km
+  Segments in target     76%          48 stored segments
+  Most repeated          Threshold Tuesday  3 sessions
+  Best compliance        Easy Aerobic       94%
+```
+
+The summary uses stored workout links, stored segment scores, and activity summary rows. It does not recompute compliance during the read.
+
+---
+
 ## JSON output (`--json`)
 
 ```bash

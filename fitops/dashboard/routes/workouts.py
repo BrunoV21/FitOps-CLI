@@ -15,6 +15,7 @@ from fitops.analytics.training_scores import (
     compute_anaerobic_score,
 )
 from fitops.analytics.weather_pace import weather_row_to_dict
+from fitops.analytics.workout_summary import get_workout_summary, normalize_period
 from fitops.backup.event_sync import trigger_async
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.race import get_all_courses, get_course
@@ -122,6 +123,17 @@ def _fmt_pace(pace_s: float | None) -> str | None:
         return None
     m, s = divmod(int(pace_s), 60)
     return f"{m}:{s:02d}"
+
+
+def _fmt_date(value) -> str:
+    if value is None:
+        return "—"
+    if hasattr(value, "strftime"):
+        return value.strftime("%d %b %Y")
+    try:
+        return datetime.datetime.fromisoformat(str(value)).strftime("%d %b %Y")
+    except ValueError:
+        return str(value)[:10]
 
 
 def _segment_target_label(seg_dict: dict) -> str:
@@ -452,13 +464,21 @@ def register(templates: Jinja2Templates) -> APIRouter:
         )
 
     @router.get("/workouts", response_class=HTMLResponse)
-    async def workouts_list(request: Request):
+    async def workouts_list(
+        request: Request,
+        period: str = "month",
+        view: str = "total",
+    ):
         from fitops.workouts.loader import list_workout_files
 
         settings = get_settings()
         athlete_id = settings.athlete_id
+        period = normalize_period(period)
+        if view not in {"run", "cycle", "total"}:
+            view = "total"
 
         rows = []
+        workout_summary = None
         if athlete_id:
             # Auto-import any markdown-only workouts that have no DB record yet
             async with get_async_session() as session:
@@ -501,61 +521,69 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             workout_ids = [w.id for w in workouts]
             session_counts: dict[int, int] = {}
+            avg_compliance: dict[int, float | None] = {}
+            latest_linked_at: dict[int, datetime.datetime | None] = {}
+            segment_counts: dict[int, int] = {}
             if workout_ids:
                 async with get_async_session() as session:
                     cnt_result = await session.execute(
                         select(
                             WorkoutActivityLink.workout_id,
                             func.count(WorkoutActivityLink.id).label("cnt"),
+                            func.avg(WorkoutActivityLink.compliance_score).label(
+                                "avg_compliance"
+                            ),
+                            func.max(WorkoutActivityLink.linked_at).label(
+                                "latest_linked_at"
+                            ),
                         )
                         .where(WorkoutActivityLink.workout_id.in_(workout_ids))
                         .group_by(WorkoutActivityLink.workout_id)
                     )
-                    session_counts = {
-                        row.workout_id: row.cnt for row in cnt_result.all()
+                    for row in cnt_result.all():
+                        session_counts[row.workout_id] = row.cnt
+                        avg_compliance[row.workout_id] = row.avg_compliance
+                        latest_linked_at[row.workout_id] = row.latest_linked_at
+
+                    seg_count_result = await session.execute(
+                        select(
+                            WorkoutSegment.workout_id,
+                            func.count(WorkoutSegment.id).label("cnt"),
+                        )
+                        .where(WorkoutSegment.workout_id.in_(workout_ids))
+                        .group_by(WorkoutSegment.workout_id)
+                    )
+                    segment_counts = {
+                        row.workout_id: row.cnt for row in seg_count_result.all()
                     }
 
             for w in workouts:
-                async with get_async_session() as session:
-                    seg_result = await session.execute(
-                        select(WorkoutSegment).where(WorkoutSegment.workout_id == w.id)
-                    )
-                    segments = list(seg_result.scalars().all())
-
-                seg_rows = []
-                for s in segments:
-                    d = s.to_dict()
-                    seg_rows.append(
-                        {
-                            **d,
-                            "target_label": _segment_target_label(d),
-                            "compliance_pct": round(s.compliance_score * 100)
-                            if s.compliance_score is not None
-                            else None,
-                        }
-                    )
+                compliance = avg_compliance.get(w.id)
+                linked_at = latest_linked_at.get(w.id) or w.linked_at
                 rows.append(
                     {
                         "id": w.id,
                         "name": w.name,
                         "sport_type": w.sport_type,
                         "status": w.status,
-                        "linked_at": w.linked_at.strftime("%d %b %Y")
-                        if w.linked_at
-                        else "—",
+                        "linked_at": _fmt_date(linked_at),
                         "compliance_score": (
-                            f"{w.compliance_score * 100:.0f}%"
-                            if w.compliance_score is not None
+                            f"{compliance * 100:.0f}%"
+                            if compliance is not None
                             else "—"
                         ),
-                        "compliance_pct": round(w.compliance_score * 100)
-                        if w.compliance_score is not None
+                        "compliance_pct": round(compliance * 100)
+                        if compliance is not None
                         else None,
-                        "segment_count": len(segments),
+                        "segment_count": segment_counts.get(w.id, 0),
                         "session_count": session_counts.get(w.id, 0),
-                        "segments": seg_rows,
                     }
                 )
+            workout_summary = await get_workout_summary(
+                athlete_id,
+                period=period,
+                sport=view,
+            )
 
         return templates.TemplateResponse(
             request,
@@ -563,6 +591,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             {
                 "request": request,
                 "workouts": rows,
+                "workout_summary": workout_summary,
+                "period": period,
+                "view": view,
                 "active_page": "workouts",
             },
         )
