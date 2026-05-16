@@ -4,6 +4,8 @@ Sync activities from Strava into the local database.
 
 Sync commands print a progress summary by default. Add `--json` for structured output.
 
+If Strava webhooks are configured, webhook events become the primary automatic sync path. The dashboard's periodic polling loop is skipped in `webhook` mode, but the `fitops sync` commands remain available for manual backfills and recovery.
+
 ## Commands
 
 ### `fitops sync run`
@@ -132,6 +134,7 @@ fitops sync status
 
 - **Incremental:** fetches activities since `last_sync_at` minus a 3-day overlap window, to catch late uploads
 - **Full:** fetches all activities from the beginning of your Strava history
+- **Webhook:** imports or refreshes a specific activity when Strava sends a create/update event, and removes local data when Strava sends a delete event
 - Activities are upserted — running sync twice is safe
 - **Weather auto-fetch:** for each newly synced activity that has GPS coordinates, weather conditions are automatically fetched from Open-Meteo and stored. This enables WAP, True Pace, and heat factor calculations without any extra steps.
 
@@ -146,5 +149,6 @@ fitops weather fetch --all
 - [First Sync Guide](../getting-started/first-sync.md)
 - [`fitops activities list`](./activities.md) — browse synced activities
 - [`fitops weather`](./weather.md) — weather commands and backfill
+- [`fitops webhooks`](./webhooks.md) — event-driven Strava sync
 
 ← [Commands Reference](./index.md)

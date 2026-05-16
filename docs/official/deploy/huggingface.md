@@ -49,25 +49,14 @@ You can also pass `--hf-token` via the `HF_TOKEN` env var and `--github-token` v
 2. **Prompts for a dashboard password** and bcrypt-hashes it.
 3. **Creates a private HF Space** (Docker SDK) and uploads the container files.
 4. **Sets all secrets** on the Space (password hash, TOTP secret, session key, sync token, GitHub credentials).
-5. **Prints a GitHub Actions YAML** to add to your backup repo.
+5. **Configures GitHub Actions** in your backup repo for keepalive and backup restore sync.
+6. **Prints the Strava webhook callback URL** for this deployed Space.
 
 ---
 
 ## GitHub Actions Setup
 
-After running `fitops deploy hf`, copy the printed YAML into your backup repository at:
-
-```
-.github/workflows/fitops.yml
-```
-
-Then add the sync token as a repository secret named `FITOPS_SYNC_TOKEN`:
-
-```
-GitHub repo → Settings → Secrets and variables → Actions → New repository secret
-Name: FITOPS_SYNC_TOKEN
-Value: <sync token printed by fitops deploy hf>
-```
+`fitops deploy hf` creates or updates `.github/workflows/fitops.yml` in your backup repository and stores the `FITOPS_SYNC_TOKEN` GitHub Actions secret automatically.
 
 The workflow has two jobs:
 
@@ -75,6 +64,33 @@ The workflow has two jobs:
 |---|---|---|
 | `keepalive` | Every 20 minutes (cron) | `GET /health` — prevents the Space from sleeping |
 | `sync` | Push to `main` | `POST /api/internal/sync` — restores the latest backup |
+
+## Strava Webhook Setup
+
+Webhook sync is available for the deployed HF dashboard because it has a public HTTPS URL. It is not available for the normal local dashboard at `localhost`.
+
+After deployment, the command prints:
+
+```text
+Strava webhook sync:
+  Callback URL: https://<owner>-<space>.hf.space/api/strava/webhook
+  Strava app callback domain: <owner>-<space>.hf.space
+```
+
+Use the printed **Callback URL** when enabling webhooks:
+
+```bash
+fitops webhooks setup --callback-url https://<owner>-<space>.hf.space/api/strava/webhook
+fitops backup create --to github
+```
+
+If the Strava developer settings page asks for an **Authorization Callback Domain**, enter the printed domain only:
+
+```text
+<owner>-<space>.hf.space
+```
+
+Do not enter `localhost` for webhook sync. Strava cannot call your local machine's dashboard.
 
 ---
 

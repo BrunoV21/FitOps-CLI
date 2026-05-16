@@ -128,6 +128,7 @@ def deploy_hf(
     space_url = f"https://huggingface.co/spaces/{hf_repo}"
     app_url = f"https://{owner}-{space_name}.hf.space"
     app_url_display = f"{app_url}/"
+    webhook_url = f"{app_url}/api/strava/webhook"
 
     typer.echo(f"  Space:   {space_url}")
     typer.echo(f"  App URL: {app_url_display}")
@@ -138,6 +139,14 @@ def deploy_hf(
 
     typer.echo("\nDone! Your dashboard will be live in a few minutes.")
     typer.echo(f"\n  Dashboard → {app_url_display}")
+    typer.echo("\nStrava webhook sync:")
+    typer.echo(f"  Callback URL: {webhook_url}")
+    typer.echo(f"  Strava app callback domain: {owner}-{space_name}.hf.space")
+    typer.echo(
+        "  After the Space is live, enable it with:\n"
+        f"    fitops webhooks setup --callback-url {webhook_url}\n"
+        "    fitops backup create --to github"
+    )
 
 
 # ── GitHub helpers ───────────────────────────────────────────────────────────

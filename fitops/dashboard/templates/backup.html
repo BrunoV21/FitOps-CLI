@@ -72,6 +72,43 @@
   </div>
 </section>
 
+<!-- ── Strava Webhook Sync ───────────────────────────────────── -->
+<section class="panel" id="panel-webhook">
+  <div class="panel-header">
+    <span class="panel-title">Strava Webhook Sync</span>
+    <span id="webhook-badge" class="status-badge badge-off">loading</span>
+  </div>
+  <div class="panel-body">
+    <p class="help-text">
+      Webhooks let Strava notify FitOps when activities are created, updated or deleted.
+      When enabled, FitOps stops periodic polling and syncs from Strava events instead.
+    </p>
+    <div class="form-row">
+      <div class="form-field">
+        <label class="field-label">Callback URL</label>
+        <input id="webhook-url" type="url" class="field-input"
+               placeholder="https://your-domain.example/api/strava/webhook"
+               autocomplete="off" />
+      </div>
+      <div class="form-field form-field--narrow">
+        <label class="field-label">Sync Mode</label>
+        <select id="sync-mode" class="field-input">
+          <option value="webhook">Webhook</option>
+          <option value="polling">Polling</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="setupWebhook()">Enable Webhook Sync</button>
+      <button class="btn btn-ghost" onclick="saveSyncMode()">Save Mode</button>
+      <button class="btn btn-danger" onclick="deleteWebhook()">Delete Subscription</button>
+      <span id="webhook-msg" class="inline-msg"></span>
+    </div>
+    <div id="webhook-events" style="margin-top:12px;"></div>
+  </div>
+</section>
+
 <!-- ── Schedule ───────────────────────────────────────────────── -->
 <section class="panel" id="panel-schedule">
   <div class="panel-header">
@@ -221,6 +258,83 @@ async function removeGithub() {
   document.getElementById('gh-msg').textContent = 'Removed.';
 }
 
+/* ── Strava webhook sync ─────────────────────────────────────── */
+async function loadWebhookStatus() {
+  const badge = document.getElementById('webhook-badge');
+  const events = document.getElementById('webhook-events');
+  try {
+    const res = await fetch('/api/strava/webhook/status');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    document.getElementById('webhook-url').value = data.callback_url || '';
+    document.getElementById('sync-mode').value = data.sync_mode || 'polling';
+    badge.textContent = data.configured ? `${data.sync_mode}` : 'not configured';
+    badge.className = `status-badge ${data.configured && data.sync_mode === 'webhook' ? 'badge-ok' : 'badge-off'}`;
+    const rows = (data.recent_events || []).slice(0, 5);
+    if (!rows.length) {
+      events.innerHTML = '<p class="empty-state-inline">No webhook events received yet.</p>';
+      return;
+    }
+    events.innerHTML = `<table class="data-table"><thead><tr><th>Event</th><th>Activity</th><th>Status</th><th>Received</th></tr></thead><tbody>${rows.map(e => `
+      <tr>
+        <td>${e.aspect_type}</td>
+        <td class="mono">${e.object_id}</td>
+        <td>${e.status}</td>
+        <td class="text-muted">${(e.received_at || '').slice(0,19).replace('T',' ')}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (err) {
+    badge.textContent = 'error';
+    badge.className = 'status-badge badge-off';
+    events.innerHTML = `<p class="inline-msg msg-error">${err.message}</p>`;
+  }
+}
+
+async function setupWebhook() {
+  const callback_url = document.getElementById('webhook-url').value.trim();
+  const msg = document.getElementById('webhook-msg');
+  if (!callback_url) { setMsg(msg, 'Enter a public HTTPS callback URL.', 'error'); return; }
+  setMsg(msg, 'Creating Strava subscription…', 'info');
+  try {
+    const res = await fetch('/api/strava/webhook/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    setMsg(msg, `Enabled — subscription ${data.subscription_id}`, 'ok');
+    loadWebhookStatus();
+  } catch (err) { setMsg(msg, err.message, 'error'); }
+}
+
+async function saveSyncMode() {
+  const mode = document.getElementById('sync-mode').value;
+  const msg = document.getElementById('webhook-msg');
+  try {
+    const res = await fetch('/api/strava/webhook/sync-mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    setMsg(msg, `Sync mode: ${data.sync_mode}`, 'ok');
+    loadWebhookStatus();
+  } catch (err) { setMsg(msg, err.message, 'error'); }
+}
+
+async function deleteWebhook() {
+  const msg = document.getElementById('webhook-msg');
+  if (!confirm('Delete the Strava webhook subscription?')) return;
+  try {
+    const res = await fetch('/api/strava/webhook/subscription', { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    setMsg(msg, 'Deleted. Polling fallback is active.', 'ok');
+    loadWebhookStatus();
+  } catch (err) { setMsg(msg, err.message, 'error'); }
+}
+
 /* ── Schedule ────────────────────────────────────────────────── */
 async function saveSchedule() {
   const interval = parseInt(document.getElementById('sched-interval').value);
@@ -364,6 +478,9 @@ function setMsg(el, text, type) {
 }
 
 /* Auto-load backup list on page load */
-document.addEventListener('DOMContentLoaded', loadBackups);
+document.addEventListener('DOMContentLoaded', () => {
+  loadBackups();
+  loadWebhookStatus();
+});
 </script>
 {% endblock %}

@@ -48,6 +48,7 @@ export default defineConfig({
           { text: 'race', link: '/commands/race' },
           { text: 'notes', link: '/commands/notes' },
           { text: 'backup', link: '/commands/backup' },
+          { text: 'webhooks', link: '/commands/webhooks' },
           { text: 'admin', link: '/commands/admin' },
         ]
       },

@@ -15,11 +15,16 @@ from starlette.responses import RedirectResponse
 from fitops.auth.session import SESSION_COOKIE, verify_token
 
 # Paths that never require a session (deploy mode)
-_EXEMPT_EXACT = {"/login", "/logout", "/health"}
+_EXEMPT_EXACT = {"/login", "/logout", "/health", "/api/strava/webhook"}
 _EXEMPT_PREFIX = ("/static/",)
 
 # Paths that never require a session (local mode)
-_LOCAL_EXEMPT_EXACT = {"/auth/local", "/auth/local/expired", "/health"}
+_LOCAL_EXEMPT_EXACT = {
+    "/auth/local",
+    "/auth/local/expired",
+    "/health",
+    "/api/strava/webhook",
+}
 _LOCAL_EXEMPT_PREFIX = ("/static/",)
 
 

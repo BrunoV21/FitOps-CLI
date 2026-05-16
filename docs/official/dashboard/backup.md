@@ -2,6 +2,8 @@
 
 The Backup page (`/backup`) lets you back up your entire FitOps data directory to GitHub, restore a previous backup, and set an automatic backup schedule — all without using the CLI.
 
+It also includes Strava webhook sync controls. Webhooks let Strava notify FitOps when activities are created, updated, or deleted, so a deployed dashboard can sync immediately instead of polling every few hours.
+
 ## Connecting GitHub
 
 Before you can back up, connect a GitHub repository:
@@ -48,8 +50,47 @@ For always-on automated backups without keeping the dashboard open, use the CLI:
 fitops backup schedule set --interval 24h
 ```
 
+## Strava Webhook Sync
+
+Use **Strava Webhook Sync** to register the dashboard as a Strava callback target.
+
+Webhook sync is supported for deployed FitOps dashboard servers. The callback URL must be public HTTPS and must end at the FitOps webhook endpoint:
+
+```text
+https://your-domain.example/api/strava/webhook
+```
+
+Use the URL for the deployed dashboard instance Strava can reach:
+
+| Environment | Callback URL |
+|-------------|--------------|
+| HuggingFace Space | `https://<space-host>/api/strava/webhook` |
+| Other deployed server | `https://<your-domain>/api/strava/webhook` |
+| Local dashboard | Not supported for webhook sync; use polling or manual sync |
+
+`localhost` is only reachable from your machine, so Strava cannot call `http://localhost:8888/api/strava/webhook`. For local FitOps use, keep sync mode as **Polling** or **Manual**.
+
+The dashboard creates the Strava push subscription through Strava's API, but FitOps must already have your Strava app credentials saved. If the Strava developer settings page asks for an **Authorization Callback Domain**, enter the deployed host only, without `https://` and without `/api/strava/webhook`.
+
+When webhook sync is enabled:
+
+- New Strava activities are imported automatically
+- Streams and weather are fetched after import
+- Activity updates refresh the local row
+- Activity deletions remove the local activity and dependent cached rows
+- The dashboard periodic polling loop is skipped
+
+The **Sync Mode** selector controls automatic Strava sync behavior:
+
+| Mode | Behavior |
+|------|----------|
+| Webhook | Use Strava webhooks as the automatic sync trigger |
+| Polling | Use the periodic dashboard auto-sync fallback |
+| Manual | Only sync when you click Sync or run the CLI |
+
 ## See Also
 
 - [`fitops backup`](../commands/backup.md) — CLI reference for all backup commands
+- [`fitops webhooks`](../commands/webhooks.md) — CLI reference for webhook sync
 
 ← [Dashboard Overview](./index.md)
