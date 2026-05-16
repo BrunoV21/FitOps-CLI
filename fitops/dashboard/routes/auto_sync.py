@@ -39,6 +39,11 @@ async def run_auto_sync_scheduler() -> None:
 
 
 async def _maybe_auto_sync() -> None:
+    from fitops.strava.webhook_config import get_sync_mode
+
+    if get_sync_mode() != "polling":
+        return
+
     settings = get_settings()
     if not settings.is_authenticated:
         return

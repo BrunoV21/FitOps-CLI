@@ -25,6 +25,7 @@ from fitops.db.models.race_session import (  # noqa: F401
     RaceSessionGap,
     RaceSessionSegment,
 )
+from fitops.db.models.strava_webhook_event import StravaWebhookEvent  # noqa: F401
 from fitops.db.models.workout import Workout  # noqa: F401
 from fitops.db.models.workout_activity_link import WorkoutActivityLink  # noqa: F401
 from fitops.db.models.workout_course import WorkoutCourse  # noqa: F401

@@ -21,6 +21,7 @@ CLI_DOCS: dict[str, str] = {
     "race": f"{DOC_BASE}/commands/race",
     "notes": f"{DOC_BASE}/commands/notes",
     "backup": f"{DOC_BASE}/commands/backup",
+    "webhooks": f"{DOC_BASE}/commands/webhooks",
     "admin": f"{DOC_BASE}/commands/admin",
     "deploy": f"{DOC_BASE}/deploy/huggingface",
     "dashboard": f"{DOC_BASE}/dashboard/",

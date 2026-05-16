@@ -195,9 +195,24 @@ class Activity(Base):
         raw_cadence = data.get("average_cadence")
         adjusted_cadence = self.get_adjusted_cadence(raw_cadence, sport_type)
 
+        def parse_date(val: Any) -> datetime | None:
+            if val is None:
+                return None
+            if isinstance(val, datetime):
+                return val
+            try:
+                return datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+            except ValueError:
+                return None
+
         self.name = data.get("name", self.name)
         self.sport_type = sport_type
         self.workout_type = data.get("workout_type", self.workout_type)
+        if data.get("start_date") is not None:
+            self.start_date = parse_date(data.get("start_date"))
+        if data.get("start_date_local") is not None:
+            self.start_date_local = parse_date(data.get("start_date_local"))
+        self.timezone = data.get("timezone", self.timezone)
         self.distance_m = data.get("distance", self.distance_m)
         self.moving_time_s = data.get("moving_time", self.moving_time_s)
         self.elapsed_time_s = data.get("elapsed_time", self.elapsed_time_s)
@@ -220,7 +235,22 @@ class Activity(Base):
             self.description = desc
         self.calories = data.get("calories", self.calories)
         self.suffer_score = data.get("suffer_score", self.suffer_score)
+        self.device_name = data.get("device_name", self.device_name)
+        self.trainer = bool(data.get("trainer", self.trainer))
+        self.commute = bool(data.get("commute", self.commute))
+        self.manual = bool(data.get("manual", self.manual))
+        self.private = bool(data.get("private", self.private))
         self.kudos_count = data.get("kudos_count", self.kudos_count) or 0
         self.comment_count = data.get("comment_count", self.comment_count) or 0
+        if data.get("start_latlng"):
+            self.start_latlng = json.dumps(data.get("start_latlng"))
+        if data.get("end_latlng"):
+            self.end_latlng = json.dumps(data.get("end_latlng"))
+        if (map_data := data.get("map")) is not None:
+            self.map_summary_polyline = (map_data or {}).get(
+                "summary_polyline", self.map_summary_polyline
+            )
         self.gear_id = data.get("gear_id", self.gear_id)
+        self.upload_id = data.get("upload_id", self.upload_id)
+        self.external_id = data.get("external_id", self.external_id)
         self.updated_at = datetime.now(UTC)

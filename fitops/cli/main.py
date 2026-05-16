@@ -28,6 +28,7 @@ def _register_subapps() -> None:
     from fitops.cli.race import app as race_app
     from fitops.cli.sync import app as sync_app
     from fitops.cli.weather import app as weather_app
+    from fitops.cli.webhooks import app as webhooks_app
     from fitops.cli.workouts import app as workouts_app
 
     app.add_typer(
@@ -94,6 +95,11 @@ def _register_subapps() -> None:
         deploy_app,
         name="deploy",
         help=f"Deploy FitOps dashboard to cloud providers.\n\nDocs: {CLI_DOCS['deploy']}",
+    )
+    app.add_typer(
+        webhooks_app,
+        name="webhooks",
+        help=f"Manage Strava webhook sync.\n\nDocs: {CLI_DOCS['webhooks']}",
     )
 
 
