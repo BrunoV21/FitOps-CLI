@@ -90,13 +90,13 @@ def _fake_athlete_settings() -> MagicMock:
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     from starlette.testclient import TestClient
 
     from fitops.dashboard.server import create_app
     from fitops.db import migrations
 
-    migrations.create_all_tables = AsyncMock(return_value=None)
+    monkeypatch.setattr(migrations, "create_all_tables", AsyncMock(return_value=None))
     with TestClient(create_app()) as c:
         yield c
 
