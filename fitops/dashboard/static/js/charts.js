@@ -410,12 +410,22 @@ function _syncStreamMobileScrubber(chart, activeIdx = null) {
   if (!wrap || !input || !label || !chart) return;
 
   const labels = chart.data && chart.data.labels ? chart.data.labels : [];
-  const max = Math.max(0, labels.length - 1);
+  const fullMax = Math.max(0, labels.length - 1);
+  let min = 0;
+  let max = fullMax;
+  if (chart._streamZoomRange && chart._streamZoomRange.length === 2) {
+    const [zoomStart, zoomEnd] = chart._streamZoomRange;
+    min = Math.max(0, Math.min(fullMax, Math.min(zoomStart, zoomEnd)));
+    max = Math.max(0, Math.min(fullMax, Math.max(zoomStart, zoomEnd)));
+  }
+  input.min = String(min);
   input.max = String(max);
   if (activeIdx !== null && activeIdx !== undefined) {
-    input.value = String(Math.max(0, Math.min(max, Number(activeIdx))));
-  } else if (Number(input.value) > max) {
-    input.value = String(max);
+    const requestedIdx = Number(activeIdx);
+    input.value = String(Math.max(min, Math.min(max, Number.isFinite(requestedIdx) ? requestedIdx : min)));
+  } else if (Number(input.value) < min || Number(input.value) > max) {
+    const currentIdx = Number(input.value);
+    input.value = String(Math.max(min, Math.min(max, Number.isFinite(currentIdx) ? currentIdx : min)));
   }
   label.textContent = labels[Number(input.value)] || '0:00';
   wrap.hidden = labels.length < 2;
@@ -490,6 +500,7 @@ function _applyStreamZoomRange(chart, start, end) {
   chart.options.scales.x.max = hi;
   _updateStreamZoomYRanges(chart);
   _syncStreamZoomResetButton(chart);
+  _syncStreamMobileScrubber(chart);
   chart.update('none');
 }
 
@@ -512,6 +523,7 @@ function _clearStreamZoom(chart, shouldUpdate = true) {
     chart._streamZoomState.clickCurrent = null;
   }
   _syncStreamZoomResetButton(chart);
+  _syncStreamMobileScrubber(chart);
   if (shouldUpdate) chart.update('none');
 }
 
