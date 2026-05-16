@@ -24,7 +24,9 @@ def test_dashboard_webhook_endpoint_queues_event(monkeypatch):
     from starlette.testclient import TestClient
 
     with patch("fitops.db.migrations.create_all_tables", new_callable=AsyncMock):
-        with patch("fitops.dashboard.routes.backup.run_scheduler", new_callable=AsyncMock):
+        with patch(
+            "fitops.dashboard.routes.backup.run_scheduler", new_callable=AsyncMock
+        ):
             with patch(
                 "fitops.dashboard.routes.auto_sync.run_auto_sync_scheduler",
                 new_callable=AsyncMock,
@@ -88,7 +90,9 @@ async def test_process_webhook_payload_deduplicates_events(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_delete_activity_by_strava_id_removes_dependent_rows(tmp_path, monkeypatch):
+async def test_delete_activity_by_strava_id_removes_dependent_rows(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
     _write_tmp_config(tmp_path)
     _reset_settings_and_db()
@@ -147,8 +151,12 @@ async def test_delete_activity_by_strava_id_removes_dependent_rows(tmp_path, mon
         ).scalar_one_or_none() is None
         assert (await session.execute(select(ActivityStream))).scalars().all() == []
         assert (await session.execute(select(ActivityWeather))).scalars().all() == []
-        assert (await session.execute(select(ActivityCalibration))).scalars().all() == []
-        assert (await session.execute(select(WorkoutActivityLink))).scalars().all() == []
+        assert (
+            await session.execute(select(ActivityCalibration))
+        ).scalars().all() == []
+        assert (
+            await session.execute(select(WorkoutActivityLink))
+        ).scalars().all() == []
         plan = (await session.execute(select(RacePlan))).scalar_one()
         note = (await session.execute(select(Note))).scalar_one()
         assert plan.activity_id is None

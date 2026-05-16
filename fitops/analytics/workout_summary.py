@@ -143,9 +143,9 @@ async def get_workout_summary(
         segment_stmt = (
             select(
                 func.count(WorkoutSegment.id).label("segment_count"),
-                func.sum(
-                    func.coalesce(WorkoutSegment.target_achieved, 0)
-                ).label("segments_in_target"),
+                func.sum(func.coalesce(WorkoutSegment.target_achieved, 0)).label(
+                    "segments_in_target"
+                ),
                 func.avg(WorkoutSegment.time_in_target_pct).label(
                     "avg_time_in_target_pct"
                 ),
@@ -170,9 +170,7 @@ async def get_workout_summary(
 
     completed_sessions = len(session_rows)
     unique_completed_workouts = len({row.workout_id for row in session_rows})
-    scored_sessions = [
-        row for row in session_rows if row.compliance_score is not None
-    ]
+    scored_sessions = [row for row in session_rows if row.compliance_score is not None]
     avg_compliance = (
         sum(float(row.compliance_score) for row in scored_sessions)
         / len(scored_sessions)
@@ -229,9 +227,7 @@ async def get_workout_summary(
             1 for row in scored_sessions if float(row.compliance_score) >= 0.8
         ),
         "amber_50_79": sum(
-            1
-            for row in scored_sessions
-            if 0.5 <= float(row.compliance_score) < 0.8
+            1 for row in scored_sessions if 0.5 <= float(row.compliance_score) < 0.8
         ),
         "red_under_50": sum(
             1 for row in scored_sessions if float(row.compliance_score) < 0.5
@@ -265,9 +261,7 @@ async def get_workout_summary(
             if completed_sessions
             else 0,
             "segment_count": segment_count,
-            "segments_in_target_pct": round(
-                (segments_in_target / segment_count) * 100
-            )
+            "segments_in_target_pct": round((segments_in_target / segment_count) * 100)
             if segment_count
             else None,
             "avg_time_in_target_pct": round(segment_row.avg_time_in_target_pct)

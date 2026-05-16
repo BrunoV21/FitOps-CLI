@@ -68,7 +68,9 @@ def register() -> APIRouter:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
         callback_url = (payload.get("callback_url") or "").strip()
-        verify_token = (payload.get("verify_token") or "").strip() or secrets.token_urlsafe(24)
+        verify_token = (
+            payload.get("verify_token") or ""
+        ).strip() or secrets.token_urlsafe(24)
         if not callback_url:
             return JSONResponse({"error": "callback_url is required"}, status_code=400)
         if len(callback_url) > 255:

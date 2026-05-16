@@ -269,9 +269,7 @@ def test_workouts_dashboard_renders_summary(client, monkeypatch):
         "fitops.dashboard.routes.workouts.get_async_session",
         lambda: _empty_session_ctx(),
     )
-    monkeypatch.setattr(
-        "fitops.workouts.loader.list_workout_files", lambda: []
-    )
+    monkeypatch.setattr("fitops.workouts.loader.list_workout_files", lambda: [])
 
     response = client.get("/workouts?period=month&view=total")
 

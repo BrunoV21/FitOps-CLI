@@ -229,12 +229,8 @@ async def test_get_cached_training_load_for_activity_reads_snapshot_without_comp
     session.execute = AsyncMock(return_value=result)
 
     cache = {}
-    first = await get_cached_training_load_for_activity(
-        session, activity, cache=cache
-    )
-    second = await get_cached_training_load_for_activity(
-        session, activity, cache=cache
-    )
+    first = await get_cached_training_load_for_activity(session, activity, cache=cache)
+    second = await get_cached_training_load_for_activity(session, activity, cache=cache)
 
     assert first == {
         "date": "2026-04-06",

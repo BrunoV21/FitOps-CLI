@@ -91,7 +91,9 @@ def get_sync_mode() -> str:
 
 def save_sync_mode(mode: str) -> None:
     if mode not in VALID_SYNC_MODES:
-        raise ValueError(f"sync mode must be one of: {', '.join(sorted(VALID_SYNC_MODES))}")
+        raise ValueError(
+            f"sync mode must be one of: {', '.join(sorted(VALID_SYNC_MODES))}"
+        )
     data = _load()
     data.setdefault("sync", {})["mode"] = mode
     _save(data)
