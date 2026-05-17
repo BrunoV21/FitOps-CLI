@@ -124,6 +124,16 @@ def test_compose_stamp_shows_true_pace_without_percentage():
     assert "0.7%" not in stamp
 
 
+def test_compose_stamp_labels_cycling_true_pace_as_speed():
+    stamp = compose_stamp(
+        _activity(sport_type="Ride"),
+        weather={"true_pace_fmt": "32.4 km/h"},
+    )
+
+    assert "Speed 32.4 km/h" in stamp
+    assert "Pace 32.4 km/h" not in stamp
+
+
 def test_compose_stamp_shows_segment_true_pace_when_same_as_pace():
     stamp = compose_stamp(
         _activity(),

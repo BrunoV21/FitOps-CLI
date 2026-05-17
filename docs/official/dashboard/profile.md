@@ -76,7 +76,7 @@ Each stamp footer includes:
 - Activity-day training load when cached: CTL, ATL, TSB, and form label
 - Power — real watts if available, otherwise estimated power with source label
 - VO2max estimate
-- Weather-adjusted pace, race calibration, and linked workout segment details when available. Segment true pace is shown whenever it exists, even when it matches the displayed segment pace.
+- Weather-adjusted pace for runs or speed for cycling, race calibration, and linked workout segment details when available. Segment true pace is shown whenever it exists, even when it matches the displayed segment pace.
 - A link to the FitOps GitHub repo
 
 Training load values come from the cached snapshot for the activity date. Stamping does not recompute CTL/ATL/TSB; if that day's snapshot is missing, the form section is skipped.

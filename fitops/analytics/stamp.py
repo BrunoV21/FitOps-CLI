@@ -45,6 +45,10 @@ def _fmt_pace_s(pace_s: float | None) -> str | None:
     return f"{m}:{s:02d}/km"
 
 
+def _pace_speed_label(sport_type: str | None) -> str:
+    return "Pace" if (sport_type or "") in RUN_SPORT_TYPES else "Speed"
+
+
 def _fmt_dist(meters: float | None) -> str | None:
     if meters is None or meters <= 0:
         return None
@@ -160,10 +164,10 @@ def compose_stamp(
         lines.append("")
         lines.append("🌤 Conditions")
 
-        # Line 1: Pace
+        # Line 1: Pace / Speed
         true_pace_fmt = weather.get("true_pace_fmt")
         if true_pace_fmt:
-            lines.append(f"Pace {true_pace_fmt}")
+            lines.append(f"{_pace_speed_label(activity.sport_type)} {true_pace_fmt}")
 
         # Line 2: Temp · Hum
         row2_th: list[str] = []
