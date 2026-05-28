@@ -139,14 +139,7 @@ def deploy_hf(
 
     typer.echo("\nDone! Your dashboard will be live in a few minutes.")
     typer.echo(f"\n  Dashboard → {app_url_display}")
-    typer.echo("\nStrava webhook sync:")
-    typer.echo(f"  Callback URL: {webhook_url}")
-    typer.echo(f"  Strava app callback domain: {owner}-{space_name}.hf.space")
-    typer.echo(
-        "  Webhook sync is the default on this Space. It will be registered "
-        "automatically after Strava auth is restored or completed.\n"
-        "    fitops backup create --to github"
-    )
+    typer.echo(_format_webhook_setup_message(owner, space_name, webhook_url))
 
 
 # ── GitHub helpers ───────────────────────────────────────────────────────────
@@ -173,6 +166,27 @@ def _build_hf_space_secrets(
         "GITHUB_BACKUP_TOKEN": github_backup_token,
         "GITHUB_BACKUP_REPO": github_backup_repo,
     }
+
+
+def _format_webhook_setup_message(
+    owner: str, space_name: str, webhook_url: str
+) -> str:
+    callback_domain = f"{owner}-{space_name}.hf.space"
+    return (
+        "\nStrava webhook sync:\n"
+        f"  Configured webhook URL: {webhook_url}\n"
+        "  FitOps saved this URL in the HuggingFace Space as "
+        "FITOPS_WEBHOOK_CALLBACK_URL.\n\n"
+        "  To make Strava accept it, add this Authorization Callback Domain "
+        "in your Strava API app:\n"
+        f"    {callback_domain}\n\n"
+        "  Do not paste the full webhook URL into Strava's domain field. "
+        "Use the domain only.\n"
+        "  The webhook subscription will be registered automatically after "
+        "Strava auth is restored or completed.\n\n"
+        "  Then push your local data and Strava credentials to the backup:\n"
+        "    fitops backup create --to github"
+    )
 
 
 def _gh_headers(token: str) -> dict[str, str]:

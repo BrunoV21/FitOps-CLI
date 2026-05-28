@@ -69,12 +69,17 @@ The workflow has two jobs:
 
 Webhook sync is available for the deployed HF dashboard because it has a public HTTPS URL. It is not available for the normal local dashboard at `localhost`.
 
-`fitops deploy hf` sets the Space's default webhook callback URL:
+`fitops deploy hf` derives the Space's webhook callback URL from `--hf-repo`
+and stores it automatically as `FITOPS_WEBHOOK_CALLBACK_URL`. You do not pass
+the webhook URL yourself.
 
 ```text
 Strava webhook sync:
-  Callback URL: https://<owner>-<space>.hf.space/api/strava/webhook
-  Strava app callback domain: <owner>-<space>.hf.space
+  Configured webhook URL: https://<owner>-<space>.hf.space/api/strava/webhook
+  FitOps saved this URL in the HuggingFace Space as FITOPS_WEBHOOK_CALLBACK_URL.
+
+  To make Strava accept it, add this Authorization Callback Domain in your Strava API app:
+    <owner>-<space>.hf.space
 ```
 
 After the Space restores a backup with Strava app credentials, or after you complete Strava auth in the Space setup flow, FitOps automatically registers the Strava push subscription and switches the dashboard sync mode to `webhook`.
