@@ -196,6 +196,23 @@ def test_mobile_metric_grids_do_not_clip_values():
     assert ".grid-2,\n  .grid-4,\n  .stats-grid" in css
 
 
+def test_workout_detail_header_stacks_cleanly_on_mobile():
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+    workout_detail = Path("fitops/dashboard/templates/workouts/detail.html").read_text()
+
+    assert "workout-detail-header" in workout_detail
+    assert "workout-detail-title" in workout_detail
+    assert "workout-detail-actions" in workout_detail
+    assert "workout-score-card" in workout_detail
+    assert ".workout-detail-title {\n  min-width: 0;" in css
+    assert "overflow-wrap: anywhere;" in css
+    assert ".workout-detail-header {\n    flex-direction: column;" in css
+    assert ".workout-detail-actions {\n    width: 100%;" in css
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
+    assert ".workout-score-card {\n    width: 100%;" in css
+    assert ".workout-score-bar {\n    grid-column: 1;" in css
+
+
 def test_notes_use_shared_button_contract():
     for template_path in [
         "fitops/dashboard/templates/notes/create.html",

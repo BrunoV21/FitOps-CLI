@@ -809,6 +809,58 @@ canvas { max-height: 400px; }
   padding-left: 10px;
 }
 
+/* ── Workout Detail Header ──────────────────────────────────── */
+.workout-detail-header {
+  align-items: stretch;
+}
+.workout-detail-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.workout-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.workout-detail-title {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.workout-detail-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.workout-delete-form {
+  margin: 0;
+}
+.workout-score-card {
+  flex: 0 0 auto;
+  min-width: 126px;
+  text-align: right;
+}
+.workout-score-label {
+  margin: 0 0 4px;
+}
+.workout-score-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+.workout-score-bar {
+  width: 120px;
+  margin-top: 6px;
+  margin-left: auto;
+}
+
 /* ── Activity Analysis Section ───────────────────────────────── */
 .analysis-section {
   border: 1px solid var(--border);
@@ -1123,6 +1175,58 @@ body.sidebar-open .sidebar-backdrop { display: block; }
   /* Page header: stack vertically so tabs don't overflow */
   .page-header { flex-direction: column; gap: 10px; }
   .page-header > *:last-child { align-self: flex-start; }
+
+  /* Workout detail header: keep title, actions, and score readable */
+  .workout-detail-header {
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .workout-title-line {
+    align-items: flex-start;
+    gap: 8px 10px;
+  }
+  .workout-detail-title {
+    flex: 1 1 100%;
+    font-size: 18px;
+    line-height: 1.3;
+  }
+  .workout-detail-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .workout-detail-actions .btn,
+  .workout-delete-form {
+    width: 100%;
+  }
+  .workout-score-card {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px 14px;
+    text-align: left;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .workout-score-label {
+    margin: 0;
+  }
+  .workout-score-value {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    font-size: 34px;
+    text-align: right;
+  }
+  .workout-score-bar {
+    grid-column: 1;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
 
   /* Period tabs: wrap on small screens */
   .period-tabs { flex-wrap: wrap; }

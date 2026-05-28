@@ -13,10 +13,10 @@
 {# ── Header ──────────────────────────────────────────────────── #}
 <div class="mb-4">
   <a href="/workouts" class="back-link">← Workouts</a>
-  <div class="activity-title-row" style="margin-top:10px;">
-    <div style="flex:1;min-width:0;">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <h1 style="font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;">{{ workout.name }}</h1>
+  <div class="activity-title-row workout-detail-header">
+    <div class="workout-detail-main">
+      <div class="workout-title-line">
+        <h1 class="workout-detail-title">{{ workout.name }}</h1>
         <span class="badge
           {% if workout.status == 'completed' %}badge-green
           {% elif workout.status == 'planned' %}badge-dim
@@ -39,22 +39,22 @@
       <p class="activity-description">{{ workout.notes }}</p>
       {% endif %}
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+    <div class="workout-detail-actions">
       <a href="/workouts/{{ workout.id }}/edit" class="btn">Edit</a>
-      <form method="post" action="/workouts/{{ workout.id }}/delete" onsubmit="return confirm('Delete this workout definition and its linked compliance cache?');" style="margin:0;">
-        <button type="submit" class="btn" style="border-color:var(--accent-red);color:var(--accent-red);background:transparent;">Delete</button>
+      <form method="post" action="/workouts/{{ workout.id }}/delete" onsubmit="return confirm('Delete this workout definition and its linked compliance cache?');" class="workout-delete-form">
+        <button type="submit" class="btn btn-danger">Delete</button>
       </form>
     </div>
-	    {% if workout.compliance_pct is not none %}
-    <div style="text-align:right;flex-shrink:0;">
-      <p class="panel-label" style="margin:0 0 4px;">Overall Score</p>
-      <p style="font-size:28px;font-weight:700;color:
+    {% if workout.compliance_pct is not none %}
+    <div class="workout-score-card">
+      <p class="panel-label workout-score-label">Overall Score</p>
+      <p class="workout-score-value" style="color:
         {% if workout.compliance_pct >= 80 %}var(--accent-primary)
         {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
         {% else %}var(--accent-red){% endif %};line-height:1;">
         {{ workout.compliance_pct }}%
       </p>
-      <div class="compliance-bar-track" style="width:120px;margin-top:6px;">
+      <div class="compliance-bar-track workout-score-bar">
         <div class="compliance-bar-fill" style="width:{{ workout.compliance_pct }}%;background:
           {% if workout.compliance_pct >= 80 %}var(--accent-primary)
           {% elif workout.compliance_pct >= 60 %}var(--accent-amber)
