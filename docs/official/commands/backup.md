@@ -18,7 +18,7 @@ Every backup is a single `.tar.gz` archive containing:
 | `workouts/` | All workout definition `.md` files |
 | `manifest.json` | Backup metadata: timestamp, FitOps version, origin, trigger, dataset signature, and archive contents |
 
-Archive filename format: `fitops-backup-ORIGIN-YYYY-MM-DD-HHMMSS-SIGNATURE.tar.gz`. Legacy `fitops-backup-YYYY-MM-DD-HHMMSS.tar.gz` archives remain restorable.
+Archive filename format: `fitops-backup-ORIGIN-iid-INSTANCE-YYYY-MM-DD-HHMMSS-SIGNATURE.tar.gz`. Legacy `fitops-backup-YYYY-MM-DD-HHMMSS.tar.gz` archives remain restorable.
 
 ---
 
@@ -130,8 +130,8 @@ Output (cloud):
 
 ```
 Cloud backups (github):
-  fitops-backup-hf-space-user-fitops-dashboard-2026-04-06-091500-a1b2c3d4e5f6.tar.gz  (4.2 MB)  2026-04-06 09:15:00  hf-space/user-fitops-dashboard.hf.space (primary)  a1b2c3d4e5f6
-  fitops-backup-local-bv-mac-2026-04-05-081200-f6e5d4c3b2a1.tar.gz  (4.1 MB)  2026-04-05 08:12:00  local/bv-mac (secondary)  f6e5d4c3b2a1
+  fitops-backup-hf-space-user-fitops-dashboard-iid-7f3a2c91e4b0-2026-04-06-091500-a1b2c3d4e5f6.tar.gz  (4.2 MB)  2026-04-06 09:15:00  hf-space/user-fitops-dashboard.hf.space (primary)  a1b2c3d4e5f6
+  fitops-backup-local-bv-mac-iid-0a9b8c7d6e5f-2026-04-05-081200-f6e5d4c3b2a1.tar.gz  (4.1 MB)  2026-04-05 08:12:00  local/bv-mac (secondary)  f6e5d4c3b2a1
 ```
 
 ---

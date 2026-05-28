@@ -25,6 +25,7 @@ def build_backup_metadata(trigger: str, signature: str | None = None) -> dict:
     return {
         "origin": origin.to_dict(),
         "origin_slug": origin_slug(origin),
+        "instance_id_short": origin.instance_id[:12],
         "trigger": trigger,
         "dataset_revision": get_dataset_revision(settings.db_path),
         "dataset_signature": signature,

@@ -46,6 +46,32 @@ def test_create_archive_snapshots_live_wal_database(tmp_path: Path) -> None:
     assert _read_value(extract_dir / "fitops.db") == "from-live-db"
 
 
+def test_create_archive_filename_includes_origin_instance_and_signature(
+    tmp_path: Path,
+) -> None:
+    fitops_dir = tmp_path / "fitops"
+    fitops_dir.mkdir()
+    db_path = fitops_dir / "fitops.db"
+    conn = _write_db(db_path, "from-live-db")
+    conn.close()
+
+    archive_path = arc.create_archive(
+        fitops_dir,
+        db_path,
+        tmp_path / "backups",
+        metadata={
+            "origin_slug": "hf-space-user-fitops-dashboard",
+            "instance_id_short": "7f3a2c91e4b0",
+            "dataset_signature_short": "a1b2c3d4e5f6",
+        },
+    )
+
+    assert archive_path.name.startswith(
+        "fitops-backup-hf-space-user-fitops-dashboard-iid-7f3a2c91e4b0-"
+    )
+    assert archive_path.name.endswith("-a1b2c3d4e5f6.tar.gz")
+
+
 def test_restore_archive_replaces_db_and_removes_wal_sidecars(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     source_dir.mkdir()

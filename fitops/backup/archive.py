@@ -26,11 +26,15 @@ def _timestamp() -> str:
 
 
 def backup_filename(
-    origin_slug: str | None = None, signature_short: str | None = None
+    origin_slug: str | None = None,
+    instance_id_short: str | None = None,
+    signature_short: str | None = None,
 ) -> str:
     parts = ["fitops-backup"]
     if origin_slug:
         parts.append(origin_slug)
+    if instance_id_short:
+        parts.extend(["iid", instance_id_short])
     parts.append(_timestamp())
     if signature_short:
         parts.append(signature_short)
@@ -109,7 +113,9 @@ def create_archive(
     dest.mkdir(parents=True, exist_ok=True)
     metadata = metadata or {}
     archive_path = dest / backup_filename(
-        metadata.get("origin_slug"), metadata.get("dataset_signature_short")
+        metadata.get("origin_slug"),
+        metadata.get("instance_id_short"),
+        metadata.get("dataset_signature_short"),
     )
 
     included: list[dict] = []
