@@ -52,6 +52,16 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+async def dispose_engine() -> None:
+    """Close pooled SQLite connections and force the next session to reopen."""
+    global _engine, _session_factory
+    engine = _engine
+    _engine = None
+    _session_factory = None
+    if engine is not None:
+        await engine.dispose()
+
+
 @asynccontextmanager
 async def get_async_session() -> AsyncIterator[AsyncSession]:
     factory = get_session_factory()

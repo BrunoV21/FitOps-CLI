@@ -81,6 +81,8 @@ fitops backup create --to github --no-keep-local
 
 Without `--to`, the archive is saved locally only. With `--to github`, it's also pushed to the configured GitHub repo as a Release.
 
+The database is captured with SQLite's online backup mechanism, so backups stay consistent even while the dashboard is running and SQLite is using WAL files.
+
 Output:
 
 ```
@@ -159,8 +161,10 @@ Either a local archive path or `--from` is required.
 The restore process:
 1. Downloads or reads the `.tar.gz` archive
 2. Shows the manifest (backup date, contents count) and asks for confirmation
-3. Overwrites `~/.fitops/` contents with the archive contents
-4. Prints a summary of restored files
+3. Validates the database with SQLite `quick_check`
+4. Overwrites `~/.fitops/` contents with the archive contents
+5. Replaces SQLite sidecar files (`fitops.db-wal` and `fitops.db-shm`) so the restored database opens cleanly
+6. Prints a summary of restored files
 
 ```
 Restoring from: fitops-backup-2026-04-06-091500.tar.gz

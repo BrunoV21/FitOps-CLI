@@ -24,12 +24,14 @@ Click **Create Backup Now** to immediately push your current FitOps data to GitH
 - Athlete settings (`athlete_settings.json`)
 
 Each backup is timestamped and pushed as a commit to your GitHub repository.
+FitOps captures the database through SQLite's online backup mechanism, so the snapshot remains consistent while the dashboard is running.
 
 ## Viewing & Restoring Backups
 
 The **Backup History** panel lists your recent backups from GitHub, newest first. Each entry shows the timestamp and commit message.
 
 Click **Restore** on any backup to replace your current local data with that snapshot. This is a destructive operation — your current state will be overwritten.
+Before installing the restored database, FitOps validates it with SQLite `quick_check` and clears stale WAL sidecar files so the dashboard reconnects to the restored snapshot cleanly.
 
 ::: warning
 Restore replaces your local database and files. Make sure you don't need your current data before restoring a previous version.

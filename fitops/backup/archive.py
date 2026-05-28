@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import shutil
+import sqlite3
 import tarfile
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,6 +29,53 @@ def backup_filename() -> str:
     return f"fitops-backup-{_timestamp()}.tar.gz"
 
 
+def _sqlite_sidecars(db_path: Path) -> list[Path]:
+    return [Path(f"{db_path}-wal"), Path(f"{db_path}-shm")]
+
+
+def _remove_sqlite_sidecars(db_path: Path) -> None:
+    for sidecar in _sqlite_sidecars(db_path):
+        sidecar.unlink(missing_ok=True)
+
+
+def _validate_sqlite_db(db_path: Path) -> None:
+    try:
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+            row = conn.execute("PRAGMA quick_check").fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(
+            f"Restored database is not a valid SQLite database: {exc}"
+        ) from exc
+
+    if row is None or row[0] != "ok":
+        detail = row[0] if row else "no quick_check result"
+        raise ValueError(f"Restored database failed SQLite quick_check: {detail}")
+
+
+def _snapshot_sqlite_db(db_path: Path, dest: Path) -> Path:
+    """Create a consistent SQLite snapshot suitable for archiving."""
+    dest.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.NamedTemporaryFile(
+        prefix=f"{db_path.stem}-",
+        suffix=".db",
+        dir=dest,
+        delete=False,
+    )
+    tmp_path = Path(tmp.name)
+    tmp.close()
+
+    try:
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as source:
+            with sqlite3.connect(tmp_path) as target:
+                source.backup(target)
+        _validate_sqlite_db(tmp_path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    return tmp_path
+
+
 # ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
@@ -47,32 +97,40 @@ def create_archive(fitops_dir: Path, db_path: Path, dest: Path) -> Path:
 
     included: list[dict] = []
 
-    with tarfile.open(archive_path, "w:gz") as tar:
-        # Database — stored as "fitops.db" in the root of the archive regardless
-        # of where the user has configured it on disk.
-        if db_path.exists():
-            tar.add(db_path, arcname="fitops.db")
-            included.append({"arcname": "fitops.db", "source": str(db_path)})
+    db_snapshot: Path | None = None
+    try:
+        with tarfile.open(archive_path, "w:gz") as tar:
+            # Database — stored as "fitops.db" in the root of the archive
+            # regardless of where the user has configured it on disk. Use the
+            # SQLite backup API so WAL pages and concurrent writes cannot leave
+            # a partial copy in the archive.
+            if db_path.exists():
+                db_snapshot = _snapshot_sqlite_db(db_path, dest)
+                tar.add(db_snapshot, arcname="fitops.db")
+                included.append({"arcname": "fitops.db", "source": str(db_path)})
 
-        # Config files and directories from fitops_dir
-        for name in _RELATIVE_ITEMS:
-            item = fitops_dir / name
-            if item.exists():
-                tar.add(item, arcname=name)
-                included.append({"arcname": name, "source": str(item)})
+            # Config files and directories from fitops_dir
+            for name in _RELATIVE_ITEMS:
+                item = fitops_dir / name
+                if item.exists():
+                    tar.add(item, arcname=name)
+                    included.append({"arcname": name, "source": str(item)})
 
-        # Write manifest last
-        manifest = {
-            "created_at": datetime.now(UTC).isoformat(),
-            "fitops_version": "0.1.0",
-            "files": included,
-        }
-        manifest_bytes = json.dumps(manifest, indent=2).encode()
-        import io
+            # Write manifest last
+            manifest = {
+                "created_at": datetime.now(UTC).isoformat(),
+                "fitops_version": "0.1.0",
+                "files": included,
+            }
+            manifest_bytes = json.dumps(manifest, indent=2).encode()
+            import io
 
-        info = tarfile.TarInfo(name=MANIFEST_NAME)
-        info.size = len(manifest_bytes)
-        tar.addfile(info, io.BytesIO(manifest_bytes))
+            info = tarfile.TarInfo(name=MANIFEST_NAME)
+            info.size = len(manifest_bytes)
+            tar.addfile(info, io.BytesIO(manifest_bytes))
+    finally:
+        if db_snapshot is not None:
+            db_snapshot.unlink(missing_ok=True)
 
     return archive_path
 
@@ -113,21 +171,52 @@ def restore_archive(archive_path: Path, fitops_dir: Path, db_path: Path) -> list
     fitops_dir.mkdir(parents=True, exist_ok=True)
 
     restored: list[str] = []
+    tmp_db_path: Path | None = None
 
     with tarfile.open(archive_path, "r:gz") as tar:
+        db_member = next(
+            (member for member in tar.getmembers() if member.name == "fitops.db"),
+            None,
+        )
+        if db_member is not None:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = tempfile.NamedTemporaryFile(
+                prefix=f".{db_path.name}.restore-",
+                suffix=".tmp",
+                dir=db_path.parent,
+                delete=False,
+            )
+            tmp_db_path = Path(tmp.name)
+            try:
+                with tmp:
+                    f = tar.extractfile(db_member)
+                    if f is None:
+                        raise ValueError(
+                            "Backup database member is not a regular file."
+                        )
+                    shutil.copyfileobj(f, tmp)
+                _validate_sqlite_db(tmp_db_path)
+            except Exception:
+                tmp_db_path.unlink(missing_ok=True)
+                raise
+
         for member in tar.getmembers():
             if member.name == MANIFEST_NAME:
                 continue
 
             if member.name == "fitops.db":
-                # Extract DB to the configured db_path
-                db_path.parent.mkdir(parents=True, exist_ok=True)
-                f = tar.extractfile(member)
-                if f is not None:
-                    db_path.write_bytes(f.read())
-                    restored.append(member.name)
+                continue
             else:
                 tar.extract(member, path=fitops_dir, filter="data")
                 restored.append(member.name)
+
+    if tmp_db_path is not None:
+        try:
+            _remove_sqlite_sidecars(db_path)
+            tmp_db_path.replace(db_path)
+            _remove_sqlite_sidecars(db_path)
+            restored.insert(0, "fitops.db")
+        finally:
+            tmp_db_path.unlink(missing_ok=True)
 
     return restored

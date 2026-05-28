@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fitops.backup import archive as arc
 from fitops.backup import config as bcfg
 from fitops.config.settings import get_settings
+from fitops.db.session import dispose_engine
 
 router = APIRouter()
 
@@ -203,6 +204,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         settings = get_settings()
 
         try:
+            await dispose_engine()
             with tempfile.TemporaryDirectory() as tmp:
                 archive_path = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: prov.download(chosen, Path(tmp))
@@ -218,6 +220,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 )
         except Exception as exc:
             return JSONResponse({"error": f"Restore failed: {exc}"}, status_code=500)
+        finally:
+            await dispose_engine()
 
         # Reload settings so the in-process singleton picks up any config changes
         settings.reload()

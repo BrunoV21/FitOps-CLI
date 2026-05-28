@@ -574,11 +574,15 @@ def register() -> APIRouter:
 
         async def _do_restore():
             async with _restore_lock:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     ["fitops", "backup", "restore", "--from", "github", "--yes"],
                     check=False,
                     capture_output=True,
                 )
+                from fitops.db.session import dispose_engine
+
+                await dispose_engine()
 
         asyncio.create_task(_do_restore())
         return JSONResponse({"status": "restore queued"}, status_code=202)
