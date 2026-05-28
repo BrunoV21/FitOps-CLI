@@ -9,6 +9,13 @@ import typer
 
 from fitops.backup import archive as arc
 from fitops.backup import config as bcfg
+from fitops.backup.service import (
+    create_local_archive,
+    record_local_archive,
+    upload_archive,
+)
+from fitops.backup.signature import dataset_signature
+from fitops.backup.state import get_last_backup_skip, get_last_successful_backup
 from fitops.config.settings import get_settings
 
 app = typer.Typer(no_args_is_help=True)
@@ -111,29 +118,44 @@ def create(
         "--keep-local/--no-keep-local",
         help="Keep the local archive after uploading to the cloud.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Create a backup even when the dataset signature has not changed.",
+    ),
 ) -> None:
     """Create a backup archive of all FitOps data."""
     settings = get_settings()
     dest = output_dir or _default_backup_dir(settings)
 
     typer.echo("Creating backup archive…")
-    archive_path = arc.create_archive(
-        fitops_dir=settings.fitops_dir,
-        db_path=settings.db_path,
-        dest=dest,
+    archive_path, metadata, skip_reason = create_local_archive(
+        trigger="manual",
+        output_dir=dest,
+        force=force,
     )
+    if archive_path is None:
+        typer.echo(f"  Skipped: {skip_reason}")
+        return
     size_mb = arc.archive_size_mb(archive_path)
     typer.echo(f"  Archive: {archive_path}  ({size_mb:.1f} MB)")
 
     if to:
         provider = _resolve_provider(to)
         typer.echo(f"  Uploading to {to}…")
-        remote = provider.upload(archive_path)
+        remote = upload_archive(
+            archive_path,
+            provider_name=to,
+            provider=provider,
+            metadata=metadata,
+        )
         typer.echo(f"  Uploaded: {remote.name}")
 
         if not keep_local:
             archive_path.unlink()
             typer.echo("  Local archive removed.")
+    else:
+        record_local_archive(archive_path, metadata)
 
     typer.echo("Done.")
 
@@ -177,7 +199,21 @@ def list_backups(
             typer.echo("  No backups found.")
         for b in backups:
             size_mb = b.size_bytes / (1024 * 1024)
-            typer.echo(f"  {b.name}  ({size_mb:.1f} MB)  {b.created_at}")
+            origin = b.metadata.get("origin") if b.metadata else {}
+            if isinstance(origin, dict) and origin:
+                origin_label = (
+                    f"{origin.get('kind', 'unknown')}/"
+                    f"{origin.get('label', 'unknown')}"
+                    f" ({origin.get('role', 'unknown')})"
+                )
+            else:
+                origin_label = "unknown/legacy"
+            sig = (b.metadata or {}).get("dataset_signature", "")
+            sig_short = sig.split(":", 1)[-1][:12] if sig else "unknown"
+            typer.echo(
+                f"  {b.name}  ({size_mb:.1f} MB)  {b.created_at}  "
+                f"{origin_label}  {sig_short}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -248,14 +284,29 @@ def restore(
                 )
                 raise typer.Exit(1)
             chosen = match
-        else:
-            # Use the most recent
-            chosen = backups[0]
-
-        typer.echo(f"Downloading {chosen.name} from {from_provider}…")
         tmp_dir_obj = tempfile.TemporaryDirectory()
         tmp_dir = tmp_dir_obj  # keep alive until we're done extracting
-        archive = prov.download(chosen, dest=Path(tmp_dir_obj.name))
+        candidates = [chosen] if backup_name else backups
+        archive = None
+        for candidate in candidates:
+            typer.echo(f"Downloading {candidate.name} from {from_provider}…")
+            try:
+                candidate_archive = prov.download(
+                    candidate, dest=Path(tmp_dir_obj.name)
+                )
+                arc.read_manifest(candidate_archive)
+            except Exception as exc:
+                if backup_name:
+                    typer.echo(f"Could not read backup: {exc}", err=True)
+                    raise typer.Exit(1)
+                typer.echo(f"  Skipping unreadable backup: {exc}", err=True)
+                continue
+            archive = candidate_archive
+            chosen = candidate
+            break
+        if archive is None:
+            typer.echo(f"No readable backups found on {from_provider}.", err=True)
+            raise typer.Exit(1)
 
     if archive is None or not archive.exists():
         typer.echo(f"Archive not found: {archive}", err=True)
@@ -275,6 +326,20 @@ def restore(
     typer.echo(f"\nRestoring from: {archive.name}")
     typer.echo(f"  Backup created: {created_at}")
     typer.echo(f"  Items: {len(files)}")
+    signature = manifest.get("dataset_signature")
+    if signature:
+        typer.echo(f"  Dataset signature: {signature}")
+        current_signature = dataset_signature(
+            db_path=settings.db_path,
+            fitops_dir=settings.fitops_dir,
+        )
+        if current_signature == signature:
+            typer.echo(
+                "  Current dataset already matches this backup. Nothing to restore."
+            )
+            if tmp_dir is not None:
+                tmp_dir.cleanup()
+            return
     typer.echo(
         "\n  WARNING: This will overwrite your current FitOps data, including "
         "fitops.db, config.json, notes and workouts."
@@ -336,6 +401,8 @@ def schedule(
     current = bcfg.get_schedule_config()
 
     if status or (enable is None and interval is None):
+        last_success = get_last_successful_backup()
+        last_skip = get_last_backup_skip()
         if not current:
             typer.echo(
                 "No schedule configured. Use --enable --interval <hours> to set one up."
@@ -346,6 +413,13 @@ def schedule(
             typer.echo(f"  Interval : every {current['interval_hours']}h")
             typer.echo(f"  Provider : {current['provider']}")
             typer.echo(f"  Last run : {current.get('last_backup_at') or 'never'}")
+            typer.echo(f"  Last check : {current.get('last_checked_at') or 'never'}")
+        if last_success:
+            typer.echo(
+                f"  Last dataset signature : {last_success.get('dataset_signature')}"
+            )
+        if last_skip:
+            typer.echo(f"  Last skipped backup    : {last_skip.get('reason')}")
         return
 
     # Merge with existing config

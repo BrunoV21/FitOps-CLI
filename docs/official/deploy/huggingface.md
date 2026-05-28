@@ -24,9 +24,9 @@ Deploy the FitOps dashboard to a private HuggingFace Space so you can access you
 └─────────────┘              └──────────────────┘                             └─────────────────┘
 ```
 
-1. You run `fitops sync` locally as usual — data backs up to GitHub automatically.
-2. A GitHub Actions workflow in the backup repo pings the Space every 20 minutes (keepalive) and triggers a restore on every push (sync).
-3. The Space restores your latest backup from GitHub on each sync trigger and on startup.
+1. You run `fitops sync` locally as usual — data backs up to GitHub automatically when the dataset changed.
+2. A GitHub Actions workflow in the backup repo pings the Space every 20 minutes (keepalive) and triggers a restore on backup release publication.
+3. The Space restores the newest valid backup from GitHub on each sync trigger and on startup, skipping no-op restores when the dataset signature already matches.
 4. All dashboard routes are protected by password + TOTP (Google Authenticator, Authy, etc.).
 
 ---
@@ -48,7 +48,7 @@ You can also pass `--hf-token` via the `HF_TOKEN` env var and `--github-token` v
 1. **Generates a TOTP secret** and displays a QR code — scan it with your authenticator app.
 2. **Prompts for a dashboard password** and bcrypt-hashes it.
 3. **Creates a private HF Space** (Docker SDK) and uploads the container files.
-4. **Sets all secrets** on the Space (password hash, TOTP secret, session key, sync token, GitHub credentials).
+4. **Sets all secrets** on the Space (password hash, TOTP secret, session key, sync token, GitHub credentials, and HF origin metadata).
 5. **Configures GitHub Actions** in your backup repo for keepalive and backup restore sync.
 6. **Stores the Strava webhook callback URL** as a Space secret so webhook sync is enabled automatically after Strava auth is available.
 
@@ -63,7 +63,7 @@ The workflow has two jobs:
 | Job | Trigger | Action |
 |---|---|---|
 | `keepalive` | Every 20 minutes (cron) | `GET /health` — prevents the Space from sleeping |
-| `sync` | Push to `main` | `POST /api/internal/sync` — restores the latest backup |
+| `sync` | Push to `main` or backup release publication | `POST /api/internal/sync` — restores the latest valid backup |
 
 ## Strava Webhook Setup
 
@@ -121,6 +121,9 @@ Navigate to your Space URL (`https://myuser-fitops-dashboard.hf.space`):
 | `FITOPS_SYNC_TOKEN` | `fitops deploy hf` | Token for `POST /api/internal/sync` |
 | `FITOPS_WEBHOOK_CALLBACK_URL` | `fitops deploy hf` | Public Strava webhook callback URL for this Space |
 | `FITOPS_DEFAULT_SYNC_MODE` | `fitops deploy hf` | Defaults deployed dashboard sync to `webhook` |
+| `FITOPS_INSTANCE_KIND` | `fitops deploy hf` | Marks backups from this runtime as `hf-space` |
+| `FITOPS_INSTANCE_LABEL` | `fitops deploy hf` | Labels backups with the Space host |
+| `FITOPS_INSTANCE_ROLE` | `fitops deploy hf` | Marks the HF Space as the primary backup origin |
 | `GITHUB_BACKUP_TOKEN` | `fitops deploy hf` | GitHub PAT for reading backup releases |
 | `GITHUB_BACKUP_REPO` | `fitops deploy hf` | Backup repo (`owner/repo`) |
 

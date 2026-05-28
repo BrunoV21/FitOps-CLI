@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fitops.db.base import Base
+from fitops.db.models import backup_state as backup_state  # noqa: F401
 from fitops.db.models.activity import Activity  # noqa: F401
 from fitops.db.models.activity_calibration import ActivityCalibration  # noqa: F401
 from fitops.db.models.activity_laps import ActivityLap  # noqa: F401

@@ -20,6 +20,9 @@ def test_hf_space_secrets_enable_default_webhook():
         == "https://user-fitops-dashboard.hf.space/api/strava/webhook"
     )
     assert secrets["FITOPS_DEFAULT_SYNC_MODE"] == "webhook"
+    assert secrets["FITOPS_INSTANCE_KIND"] == "hf-space"
+    assert secrets["FITOPS_INSTANCE_ROLE"] == "primary"
+    assert secrets["FITOPS_INSTANCE_LABEL"] == "user-fitops-dashboard.hf.space"
 
 
 def test_hf_webhook_setup_message_uses_derived_url_and_domain():
@@ -39,3 +42,13 @@ def test_hf_webhook_setup_message_uses_derived_url_and_domain():
     assert "Authorization Callback Domain" in message
     assert "user-fitops-dashboard.hf.space" in message
     assert "Do not paste the full webhook URL" in message
+
+
+def test_hf_github_actions_syncs_on_release_publish():
+    from fitops.cli.deploy import _build_gha_yaml
+
+    workflow = _build_gha_yaml("https://user-fitops-dashboard.hf.space")
+
+    assert "release:" in workflow
+    assert "types: [published]" in workflow
+    assert "github.event_name == 'release'" in workflow

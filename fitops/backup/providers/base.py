@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -14,13 +14,14 @@ class RemoteBackup:
     created_at: str  # ISO-8601 string
     size_bytes: int
     download_url: str
+    metadata: dict = field(default_factory=dict)
 
 
 class BackupProvider(ABC):
     """Abstract interface that every cloud backup provider must implement."""
 
     @abstractmethod
-    def upload(self, archive_path: Path) -> RemoteBackup:
+    def upload(self, archive_path: Path, metadata: dict | None = None) -> RemoteBackup:
         """Upload *archive_path* and return metadata for the stored backup."""
 
     @abstractmethod

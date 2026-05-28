@@ -11,6 +11,12 @@ from fastapi.templating import Jinja2Templates
 
 from fitops.backup import archive as arc
 from fitops.backup import config as bcfg
+from fitops.backup.service import (
+    create_local_archive,
+    record_local_archive,
+    upload_archive,
+)
+from fitops.backup.signature import dataset_signature
 from fitops.config.settings import get_settings
 from fitops.db.session import dispose_engine
 
@@ -85,17 +91,22 @@ def register(templates: Jinja2Templates) -> APIRouter:
             payload = {}
 
         provider_name = (payload.get("provider") or "").strip() or None
+        force = bool(payload.get("force", False))
 
         settings = get_settings()
         dest = settings.fitops_dir / "backups"
 
         try:
-            archive_path = await asyncio.get_event_loop().run_in_executor(
+            (
+                archive_path,
+                metadata,
+                skip_reason,
+            ) = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: arc.create_archive(
-                    fitops_dir=settings.fitops_dir,
-                    db_path=settings.db_path,
-                    dest=dest,
+                lambda: create_local_archive(
+                    trigger="manual",
+                    output_dir=dest,
+                    force=force,
                 ),
             )
         except Exception as exc:
@@ -103,18 +114,35 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 {"error": f"Archive creation failed: {exc}"}, status_code=500
             )
 
+        if archive_path is None:
+            return JSONResponse(
+                {
+                    "skipped": True,
+                    "reason": skip_reason,
+                    "dataset_signature": metadata.get("dataset_signature"),
+                }
+            )
+
         size_mb = arc.archive_size_mb(archive_path)
         result: dict = {
             "name": archive_path.name,
             "size_mb": round(size_mb, 1),
             "local_path": str(archive_path),
+            "origin": metadata.get("origin"),
+            "dataset_signature": metadata.get("dataset_signature"),
         }
 
         if provider_name:
             try:
                 provider = _get_provider(provider_name)
                 remote = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: provider.upload(archive_path)
+                    None,
+                    lambda: upload_archive(
+                        archive_path,
+                        provider_name=provider_name,
+                        provider=provider,
+                        metadata=metadata,
+                    ),
                 )
                 result["uploaded"] = True
                 result["remote_name"] = remote.name
@@ -124,6 +152,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
             except Exception as exc:
                 result["uploaded"] = False
                 result["upload_error"] = str(exc)
+        else:
+            record_local_archive(archive_path, metadata)
 
         return JSONResponse(result)
 
@@ -155,6 +185,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         "created_at": b.created_at,
                         "size_mb": round(b.size_bytes / (1024 * 1024), 1),
                         "download_url": b.download_url,
+                        "origin": (b.metadata or {}).get("origin"),
+                        "dataset_signature": (b.metadata or {}).get(
+                            "dataset_signature"
+                        ),
+                        "trigger": (b.metadata or {}).get("trigger"),
                     }
                     for b in backups
                 ],
@@ -210,6 +245,25 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     None, lambda: prov.download(chosen, Path(tmp))
                 )
                 manifest = arc.read_manifest(archive_path)
+                signature = manifest.get("dataset_signature")
+                if signature:
+                    current_signature = dataset_signature(
+                        db_path=settings.db_path,
+                        fitops_dir=settings.fitops_dir,
+                    )
+                    if current_signature == signature:
+                        return JSONResponse(
+                            {
+                                "ok": True,
+                                "skipped": True,
+                                "reason": "Current dataset already matches this backup.",
+                                "backup_created_at": manifest.get(
+                                    "created_at", "unknown"
+                                ),
+                                "dataset_signature": signature,
+                            }
+                        )
+                await dispose_engine()
                 restored = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: arc.restore_archive(
@@ -325,7 +379,7 @@ def _maybe_run_scheduled_backup() -> None:
         return
 
     interval_s = sched["interval_hours"] * 3600
-    last_str = sched.get("last_backup_at")
+    last_str = sched.get("last_checked_at") or sched.get("last_backup_at")
 
     if last_str:
         try:
@@ -337,17 +391,18 @@ def _maybe_run_scheduled_backup() -> None:
             pass
 
     provider_name = sched.get("provider", "github")
-    settings = get_settings()
-    dest = settings.fitops_dir / "backups"
-
     try:
-        archive_path = arc.create_archive(
-            fitops_dir=settings.fitops_dir,
-            db_path=settings.db_path,
-            dest=dest,
-        )
+        archive_path, metadata, _ = create_local_archive(trigger="scheduled")
+        if archive_path is None:
+            bcfg.update_last_backup_checked_at(datetime.now(UTC).isoformat())
+            return
         provider = _get_provider(provider_name)
-        provider.upload(archive_path)
+        upload_archive(
+            archive_path,
+            provider_name=provider_name,
+            provider=provider,
+            metadata=metadata,
+        )
         bcfg.update_last_backup_at(datetime.now(UTC).isoformat())
     except Exception:
         pass

@@ -23,15 +23,17 @@ Click **Create Backup Now** to immediately push your current FitOps data to GitH
 - All note files (`~/.fitops/notes/`)
 - Athlete settings (`athlete_settings.json`)
 
-Each backup is timestamped and pushed as a commit to your GitHub repository.
+Each backup is timestamped and pushed as a GitHub Release with origin metadata.
 FitOps captures the database through SQLite's online backup mechanism, so the snapshot remains consistent while the dashboard is running.
+The dashboard skips scheduled and manual backups when the current dataset signature already matches the last successful backup, unless the backup is forced.
 
 ## Viewing & Restoring Backups
 
-The **Backup History** panel lists your recent backups from GitHub, newest first. Each entry shows the timestamp and commit message.
+The **Backup History** panel lists your recent backups from GitHub, newest first. Each entry shows the timestamp, origin, trigger, and dataset signature when available. HF deployments are marked as primary; local machines are marked as secondary.
 
 Click **Restore** on any backup to replace your current local data with that snapshot. This is a destructive operation — your current state will be overwritten.
 Before installing the restored database, FitOps validates it with SQLite `quick_check` and clears stale WAL sidecar files so the dashboard reconnects to the restored snapshot cleanly.
+If the selected backup has the same dataset signature as the current database, FitOps reports the restore as a no-op.
 
 ::: warning
 Restore replaces your local database and files. Make sure you don't need your current data before restoring a previous version.
@@ -45,6 +47,7 @@ Set a backup schedule so FitOps backs up your data automatically while the dashb
 - **Time** — when to run the scheduled backup
 
 The scheduler runs in the background while the dashboard server is active. If you stop the dashboard, scheduled backups pause until you start it again.
+Successful GitHub uploads also run smart retention per origin, keeping recent backups plus daily, weekly, and monthly checkpoints.
 
 For always-on automated backups without keeping the dashboard open, use the CLI:
 

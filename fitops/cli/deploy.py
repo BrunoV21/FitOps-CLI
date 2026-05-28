@@ -163,14 +163,17 @@ def _build_hf_space_secrets(
         "FITOPS_SYNC_TOKEN": sync_token,
         "FITOPS_WEBHOOK_CALLBACK_URL": webhook_url,
         "FITOPS_DEFAULT_SYNC_MODE": "webhook",
+        "FITOPS_INSTANCE_KIND": "hf-space",
+        "FITOPS_INSTANCE_LABEL": webhook_url.split("/api/", 1)[0].replace(
+            "https://", ""
+        ),
+        "FITOPS_INSTANCE_ROLE": "primary",
         "GITHUB_BACKUP_TOKEN": github_backup_token,
         "GITHUB_BACKUP_REPO": github_backup_repo,
     }
 
 
-def _format_webhook_setup_message(
-    owner: str, space_name: str, webhook_url: str
-) -> str:
+def _format_webhook_setup_message(owner: str, space_name: str, webhook_url: str) -> str:
     callback_domain = f"{owner}-{space_name}.hf.space"
     return (
         "\nStrava webhook sync:\n"
@@ -311,6 +314,8 @@ on:
     - cron: '*/20 * * * *'
   push:
     branches: [main]
+  release:
+    types: [published]
 
 jobs:
   keepalive:
@@ -320,7 +325,7 @@ jobs:
         run: curl -sf {app_url}/health || echo "Health check failed (Space may be cold-starting)"
 
   sync:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger dashboard sync

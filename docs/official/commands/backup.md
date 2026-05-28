@@ -16,15 +16,17 @@ Every backup is a single `.tar.gz` archive containing:
 | `athlete_settings.json` | Weight, height, birthday, FTP, and other athlete metadata |
 | `notes/` | All training journal `.md` files |
 | `workouts/` | All workout definition `.md` files |
-| `manifest.json` | Backup metadata: timestamp, FitOps version, archive contents |
+| `manifest.json` | Backup metadata: timestamp, FitOps version, origin, trigger, dataset signature, and archive contents |
 
-Archive filename format: `fitops-backup-YYYY-MM-DD-HHMMSS.tar.gz`
+Archive filename format: `fitops-backup-ORIGIN-YYYY-MM-DD-HHMMSS-SIGNATURE.tar.gz`. Legacy `fitops-backup-YYYY-MM-DD-HHMMSS.tar.gz` archives remain restorable.
 
 ---
 
 ## Providers
 
 FitOps currently supports **GitHub** as a backup provider. Each backup is stored as a GitHub Release with the `.tar.gz` file as an asset — releases are cheap, versioned, and easy to inspect.
+
+Each release body includes machine-readable FitOps metadata: origin, role, trigger, dataset revision, and dataset signature. Origins distinguish local machines from deployed HuggingFace Spaces.
 
 Future providers planned: Dropbox, Google Drive.
 
@@ -69,6 +71,7 @@ fitops backup create
 fitops backup create --to github
 fitops backup create --to github --output-dir /tmp/my-backups
 fitops backup create --to github --no-keep-local
+fitops backup create --to github --force
 ```
 
 **Options:**
@@ -78,10 +81,12 @@ fitops backup create --to github --no-keep-local
 | `--to PROVIDER` | — | Push archive to a cloud provider after creating (e.g. `github`) |
 | `--output-dir PATH` / `-o` | `~/.fitops/backups/` | Local directory for the archive |
 | `--keep-local / --no-keep-local` | keep | Whether to keep the local archive after uploading to the cloud |
+| `--force` | false | Create a backup even if the dataset signature matches the last successful backup |
 
 Without `--to`, the archive is saved locally only. With `--to github`, it's also pushed to the configured GitHub repo as a Release.
 
 The database is captured with SQLite's online backup mechanism, so backups stay consistent even while the dashboard is running and SQLite is using WAL files.
+Before creating an archive, FitOps computes a dataset signature from the DB revision, key table summaries, workout/note file hashes, and stable config. If nothing has changed since the last successful backup, the backup is skipped unless `--force` is used.
 
 Output:
 
@@ -125,8 +130,8 @@ Output (cloud):
 
 ```
 Cloud backups (github):
-  fitops-backup-2026-04-06-091500.tar.gz  (4.2 MB)  2026-04-06 09:15:00
-  fitops-backup-2026-04-05-081200.tar.gz  (4.1 MB)  2026-04-05 08:12:00
+  fitops-backup-hf-space-user-fitops-dashboard-2026-04-06-091500-a1b2c3d4e5f6.tar.gz  (4.2 MB)  2026-04-06 09:15:00  hf-space/user-fitops-dashboard.hf.space (primary)  a1b2c3d4e5f6
+  fitops-backup-local-bv-mac-2026-04-05-081200-f6e5d4c3b2a1.tar.gz  (4.1 MB)  2026-04-05 08:12:00  local/bv-mac (secondary)  f6e5d4c3b2a1
 ```
 
 ---
@@ -165,6 +170,8 @@ The restore process:
 4. Overwrites `~/.fitops/` contents with the archive contents
 5. Replaces SQLite sidecar files (`fitops.db-wal` and `fitops.db-shm`) so the restored database opens cleanly
 6. Prints a summary of restored files
+
+When restoring from GitHub without `--backup`, FitOps tries the newest readable release first. If the current dataset signature already matches the backup, restore exits as a no-op.
 
 ```
 Restoring from: fitops-backup-2026-04-06-091500.tar.gz
@@ -213,6 +220,7 @@ Backup Schedule
   Provider      github
   Interval      24h
   Last backup   2026-04-06 09:15:00
+  Last check    2026-04-06 21:15:00
   Next backup   2026-04-07 09:15:00
 ```
 
@@ -235,6 +243,10 @@ The backup UI is available at **Settings → Backup** in the dashboard (`fitops 
 - Restore from any listed backup
 - Enable / disable and configure the schedule
 
+Scheduled backups use the same signature check as the CLI, so a 12-hour schedule only uploads when synced data, workouts, notes, analytics, race data, or stable config changed.
+
+After each successful GitHub upload, FitOps applies smart retention per origin: recent backups are kept densely, with daily, weekly, and monthly checkpoints retained so the release list stays useful instead of growing indefinitely.
+
 ---
 
 ## Commands Reference
@@ -244,7 +256,7 @@ The backup UI is available at **Settings → Backup** in the dashboard (`fitops 
 fitops backup setup github
 
 # Create
-fitops backup create [--to github] [--output-dir PATH] [--no-keep-local]
+fitops backup create [--to github] [--output-dir PATH] [--no-keep-local] [--force]
 
 # List
 fitops backup list [--local] [--provider github]

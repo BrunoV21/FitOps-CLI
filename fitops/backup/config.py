@@ -77,6 +77,7 @@ def save_schedule_config(
         "interval_hours": interval_hours,
         "provider": provider,
         "last_backup_at": last_backup_at or existing.get("last_backup_at"),
+        "last_checked_at": existing.get("last_checked_at"),
     }
     _save(data)
 
@@ -86,4 +87,13 @@ def update_last_backup_at(ts: str) -> None:
     sched = data.get("backup", {}).get("schedule")
     if sched is not None:
         sched["last_backup_at"] = ts
+        sched["last_checked_at"] = ts
+        _save(data)
+
+
+def update_last_backup_checked_at(ts: str) -> None:
+    data = _load()
+    sched = data.get("backup", {}).get("schedule")
+    if sched is not None:
+        sched["last_checked_at"] = ts
         _save(data)

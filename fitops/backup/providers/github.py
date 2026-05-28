@@ -10,6 +10,7 @@ No extra dependencies — uses ``httpx`` which is already in the project.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -50,19 +51,22 @@ class GitHubProvider(BackupProvider):
         assets = release.get("assets", [])
         # The first .tar.gz asset is our archive
         asset = next((a for a in assets if a["name"].endswith(".tar.gz")), None)
+        metadata = _metadata_from_body(release.get("body") or "")
         return RemoteBackup(
             id=str(release["id"]),
             name=asset["name"] if asset else release["tag_name"],
             created_at=release["created_at"],
             size_bytes=asset["size"] if asset else 0,
             download_url=asset["url"] if asset else "",
+            metadata=metadata,
         )
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
-    def upload(self, archive_path: Path) -> RemoteBackup:
+    def upload(self, archive_path: Path, metadata: dict | None = None) -> RemoteBackup:
+        metadata = metadata or {}
         tag = archive_path.stem.replace(".tar", "")  # strip double extension
         # tarfile names end in .tar.gz — stem strips only the last suffix
         # so let's derive a clean tag from the filename
@@ -77,7 +81,7 @@ class GitHubProvider(BackupProvider):
                 json={
                     "tag_name": tag,
                     "name": name,
-                    "body": "FitOps automated backup",
+                    "body": _release_body(metadata),
                     "draft": False,
                     "prerelease": False,
                 },
@@ -98,8 +102,16 @@ class GitHubProvider(BackupProvider):
                 timeout=300,
             )
             _raise(resp)
+            asset = resp.json()
 
-        return self._to_remote(release)
+        return RemoteBackup(
+            id=str(release["id"]),
+            name=asset.get("name", name),
+            created_at=release["created_at"],
+            size_bytes=asset.get("size", archive_path.stat().st_size),
+            download_url=asset.get("url", ""),
+            metadata=metadata,
+        )
 
     def download(self, backup: RemoteBackup, dest: Path) -> Path:
         dest.mkdir(parents=True, exist_ok=True)
@@ -190,3 +202,35 @@ def _raise(resp: httpx.Response) -> None:
         except Exception:
             msg = resp.text
         raise RuntimeError(f"GitHub API error {resp.status_code}: {msg}")
+
+
+_METADATA_MARKER = "\n\n```fitops-backup-metadata\n"
+
+
+def _release_body(metadata: dict) -> str:
+    origin = metadata.get("origin") or {}
+    signature = metadata.get("dataset_signature") or "unknown"
+    revision = metadata.get("dataset_revision", "unknown")
+    trigger = metadata.get("trigger") or "manual"
+    label = origin.get("label") or "unknown"
+    kind = origin.get("kind") or "unknown"
+    role = origin.get("role") or "unknown"
+    summary = (
+        "FitOps automated backup\n\n"
+        f"- Origin: {kind} / {label} ({role})\n"
+        f"- Trigger: {trigger}\n"
+        f"- Dataset revision: {revision}\n"
+        f"- Dataset signature: {signature}\n"
+    )
+    return f"{summary}{_METADATA_MARKER}{json.dumps(metadata, sort_keys=True)}\n```"
+
+
+def _metadata_from_body(body: str) -> dict:
+    if _METADATA_MARKER not in body:
+        return {}
+    raw = body.split(_METADATA_MARKER, 1)[1].split("\n```", 1)[0]
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}

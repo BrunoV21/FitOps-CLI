@@ -169,6 +169,11 @@
   </div>
   <div class="panel-body">
     <p class="help-text">Creates a <code>.tar.gz</code> archive of your database, config, notes and workouts.</p>
+    <label class="field-label" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;">
+      <input type="checkbox" id="create-force"
+             style="accent-color:var(--accent-primary);width:14px;height:14px;" />
+      Force even if unchanged
+    </label>
     <div class="form-actions">
       <button class="btn btn-primary" id="create-btn" onclick="createBackup(false)">
         <svg id="create-icon" width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -366,16 +371,21 @@ async function saveSchedule() {
 async function createBackup(provider) {
   const msg    = document.getElementById('create-msg');
   const btn    = provider ? document.getElementById('create-push-btn') : document.getElementById('create-btn');
+  const force  = document.getElementById('create-force').checked;
   btn.disabled = true;
   setMsg(msg, 'Creating archive…', 'info');
   try {
     const res  = await fetch('/api/backup/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: provider || null }),
+      body: JSON.stringify({ provider: provider || null, force }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
+    if (data.skipped) {
+      setMsg(msg, `Skipped: ${data.reason || 'dataset unchanged'}`, 'info');
+      return;
+    }
     let text = `${data.name}  (${data.size_mb} MB)`;
     if (data.uploaded)      text += '  — uploaded to GitHub';
     if (data.upload_error)  text += `  — upload failed: ${data.upload_error}`;
@@ -404,7 +414,7 @@ async function loadBackups() {
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr>
-            <th>Name</th><th>Size</th><th>Created</th><th></th>
+            <th>Name</th><th>Origin</th><th>Size</th><th>Created</th><th></th>
           </tr></thead>
           <tbody id="backups-tbody"></tbody>
         </table>
@@ -412,8 +422,11 @@ async function loadBackups() {
     const tbody = document.getElementById('backups-tbody');
     data.backups.forEach(b => {
       const tr = document.createElement('tr');
+      const origin = b.origin || {};
+      const originText = origin.kind ? `${origin.kind}/${origin.label || 'unknown'} (${origin.role || 'unknown'})` : 'legacy';
       tr.innerHTML = `
         <td class="mono" style="font-size:11px;">${b.name}</td>
+        <td class="text-muted">${originText}</td>
         <td class="text-muted">${b.size_mb} MB</td>
         <td class="text-muted">${b.created_at.slice(0,19).replace('T',' ')} UTC</td>
         <td>
@@ -458,6 +471,11 @@ async function confirmRestore() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Restore failed');
+    if (data.skipped) {
+      setMsg(msg, data.reason || 'Current dataset already matches this backup.', 'ok');
+      btn.disabled = false;
+      return;
+    }
     setMsg(msg,
       `Restored ${data.restored_items.length} items from backup dated ${(data.backup_created_at||'').slice(0,10)}.`,
       'ok');

@@ -25,8 +25,16 @@ def _timestamp() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S")
 
 
-def backup_filename() -> str:
-    return f"fitops-backup-{_timestamp()}.tar.gz"
+def backup_filename(
+    origin_slug: str | None = None, signature_short: str | None = None
+) -> str:
+    parts = ["fitops-backup"]
+    if origin_slug:
+        parts.append(origin_slug)
+    parts.append(_timestamp())
+    if signature_short:
+        parts.append(signature_short)
+    return f"{'-'.join(parts)}.tar.gz"
 
 
 def _sqlite_sidecars(db_path: Path) -> list[Path]:
@@ -81,7 +89,13 @@ def _snapshot_sqlite_db(db_path: Path, dest: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def create_archive(fitops_dir: Path, db_path: Path, dest: Path) -> Path:
+def create_archive(
+    fitops_dir: Path,
+    db_path: Path,
+    dest: Path,
+    *,
+    metadata: dict | None = None,
+) -> Path:
     """Create a gzipped tar archive of the FitOps data directory.
 
     Args:
@@ -93,7 +107,10 @@ def create_archive(fitops_dir: Path, db_path: Path, dest: Path) -> Path:
         Path to the created archive file.
     """
     dest.mkdir(parents=True, exist_ok=True)
-    archive_path = dest / backup_filename()
+    metadata = metadata or {}
+    archive_path = dest / backup_filename(
+        metadata.get("origin_slug"), metadata.get("dataset_signature_short")
+    )
 
     included: list[dict] = []
 
@@ -120,8 +137,10 @@ def create_archive(fitops_dir: Path, db_path: Path, dest: Path) -> Path:
             manifest = {
                 "created_at": datetime.now(UTC).isoformat(),
                 "fitops_version": "0.1.0",
+                "backup_format_version": 2,
                 "files": included,
             }
+            manifest.update(metadata)
             manifest_bytes = json.dumps(manifest, indent=2).encode()
             import io
 

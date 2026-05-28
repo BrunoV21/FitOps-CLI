@@ -27,21 +27,31 @@ _cli_last_triggered: float = 0.0
 _dashboard_last_triggered: float = 0.0
 
 
-def trigger_cli() -> None:
+def trigger_cli(reason: str = "data-change") -> None:
     """Spawn a detached backup subprocess. Safe to call from sync CLI commands."""
     global _cli_last_triggered
     try:
         from fitops.backup.config import get_github_config
+        from fitops.backup.state import mark_dataset_changed
 
         if not get_github_config():
             return
+        mark_dataset_changed(reason)
         now = time.monotonic()
         with _cli_lock:
             if now - _cli_last_triggered < _COOLDOWN_S:
                 return
             _cli_last_triggered = now
         subprocess.Popen(
-            [sys.executable, "-m", "fitops", "backup", "create", "--to", "github"],
+            [
+                sys.executable,
+                "-m",
+                "fitops",
+                "backup",
+                "create",
+                "--to",
+                "github",
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             close_fds=True,
@@ -50,14 +60,16 @@ def trigger_cli() -> None:
         pass
 
 
-async def trigger_async() -> None:
+async def trigger_async(reason: str = "data-change") -> None:
     """Schedule a backup asyncio task. Safe to await from FastAPI route handlers."""
     global _dashboard_last_triggered
     try:
         from fitops.backup.config import get_github_config
+        from fitops.backup.state import mark_dataset_changed
 
         if not get_github_config():
             return
+        mark_dataset_changed(reason)
         now = time.monotonic()
         if now - _dashboard_last_triggered < _COOLDOWN_S:
             return
@@ -75,30 +87,32 @@ async def _run_backup_async() -> None:
     from datetime import UTC, datetime
 
     try:
-        from fitops.backup import archive as arc
         from fitops.backup.config import get_github_config, update_last_backup_at
         from fitops.backup.providers.github import GitHubProvider
-        from fitops.config.settings import get_settings
+        from fitops.backup.service import create_local_archive, upload_archive
 
         cfg = get_github_config()
         if not cfg:
             return
 
-        settings = get_settings()
-        dest = settings.fitops_dir / "backups"
         loop = asyncio.get_event_loop()
 
-        archive_path = await loop.run_in_executor(
-            None,
-            lambda: arc.create_archive(
-                fitops_dir=settings.fitops_dir,
-                db_path=settings.db_path,
-                dest=dest,
-            ),
+        archive_path, metadata, _ = await loop.run_in_executor(
+            None, lambda: create_local_archive(trigger="event")
         )
+        if archive_path is None:
+            return
 
         provider = GitHubProvider(token=cfg["token"], repo=cfg["repo"])
-        await loop.run_in_executor(None, lambda: provider.upload(archive_path))
+        await loop.run_in_executor(
+            None,
+            lambda: upload_archive(
+                archive_path,
+                provider_name="github",
+                provider=provider,
+                metadata=metadata,
+            ),
+        )
         update_last_backup_at(datetime.now(UTC).isoformat())
     except Exception:
         pass
