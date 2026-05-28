@@ -7,6 +7,7 @@ from datetime import UTC
 import typer
 from sqlalchemy import desc, select
 
+from fitops.analytics.workout_contribution import get_workout_contribution
 from fitops.analytics.workout_summary import get_workout_summary, normalize_period
 from fitops.backup.event_sync import trigger_cli
 from fitops.config.settings import get_settings
@@ -19,6 +20,7 @@ from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
 from fitops.output.formatter import make_meta
 from fitops.output.text_formatter import (
+    print_workout_analytics,
     print_workout_compliance,
     print_workout_detail,
     print_workout_history,
@@ -33,6 +35,11 @@ from fitops.workouts.loader import (
     get_workout_file,
     list_workout_files,
     workouts_dir,
+)
+from fitops.workouts.manage import (
+    build_structured_workout_markdown,
+    safe_workout_file_path,
+    slugify_workout_name,
 )
 from fitops.workouts.segments import parse_segments_from_body
 
@@ -485,6 +492,77 @@ def summary(
         typer.echo(json.dumps(out, indent=2, default=str))
     else:
         print_workout_summary(out)
+
+
+@app.command("analytics")
+def workout_analytics(
+    workout: str = typer.Argument(
+        ..., help="Workout id, exact workout name, or workout filename."
+    ),
+    period: str = typer.Option(
+        "year",
+        "--period",
+        help="Contribution period: week, month, year, or all.",
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Show stored-data contribution analytics for one workout."""
+    init_db()
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+
+    period = normalize_period(period)
+
+    async def _resolve_and_fetch():
+        async with get_async_session() as session:
+            stmt = select(Workout).where(Workout.athlete_id == settings.athlete_id)
+            if workout.isdigit():
+                stmt = stmt.where(Workout.id == int(workout))
+            else:
+                stmt = stmt.where(
+                    (Workout.name == workout) | (Workout.workout_file_name == workout)
+                )
+            result = await session.execute(stmt.limit(1))
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            workout_id = row.id
+        return await get_workout_contribution(
+            settings.athlete_id,
+            workout_id,
+            period=period,
+        )
+
+    contribution = asyncio.run(_resolve_and_fetch())
+    if contribution is None:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"Workout {workout!r} not found.",
+                    "hint": "Run `fitops workouts list` to see available workouts.",
+                },
+                indent=2,
+            )
+        )
+        raise typer.Exit(1)
+
+    out = {
+        "_meta": make_meta(
+            total_count=len(contribution.get("trend") or []),
+            filters_applied={"workout": workout, "period": period},
+        ),
+        "workout_analytics": contribution,
+    }
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        print_workout_analytics(out)
 
 
 @app.command("compliance")
@@ -981,6 +1059,257 @@ def create_workout(
             indent=2,
         )
     )
+    trigger_cli()
+
+
+@app.command("edit")
+def edit_workout(
+    workout: str = typer.Argument(
+        ..., help="Workout id, exact workout name, or workout filename."
+    ),
+    source: str = typer.Argument(
+        "-",
+        help="Path to replacement workout JSON, or '-' to read from stdin.",
+    ),
+    name: str | None = typer.Option(
+        None, "--name", help="Optional replacement display name."
+    ),
+    sport: str | None = typer.Option(
+        None, "--sport", help="Optional replacement sport."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Edit a workout definition from a structured JSON definition."""
+    import sys
+    from pathlib import Path
+
+    init_db()
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+
+    try:
+        raw = sys.stdin.read() if source == "-" else Path(source).read_text()
+        workout_json = json.loads(raw)
+    except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
+        typer.echo(json.dumps({"error": f"Failed to read JSON: {e}"}, indent=2))
+        raise typer.Exit(1) from e
+
+    async def _edit():
+        async with get_async_session() as session:
+            stmt = select(Workout).where(Workout.athlete_id == settings.athlete_id)
+            if workout.isdigit():
+                stmt = stmt.where(Workout.id == int(workout))
+            else:
+                stmt = stmt.where(
+                    (Workout.name == workout) | (Workout.workout_file_name == workout)
+                )
+            row = (await session.execute(stmt.limit(1))).scalar_one_or_none()
+            if row is None:
+                return None, "not_found"
+
+            new_name = name or row.name
+            new_sport = sport or row.sport_type
+            try:
+                built = build_structured_workout_markdown(
+                    workout_json,
+                    name=new_name,
+                    sport=new_sport,
+                )
+            except Exception as exc:
+                return {"message": str(exc)}, "invalid_workout"
+
+            file_path = safe_workout_file_path(row.workout_file_name)
+            if file_path is None:
+                file_path = safe_workout_file_path(
+                    f"{slugify_workout_name(new_name)}.md"
+                )
+            if file_path is not None:
+                file_path.write_text(built["markdown"], encoding="utf-8")
+                row.workout_file_name = file_path.name
+
+            links = (
+                (
+                    await session.execute(
+                        select(WorkoutActivityLink).where(
+                            WorkoutActivityLink.workout_id == row.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            segments = (
+                (
+                    await session.execute(
+                        select(WorkoutSegment).where(
+                            WorkoutSegment.workout_id == row.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            row.name = new_name
+            row.sport_type = built["sport"]
+            row.workout_meta = built["meta_line"]
+            row.workout_markdown = built["markdown"]
+            row.compliance_score = None
+            for link in links:
+                link.compliance_score = None
+            for segment in segments:
+                await session.delete(segment)
+
+            return {
+                "id": row.id,
+                "name": row.name,
+                "sport": row.sport_type,
+                "file_name": row.workout_file_name,
+                "segment_count": built["segment_count"],
+                "linked_sessions_invalidated": len(links),
+                "segment_rows_deleted": len(segments),
+            }, None
+
+    result, err = asyncio.run(_edit())
+    if err == "not_found":
+        typer.echo(json.dumps({"error": f"Workout {workout!r} not found."}, indent=2))
+        raise typer.Exit(1)
+    if err == "invalid_workout":
+        typer.echo(json.dumps({"error": result["message"]}, indent=2))
+        raise typer.Exit(1)
+
+    out = {"_meta": make_meta(), "updated": result}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        typer.echo(
+            f"Updated workout {result['id']} ({result['name']}); cleared "
+            f"{result['segment_rows_deleted']} cached segment rows."
+        )
+    trigger_cli()
+
+
+@app.command("delete")
+def delete_workout(
+    workout: str = typer.Argument(
+        ..., help="Workout id, exact workout name, or workout filename."
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Confirm deletion."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output raw JSON instead of formatted text."
+    ),
+) -> None:
+    """Delete a workout definition, its links, and cached segment scores."""
+    init_db()
+    settings = get_settings()
+    try:
+        settings.require_auth()
+    except NotAuthenticatedError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+
+    if not yes:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": "Deletion requires --yes.",
+                    "hint": "This removes the workout definition, linked workout rows, cached segment scores, and its markdown file.",
+                },
+                indent=2,
+            )
+        )
+        raise typer.Exit(1)
+
+    async def _delete():
+        file_path = None
+        async with get_async_session() as session:
+            stmt = select(Workout).where(Workout.athlete_id == settings.athlete_id)
+            if workout.isdigit():
+                stmt = stmt.where(Workout.id == int(workout))
+            else:
+                stmt = stmt.where(
+                    (Workout.name == workout) | (Workout.workout_file_name == workout)
+                )
+            row = (await session.execute(stmt.limit(1))).scalar_one_or_none()
+            if row is None:
+                return None, "not_found"
+
+            file_path = safe_workout_file_path(row.workout_file_name)
+            if row.workout_file_name:
+                other_refs = (
+                    (
+                        await session.execute(
+                            select(Workout).where(
+                                Workout.workout_file_name == row.workout_file_name,
+                                Workout.id != row.id,
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if other_refs:
+                    file_path = None
+            links = (
+                (
+                    await session.execute(
+                        select(WorkoutActivityLink).where(
+                            WorkoutActivityLink.workout_id == row.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            segments = (
+                (
+                    await session.execute(
+                        select(WorkoutSegment).where(
+                            WorkoutSegment.workout_id == row.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            deleted = {
+                "id": row.id,
+                "name": row.name,
+                "file_name": row.workout_file_name,
+                "links": len(links),
+                "segments": len(segments),
+                "file_deleted": False,
+            }
+            for segment in segments:
+                await session.delete(segment)
+            for link in links:
+                await session.delete(link)
+            await session.delete(row)
+
+        if file_path is not None and file_path.exists():
+            file_path.unlink()
+            deleted["file_deleted"] = True
+        return deleted, None
+
+    deleted, err = asyncio.run(_delete())
+    if err == "not_found":
+        typer.echo(json.dumps({"error": f"Workout {workout!r} not found."}, indent=2))
+        raise typer.Exit(1)
+
+    out = {"_meta": make_meta(), "deleted": deleted}
+    if json_output:
+        typer.echo(json.dumps(out, indent=2, default=str))
+    else:
+        typer.echo(
+            f"Deleted workout {deleted['id']} ({deleted['name']}); removed "
+            f"{deleted['links']} links and {deleted['segments']} segment rows."
+        )
     trigger_cli()
 
 

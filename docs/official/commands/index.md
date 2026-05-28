@@ -14,7 +14,7 @@ FitOps commands are grouped by function. Each group covers a distinct part of yo
 | [`athlete`](./athlete.md) | Athlete profile, cumulative stats, equipment, and Strava zones |
 | [`analytics`](./analytics.md) | Training load (CTL/ATL/TSB), VO2max, HR zones, pace zones, trends, performance, power curves |
 | [`weather`](./weather.md) | Fetch historical weather per activity, compute WAP factors, get race-day forecasts |
-| [`workouts`](./workouts.md) | Define structured workouts in Markdown, link them to activities, score HR compliance per segment, simulate on a course |
+| [`workouts`](./workouts.md) | Define structured workouts, link them to activities, score compliance, and analyse workout-specific load contribution |
 | [`race`](./race.md) | Import GPX/TCX courses, generate per-km pacing plans with elevation and weather, simulate pacer strategy |
 | [`notes`](./notes.md) | Markdown training journal — create, tag, link to activities, and query across sessions |
 | [`backup`](./backup.md) | Back up your entire FitOps data directory to GitHub and restore it on any machine |

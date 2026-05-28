@@ -151,7 +151,11 @@ async def compute_training_load(
         if activity.start_date is None:
             continue
         act_date = activity.start_date.date()
-        tss = _estimate_tss(activity)
+        tss = (
+            activity.training_stress_score
+            if activity.training_stress_score is not None
+            else _estimate_tss(activity)
+        )
         daily_tss[act_date] = daily_tss.get(act_date, 0.0) + tss
 
     result_obj = TrainingLoadResult(sport_filter=sport_filter)

@@ -1,0 +1,653 @@
+{% extends "base.html" %}
+{% block title %}Edit Workout — FitOps{% endblock %}
+{% block page_name %}Workouts{% endblock %}
+
+{% block content %}
+{% if not workout %}
+<div class="empty-state">
+  Workout not found.
+  <a href="/workouts" class="panel-link" style="display:block;margin-top:8px;">← Back to workouts</a>
+</div>
+{% else %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Edit Workout</p>
+    <p class="page-subtitle">{{ workout.name }}</p>
+  </div>
+  <a href="/workouts/{{ workout.id }}" class="back-link">← Workout</a>
+</div>
+
+{% if error %}
+<div class="alert alert-red" style="margin-bottom:1rem;">
+  <strong>Error:</strong> {{ error }}
+</div>
+{% endif %}
+
+{% if link_count %}
+<div class="empty-state" style="font-size:12px;color:var(--text-dim);margin-bottom:1rem;">
+  This workout has {{ link_count }} linked execution{{ "" if link_count == 1 else "s" }}. Saving structural changes clears cached segment compliance for this workout; re-score linked activities when you want fresh segment analytics.
+</div>
+{% endif %}
+
+<form id="workout-form" class="workout-builder" method="post" action="/workouts/{{ workout.id }}/edit">
+  <input type="hidden" name="workout_json_str" id="workout_json_str" />
+
+  <nav class="workout-builder-nav" aria-label="Workout editor sections">
+    <a href="#builder-basic">Basic</a>
+    <a href="#builder-warmup">Warmup</a>
+    <a href="#builder-intervals">Intervals</a>
+    <a href="#builder-cooldown">Cooldown</a>
+    <a href="#builder-preview">Preview</a>
+  </nav>
+
+  <div id="builder-basic" class="panel workout-builder-section">
+    <div class="builder-section-header"><span class="panel-title">Basic Info</span></div>
+    <div class="workout-builder-basic">
+      <div>
+        <label class="field-label">Workout Name</label>
+        <input type="text" name="name" id="workout-name" value="{{ form.name or '' }}" required
+               style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+      </div>
+      <div>
+        <label class="field-label">Sport</label>
+        <select name="sport" id="workout-sport"
+                style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;">
+          {% for s in [('run','Run'),('ride','Ride'),('swim','Swim'),('walk','Walk'),('hike','Hike')] %}
+          <option value="{{ s[0] }}" {% if (form.sport or workout.sport_type or 'run') == s[0] %}selected{% endif %}>{{ s[1] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div id="builder-warmup" class="panel workout-builder-section">
+    <div class="builder-section-header">
+      <span class="panel-title">Warmup</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="warmup-enabled" onchange="toggleSection('warmup-fields',this.checked)" />
+        Include
+      </label>
+    </div>
+    <div id="warmup-fields" style="padding:1rem 1.25rem;">
+      <div class="ig-3" style="gap:1rem;">
+        <div>
+          <label class="field-label">Duration (minutes)</label>
+          <input type="number" id="warmup-time" min="1" max="60" step="1" placeholder="10"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR min (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="warmup-hr-min" min="80" max="220" step="1" placeholder="120"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR max (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="warmup-hr-max" min="80" max="220" step="1" placeholder="145"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="builder-intervals" class="panel workout-builder-section">
+    <div class="builder-section-header builder-section-header--split">
+      <span class="panel-title">Intervals</span>
+      <button type="button" onclick="addIntervalGroup()"
+              style="font-size:12px;padding:0.25rem 0.75rem;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;cursor:pointer;">
+        + Add Group
+      </button>
+    </div>
+    <div id="intervals-container" style="padding:0.5rem 1.25rem 1rem;">
+      <p id="no-intervals-msg" style="font-size:12px;color:var(--text-dim);padding:0.5rem 0;">
+        No interval groups yet. Click <strong>+ Add Group</strong> to add one.
+      </p>
+    </div>
+  </div>
+
+  <div id="builder-cooldown" class="panel workout-builder-section">
+    <div class="builder-section-header">
+      <span class="panel-title">Cooldown</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="cooldown-enabled" onchange="toggleSection('cooldown-fields',this.checked)" />
+        Include
+      </label>
+    </div>
+    <div id="cooldown-fields" style="padding:1rem 1.25rem;">
+      <div class="ig-3" style="gap:1rem;">
+        <div>
+          <label class="field-label">Duration (minutes)</label>
+          <input type="number" id="cooldown-time" min="1" max="60" step="1" placeholder="10"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR min (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="cooldown-hr-min" min="80" max="220" step="1" placeholder="110"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+        <div>
+          <label class="field-label">HR max (bpm) <span style="font-weight:400;color:var(--text-dim);">optional</span></label>
+          <input type="number" id="cooldown-hr-max" min="80" max="220" step="1" placeholder="140"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:0.4rem 0.6rem;border-radius:4px;font-size:0.9rem;" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="builder-preview" class="panel workout-builder-section">
+    <div class="builder-section-header builder-section-header--split">
+      <span class="panel-title">Preview</span>
+      <button type="button" onclick="refreshPreview()"
+              style="font-size:12px;padding:0.25rem 0.75rem;background:var(--surface-3);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;cursor:pointer;">
+        Refresh
+      </button>
+    </div>
+    <div style="padding:0.75rem 1.25rem;">
+      <div id="preview-segments" style="font-size:12px;color:var(--text-dim);">
+        Fill in the form above to see a preview.
+      </div>
+    </div>
+  </div>
+
+  <div class="workout-builder-actions">
+    <button type="submit" class="btn">Save Changes</button>
+    <a href="/workouts/{{ workout.id }}" style="font-size:0.82rem;color:var(--text-dim);">Cancel</a>
+  </div>
+</form>
+
+<style>
+  .field-label {
+    display: block;
+    font-size: 0.78rem;
+    color: #9aadb0;
+    margin-bottom: 0.25rem;
+  }
+  .workout-builder {
+    --builder-bg: #080d0f;
+    --builder-bg-raised: #0f1618;
+    --builder-bg-field: #121a1d;
+    --builder-border: #223033;
+    --builder-border-soft: #182427;
+    --builder-text-dim: #6f8285;
+  }
+  .workout-builder-nav {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    margin-bottom: 10px;
+    background: var(--builder-border-soft);
+    border: 1px solid var(--builder-border);
+    border-radius: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .workout-builder-nav a {
+    flex: 1 0 auto;
+    min-width: max-content;
+    padding: 8px 12px;
+    background: var(--builder-bg-raised);
+    color: #a9b7b9;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-transform: uppercase;
+    transition: background 0.1s, color 0.1s;
+  }
+  .workout-builder-nav a:hover {
+    background: #142024;
+    color: var(--text-primary);
+  }
+  .workout-builder-section {
+    padding: 0;
+    margin-bottom: 10px;
+    background: var(--builder-bg);
+    border: 1px solid var(--builder-border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .builder-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--builder-bg-raised);
+    border-bottom: 1px solid var(--builder-border-soft);
+  }
+  .builder-section-header--split {
+    justify-content: space-between;
+  }
+  .builder-section-header .panel-title {
+    color: #e6eeee;
+  }
+  .workout-builder-basic {
+    padding: 0.9rem 1rem;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(130px, 1fr);
+    gap: 0.8rem;
+  }
+  .workout-builder-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 7;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 10px 0 12px;
+    margin-bottom: 2rem;
+    background: linear-gradient(180deg, rgba(0,0,0,0), var(--bg) 28%);
+  }
+  .workout-builder input:not([type="checkbox"]),
+  .workout-builder select {
+    background: var(--builder-bg-field) !important;
+    border-color: var(--builder-border) !important;
+    color: var(--text-primary) !important;
+    min-height: 34px;
+  }
+  .workout-builder input:not([type="checkbox"]):focus,
+  .workout-builder select:focus {
+    outline: none;
+    border-color: rgba(var(--accent-primary-rgb), 0.65) !important;
+  }
+  .workout-builder button:not(.btn) {
+    background: #132022 !important;
+    border-color: var(--builder-border) !important;
+    color: #d8e4e6 !important;
+  }
+  .workout-builder button:not(.btn):hover {
+    border-color: rgba(var(--accent-primary-rgb), 0.55) !important;
+    color: var(--accent-primary) !important;
+  }
+  .interval-group {
+    border: 1px solid var(--builder-border-soft);
+    border-radius: 6px;
+    padding: 0.7rem 0.8rem;
+    margin-bottom: 0.6rem;
+    background: #0c1214;
+  }
+  .interval-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+  }
+  .interval-group-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #9fb0b3;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .remove-group-btn {
+    font-size: 11px;
+    padding: 0.15rem 0.5rem;
+    background: transparent;
+    border: 1px solid var(--builder-border);
+    color: var(--builder-text-dim);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .remove-group-btn:hover { color: #e05; border-color: #e05; }
+  .interval-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.6rem;
+  }
+  @media (max-width: 900px) {
+    .interval-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .interval-field input {
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  .preview-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--builder-border-soft);
+  }
+  .preview-row:last-child { border-bottom: none; }
+  .preview-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    min-width: 64px;
+    text-align: center;
+  }
+  .badge-warmup    { background: #173225; color: #85f0b7; }
+  .badge-interval  { background: #172a3a; color: #87c8ff; }
+  .badge-cooldown  { background: #153133; color: #72e1e8; }
+
+  @media (max-width: 767px) {
+    .workout-builder-nav {
+      top: 44px;
+      margin-left: -2px;
+      margin-right: -2px;
+    }
+    .workout-builder-nav a {
+      flex: 0 0 auto;
+      padding: 9px 12px;
+    }
+    .workout-builder-basic {
+      grid-template-columns: 1fr;
+      padding: 0.8rem 0.9rem;
+      gap: 0.75rem;
+    }
+    #warmup-fields,
+    #cooldown-fields,
+    #intervals-container {
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+    }
+    #workout-form input,
+    #workout-form select,
+    #workout-form button {
+      min-height: 42px;
+    }
+    #workout-form input[type="checkbox"] {
+      min-height: 0;
+    }
+    #workout-form .panel-header {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .interval-group {
+      padding: 0.85rem;
+    }
+    .interval-group-header {
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .interval-grid {
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+    }
+    .preview-row {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .preview-badge {
+      min-width: 84px;
+    }
+    .workout-builder-actions {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .workout-builder-actions .btn,
+    .workout-builder-actions a {
+      width: 100%;
+      text-align: center;
+    }
+  }
+</style>
+
+<script>
+  let groupCounter = 0;
+  const initialWorkoutJSONString = {{ (form.workout_json_str or '{}') | tojson }};
+
+  function toggleSection(id, show) {
+    document.getElementById(id).style.display = show ? '' : 'none';
+    refreshPreview();
+  }
+
+  function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null) el.value = value;
+  }
+
+  function setSectionEnabled(prefix, enabled) {
+    const checkbox = document.getElementById(`${prefix}-enabled`);
+    checkbox.checked = enabled;
+    document.getElementById(`${prefix}-fields`).style.display = enabled ? '' : 'none';
+  }
+
+  function showNoIntervalsIfNeeded() {
+    const container = document.getElementById('intervals-container');
+    const remaining = container.querySelectorAll('.interval-group');
+    document.getElementById('no-intervals-msg').style.display = remaining.length === 0 ? '' : 'none';
+  }
+
+  function addIntervalGroup(initial = {}) {
+    groupCounter++;
+    const idx = groupCounter;
+    const container = document.getElementById('intervals-container');
+    document.getElementById('no-intervals-msg').style.display = 'none';
+
+    const div = document.createElement('div');
+    div.className = 'interval-group';
+    div.id = `group-${idx}`;
+    div.innerHTML = `
+      <div class="interval-group-header">
+        <span class="interval-group-title">Interval Group ${idx}</span>
+        <button type="button" class="remove-group-btn" onclick="removeGroup(${idx})">Remove</button>
+      </div>
+      <div class="interval-grid">
+        <div class="interval-field">
+          <label class="field-label">Sets</label>
+          <input type="number" id="g${idx}-sets" min="1" max="30" step="1" placeholder="4" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Work duration (s)</label>
+          <input type="number" id="g${idx}-run-s" min="10" max="3600" step="5" placeholder="300" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Pace min <span style="font-weight:400;color:var(--text-dim);">(M:SS/km)</span></label>
+          <input type="text" id="g${idx}-pace-min" placeholder="4:30" pattern="\\d+:\\d{2}" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Pace max <span style="font-weight:400;color:var(--text-dim);">(M:SS/km)</span></label>
+          <input type="text" id="g${idx}-pace-max" placeholder="5:00" pattern="\\d+:\\d{2}" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Rest duration (s)</label>
+          <input type="number" id="g${idx}-rest-s" min="0" max="1800" step="5" placeholder="90" oninput="refreshPreview()" />
+        </div>
+        <div class="interval-field">
+          <label class="field-label">Rest pace min <span style="font-weight:400;color:var(--text-dim);">opt.</span></label>
+          <input type="text" id="g${idx}-rest-pace-min" placeholder="6:00" pattern="\\d+:\\d{2}" oninput="refreshPreview()" />
+        </div>
+      </div>
+    `;
+    container.appendChild(div);
+
+    const run = initial.run || {};
+    const rest = initial.rest || {};
+    const runPace = run.pace_per_km || {};
+    const restPace = rest.pace_per_km || {};
+    setValue(`g${idx}-sets`, initial.sets || 4);
+    setValue(`g${idx}-run-s`, run.time_seconds || 300);
+    setValue(`g${idx}-pace-min`, runPace.min || '');
+    setValue(`g${idx}-pace-max`, runPace.max || '');
+    setValue(`g${idx}-rest-s`, rest.time_seconds ?? 90);
+    setValue(`g${idx}-rest-pace-min`, restPace.min || '');
+
+    refreshPreview();
+  }
+
+  function removeGroup(idx) {
+    const el = document.getElementById(`group-${idx}`);
+    if (el) el.remove();
+    showNoIntervalsIfNeeded();
+    refreshPreview();
+  }
+
+  function fmtDuration(seconds) {
+    if (!seconds || seconds <= 0) return '—';
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s === 0 ? `${m}min` : `${m}min ${s}s`;
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, char => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[char]));
+  }
+
+  function buildJSON() {
+    const training = {};
+
+    if (document.getElementById('warmup-enabled').checked) {
+      const mins = parseFloat(document.getElementById('warmup-time').value) || 0;
+      const hrMin = document.getElementById('warmup-hr-min').value;
+      const hrMax = document.getElementById('warmup-hr-max').value;
+      const warmup = { time_minutes: mins };
+      if (hrMin && hrMax) {
+        warmup.heart_rate_range_bpm = { min: parseInt(hrMin), max: parseInt(hrMax) };
+      }
+      training.warmup = warmup;
+    }
+
+    const groups = document.querySelectorAll('.interval-group');
+    if (groups.length > 0) {
+      training.intervals = [];
+      groups.forEach(g => {
+        const id = g.id.replace('group-', '');
+        const sets = parseInt(document.getElementById(`g${id}-sets`).value) || 1;
+        const runS = parseInt(document.getElementById(`g${id}-run-s`).value) || 0;
+        const paceMin = document.getElementById(`g${id}-pace-min`).value.trim();
+        const paceMax = document.getElementById(`g${id}-pace-max`).value.trim();
+        const restS = parseInt(document.getElementById(`g${id}-rest-s`).value) || 0;
+        const restPaceMin = document.getElementById(`g${id}-rest-pace-min`).value.trim();
+
+        const run = { time_seconds: runS };
+        if (paceMin || paceMax) {
+          run.pace_per_km = {};
+          if (paceMin) run.pace_per_km.min = paceMin;
+          if (paceMax) run.pace_per_km.max = paceMax;
+        }
+
+        const rest = { time_seconds: restS };
+        if (restPaceMin) {
+          rest.pace_per_km = { min: restPaceMin };
+        }
+
+        training.intervals.push({ sets, run, rest });
+      });
+    }
+
+    if (document.getElementById('cooldown-enabled').checked) {
+      const mins = parseFloat(document.getElementById('cooldown-time').value) || 0;
+      const hrMin = document.getElementById('cooldown-hr-min').value;
+      const hrMax = document.getElementById('cooldown-hr-max').value;
+      const cooldown = { time_minutes: mins };
+      if (hrMin && hrMax) {
+        cooldown.heart_rate_range_bpm = { min: parseInt(hrMin), max: parseInt(hrMax) };
+      }
+      training.cooldown_rest = cooldown;
+    }
+
+    return { training };
+  }
+
+  function refreshPreview() {
+    const data = buildJSON();
+    const training = data.training;
+    const preview = document.getElementById('preview-segments');
+    const rows = [];
+
+    if (training.warmup) {
+      const w = training.warmup;
+      let detail = `${w.time_minutes} min`;
+      if (w.heart_rate_range_bpm) detail += ` · HR ${w.heart_rate_range_bpm.min}-${w.heart_rate_range_bpm.max} bpm`;
+      rows.push(`<div class="preview-row"><span class="preview-badge badge-warmup">Warmup</span><span style="font-size:12px;">${escapeHtml(detail)}</span></div>`);
+    }
+
+    (training.intervals || []).forEach(g => {
+      const runFmt = fmtDuration(g.run.time_seconds);
+      let pacePart = '';
+      if (g.run.pace_per_km) {
+        const p = g.run.pace_per_km;
+        pacePart = ` @ ${p.min || ''}${p.min && p.max ? '-' : ''}${p.max || ''}/km`;
+      }
+      const restFmt = g.rest.time_seconds > 0 ? ` · ${fmtDuration(g.rest.time_seconds)} rest` : '';
+      const label = `${g.sets}x${runFmt}${pacePart}${restFmt}`;
+      rows.push(`<div class="preview-row"><span class="preview-badge badge-interval">Intervals</span><span style="font-size:12px;">${escapeHtml(label)}</span></div>`);
+    });
+
+    if (training.cooldown_rest) {
+      const c = training.cooldown_rest;
+      let detail = `${c.time_minutes} min`;
+      if (c.heart_rate_range_bpm) detail += ` · HR ${c.heart_rate_range_bpm.min}-${c.heart_rate_range_bpm.max} bpm`;
+      rows.push(`<div class="preview-row"><span class="preview-badge badge-cooldown">Cooldown</span><span style="font-size:12px;">${escapeHtml(detail)}</span></div>`);
+    }
+
+    if (rows.length === 0) {
+      preview.innerHTML = '<span style="font-size:12px;color:var(--text-dim);">Enable at least one section to see a preview.</span>';
+    } else {
+      preview.innerHTML = rows.join('');
+    }
+  }
+
+  function hydrateBuilder() {
+    let initialWorkout = {};
+    try {
+      initialWorkout = JSON.parse(initialWorkoutJSONString || '{}');
+    } catch (_) {
+      initialWorkout = {};
+    }
+    const training = initialWorkout.training || initialWorkout || {};
+
+    const warmup = training.warmup || null;
+    setSectionEnabled('warmup', Boolean(warmup));
+    if (warmup) {
+      setValue('warmup-time', warmup.time_minutes);
+      const hr = warmup.heart_rate_range_bpm || {};
+      setValue('warmup-hr-min', hr.min);
+      setValue('warmup-hr-max', hr.max);
+    }
+
+    (training.intervals || []).forEach(group => addIntervalGroup(group));
+    showNoIntervalsIfNeeded();
+
+    const cooldown = training.cooldown_rest || training.cooldown || null;
+    setSectionEnabled('cooldown', Boolean(cooldown));
+    if (cooldown) {
+      setValue('cooldown-time', cooldown.time_minutes);
+      const hr = cooldown.heart_rate_range_bpm || {};
+      setValue('cooldown-hr-min', hr.min);
+      setValue('cooldown-hr-max', hr.max);
+    }
+
+    refreshPreview();
+  }
+
+  document.getElementById('workout-form').addEventListener('submit', function(e) {
+    const data = buildJSON();
+    const training = data.training;
+    const hasSomething = training.warmup || (training.intervals && training.intervals.length) || training.cooldown_rest;
+    if (!hasSomething) {
+      e.preventDefault();
+      alert('Add at least a warmup, cooldown, or one interval group.');
+      return;
+    }
+
+    document.getElementById('workout_json_str').value = JSON.stringify(data);
+  });
+
+  ['warmup-time','warmup-hr-min','warmup-hr-max','cooldown-time','cooldown-hr-min','cooldown-hr-max'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', refreshPreview);
+  });
+
+  hydrateBuilder();
+</script>
+{% endif %}
+{% endblock %}

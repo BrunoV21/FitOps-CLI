@@ -85,6 +85,24 @@ Being **below** target is penalised equally to being above — the formula is sy
 
 The `overall_compliance_score` is a duration-weighted average across all scored segments.
 
+---
+
+## Contribution Analytics
+
+Workout contribution analytics answer: *how much has this specific workout contributed to my training load over time?*
+
+For each linked execution, FitOps reads stored `activities.training_stress_score` and attributes that load back to the workout definition. It then reports:
+
+- Total and period TSS from that workout
+- Share of the selected period's total training load
+- Compliance-weighted TSS (`TSS × compliance_score`)
+- Estimated current CTL and ATL contribution using the same EWMA decay constants as training load
+- True pace change across repeated executions when stored GAP and weather-adjusted pace data is available
+
+The CTL/ATL contribution is attribution, not proof of causation. It means the workout's stored TSS mathematically contributes that much to the current EWMA load model. Execution quality and fitness improvement should be read alongside compliance, pace, HR, and fatigue state.
+
+Contribution analytics are read from cached DB rows. The dashboard and `fitops workouts analytics` command do not fetch streams, compute true pace, rescore segments, or estimate missing TSS during the read. Linked activities without stored TSS are reported as missing coverage and excluded from load contribution totals; linked activities without stored true pace are omitted from the true pace trend.
+
 ### Example output
 
 ```
@@ -134,10 +152,13 @@ See [Weather & Pace](./weather-pace.md) for the GAP and WAP models behind the ad
 fitops workouts list                              # list all workout files
 fitops workouts show threshold-tuesday            # display parsed workout
 fitops workouts create "Threshold Tuesday" def.json  # create from JSON
+fitops workouts edit threshold-tuesday updated.json  # replace definition
+fitops workouts delete threshold-tuesday --yes    # remove definition + cached links
 fitops workouts link threshold-tuesday <id>       # link to an activity
 fitops workouts get <activity_id>                 # retrieve linked workout
 fitops workouts compliance <activity_id>          # score HR compliance
 fitops workouts compliance <activity_id> --recalculate
+fitops workouts analytics threshold-tuesday       # workout-specific contribution
 fitops workouts simulate threshold-tuesday --course 3
 fitops workouts history --limit 10                # recent linked workouts
 fitops workouts unlink <activity_id>              # remove link

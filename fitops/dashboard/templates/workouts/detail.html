@@ -39,7 +39,13 @@
       <p class="activity-description">{{ workout.notes }}</p>
       {% endif %}
     </div>
-    {% if workout.compliance_pct is not none %}
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+      <a href="/workouts/{{ workout.id }}/edit" class="btn">Edit</a>
+      <form method="post" action="/workouts/{{ workout.id }}/delete" onsubmit="return confirm('Delete this workout definition and its linked compliance cache?');" style="margin:0;">
+        <button type="submit" class="btn" style="border-color:var(--accent-red);color:var(--accent-red);background:transparent;">Delete</button>
+      </form>
+    </div>
+	    {% if workout.compliance_pct is not none %}
     <div style="text-align:right;flex-shrink:0;">
       <p class="panel-label" style="margin:0 0 4px;">Overall Score</p>
       <p style="font-size:28px;font-weight:700;color:
@@ -101,6 +107,66 @@
 </div>
 {% endif %}
 
+{# ── Workout contribution analytics ───────────────────────────── #}
+{% if workout_contribution %}
+{% set wc = workout_contribution %}
+{% set cs = wc.summary %}
+<div class="stats-block" style="--delay:120ms;margin-bottom:1px;">
+  <div class="splits-header" style="margin-bottom:10px;">
+    <div>
+      <p class="panel-label" style="margin:0;">Workout Analytics</p>
+      <span style="font-size:11px;color:var(--text-dim);">Stored TSS contribution and execution trend</span>
+    </div>
+    <div class="period-tabs">
+      {% for p, lbl in [('week','Week'),('month','Month'),('year','Year'),('all','All')] %}
+      <a href="/workouts/{{ workout.id }}?contribution_period={{ p }}" class="period-tab {% if contribution_period == p %}active{% endif %}">{{ lbl }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="grid-4">
+    <div class="panel panel--accent-blue" style="--delay:0ms">
+      <p class="panel-label">Load — {{ wc.period_label }}</p>
+      <p class="panel-metric">{{ cs.period_tss }}<span class="panel-unit">TSS</span></p>
+      <p class="panel-sub">{% if cs.period_load_share_pct is not none %}{{ cs.period_load_share_pct }}% of period load{% else %}period share unavailable{% endif %}</p>
+    </div>
+    <div class="panel panel--accent" style="--delay:40ms">
+      <p class="panel-label">CTL Contribution</p>
+      <p class="panel-metric">{{ cs.period_ctl_contribution }}</p>
+      <p class="panel-sub">ATL {{ cs.period_atl_contribution }} · current {{ cs.current_ctl_contribution }}</p>
+    </div>
+    <div class="panel panel--accent-amber" style="--delay:80ms">
+      <p class="panel-label">Quality Load</p>
+      <p class="panel-metric">{{ cs.period_compliance_weighted_tss }}<span class="panel-unit">TSS</span></p>
+      <p class="panel-sub">{% if cs.period_avg_compliance_pct is not none %}{{ cs.period_avg_compliance_pct }}% avg compliance{% else %}No scored sessions{% endif %}</p>
+    </div>
+    <div class="panel panel--accent-purple" style="--delay:120ms">
+      <p class="panel-label">True Pace Change</p>
+      <p class="panel-metric">{% if cs.true_pace_change_pct is not none %}{{ "%+.1f" | format(cs.true_pace_change_pct) }}<span class="panel-unit">%</span>{% else %}—{% endif %}</p>
+      <p class="panel-sub">{{ cs.first_true_pace_formatted or "—" }} → {{ cs.latest_true_pace_formatted or "—" }}</p>
+    </div>
+  </div>
+  {% if wc.period_trend %}
+  <div class="panel" style="--delay:160ms;margin-top:12px;">
+    <div class="splits-header" style="margin-bottom:8px;">
+      <p class="panel-label" style="margin:0;">Contribution Trend</p>
+      <span style="font-size:11px;color:var(--text-dim);">{{ cs.period_sessions }} sessions · {{ cs.period_tss_coverage_pct }}% TSS coverage · {{ cs.period_missing_true_pace_sessions }} without true pace</span>
+    </div>
+    <div class="chart-wrap" style="height:260px;">
+      <canvas id="workoutContributionChart"></canvas>
+    </div>
+  </div>
+  {% elif cs.period_sessions == 0 %}
+  <div class="empty-state" style="--delay:160ms;font-size:12px;color:var(--text-dim);">
+    No linked executions in this period.
+  </div>
+  {% else %}
+  <div class="empty-state" style="--delay:160ms;font-size:12px;color:var(--text-dim);">
+    This period has linked executions, but no stored TSS yet. Run <code>fitops analytics recalculate-scores</code> before using load contribution.
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ── Segment performance table ────────────────────────────────── #}
 {% if grouped_segments %}
 <div class="table-wrap" style="--delay:200ms;margin-bottom:1px;">
@@ -116,6 +182,7 @@
         <th class="r">Time</th>
         <th class="r">Distance</th>
         <th class="r">Avg Pace</th>
+        <th class="r">Avg True Pace</th>
         <th class="r">Avg HR</th>
         <th class="r">Avg Speed</th>
         <th class="r">Avg GAP</th>
@@ -130,7 +197,7 @@
       {# ── Interval group row ─────────────────────────────────── #}
       {% if item.type == 'group' %}
       <tr>
-        <td colspan="12" style="padding:0;">
+        <td colspan="13" style="padding:0;">
           <details style="margin:0;">
             <summary style="padding:8px 14px; cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; background:rgba(0,255,135,0.04); border-bottom:1px solid var(--border);">
               <span style="display:flex; align-items:center; gap:10px;">
@@ -149,6 +216,7 @@
                     <th class="r" style="font-size:0.72rem;">Time</th>
                     <th class="r" style="font-size:0.72rem;">Distance</th>
                     <th class="r" style="font-size:0.72rem;">Avg Pace</th>
+                    <th class="r" style="font-size:0.72rem;">Avg True Pace</th>
                     <th class="r" style="font-size:0.72rem;">Avg HR</th>
                     <th class="r" style="font-size:0.72rem;">Avg Speed</th>
                     <th class="r" style="font-size:0.72rem;">Avg GAP</th>
@@ -171,6 +239,9 @@
                     </td>
                     <td class="r">
                       {% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}
+                    </td>
+                    <td class="r">
+                      {% if seg.actuals.avg_true_pace_formatted %}{{ seg.actuals.avg_true_pace_formatted }}/km{% else %}—{% endif %}
                     </td>
                     <td class="r">
                       {% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}
@@ -222,6 +293,9 @@
         </td>
         <td class="r">
           {% if item.actuals.avg_pace_formatted %}{{ item.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}
+        </td>
+        <td class="r">
+          {% if item.actuals.avg_true_pace_formatted %}{{ item.actuals.avg_true_pace_formatted }}/km{% else %}—{% endif %}
         </td>
         <td class="r">
           {% if item.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(item.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}
@@ -333,7 +407,9 @@
         <th class="r">Distance</th>
         <th class="r">Duration</th>
         <th class="r">Avg Pace</th>
+        <th class="r">True Pace</th>
         <th class="r">Avg HR</th>
+        <th class="r">TSS</th>
         <th class="r">Aerobic</th>
         <th class="r">Anaerob.</th>
         <th class="r">Elev</th>
@@ -357,7 +433,9 @@
         <td class="r" style="font-size:12px;">{% if a.distance_km %}{{ a.distance_km }} km{% else %}—{% endif %}</td>
         <td class="r" style="font-size:12px;">{{ a.duration }}</td>
         <td class="r" style="font-size:12px;">{{ a.pace or "—" }}</td>
+        <td class="r" style="font-size:12px;">{{ a.true_pace or "—" }}</td>
         <td class="r" style="font-size:12px;">{% if a.avg_hr %}{{ a.avg_hr }} bpm{% else %}—{% endif %}</td>
+        <td class="r" style="font-size:12px;">{% if a.tss is not none %}{{ a.tss }}{% else %}—{% endif %}</td>
         <td class="r" title="Aerobic score {{ a.aerobic_score }}/5">
           {% if a.aerobic_score > 0 %}
           <span style="font-size:11px;color:var(--accent-primary);letter-spacing:1px;">{% for pip in [1,2,3,4,5] %}{% if pip <= a.aerobic_score_int %}●{% else %}○{% endif %}{% endfor %}</span>
@@ -406,6 +484,91 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+
+{% if workout_contribution and workout_contribution.period_trend %}
+<script>
+const WORKOUT_CONTRIBUTION = {{ workout_contribution.period_trend | tojson }};
+document.addEventListener('DOMContentLoaded', function() {
+  const canvas = document.getElementById('workoutContributionChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const labels = WORKOUT_CONTRIBUTION.map(p => p.date || '');
+  const tss = WORKOUT_CONTRIBUTION.map(p => p.tss);
+  const compliance = WORKOUT_CONTRIBUTION.map(p => p.compliance_pct);
+  const truePace = WORKOUT_CONTRIBUTION.map(p => p.true_pace_s_per_km ? +(p.true_pace_s_per_km / 60).toFixed(2) : null);
+  new Chart(canvas, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'TSS',
+          data: tss,
+          backgroundColor: 'rgba(0,170,255,0.24)',
+          borderColor: 'rgba(0,170,255,0.8)',
+          borderWidth: 1,
+          yAxisID: 'load',
+        },
+        {
+          type: 'line',
+          label: 'Compliance %',
+          data: compliance,
+          borderColor: '#00ff87',
+          backgroundColor: 'rgba(0,255,135,0.08)',
+          pointRadius: 3,
+          tension: 0.25,
+          yAxisID: 'pct',
+        },
+        {
+          type: 'line',
+          label: 'True pace min/km',
+          data: truePace,
+          borderColor: '#ffcc00',
+          pointRadius: 2,
+          tension: 0.25,
+          yAxisID: 'pace',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { boxWidth: 10, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            afterTitle: function(items) {
+              const p = WORKOUT_CONTRIBUTION[items[0].dataIndex];
+              return p && p.activity_name ? p.activity_name : '';
+            },
+            label: function(ctx) {
+              const p = WORKOUT_CONTRIBUTION[ctx.dataIndex] || {};
+              const datasetLabel = ctx.dataset.label || '';
+              if (datasetLabel === 'TSS') {
+                return `TSS: ${p.tss ?? 'not stored'}`;
+              }
+              if (datasetLabel === 'Compliance %') {
+                return `Compliance: ${p.compliance_pct != null ? p.compliance_pct + '%' : 'not scored'}`;
+              }
+              if (datasetLabel === 'True pace min/km') {
+                return `True pace: ${p.true_pace_formatted ? p.true_pace_formatted + '/km' : 'not stored'}`;
+              }
+              return `${datasetLabel}: ${ctx.formattedValue}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkip: true } },
+        load: { position: 'left', beginAtZero: true, title: { display: true, text: 'TSS' } },
+        pct: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: 'Compliance' } },
+        pace: { position: 'right', reverse: true, grid: { drawOnChartArea: false }, display: false },
+      },
+    },
+  });
+});
+</script>
 {% endif %}
 
 {% endif %}

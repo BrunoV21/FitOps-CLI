@@ -5,7 +5,7 @@ import json
 import re
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 
@@ -15,19 +15,26 @@ from fitops.analytics.training_scores import (
     compute_anaerobic_score,
 )
 from fitops.analytics.weather_pace import weather_row_to_dict
+from fitops.analytics.workout_contribution import get_workout_contribution
 from fitops.analytics.workout_summary import get_workout_summary, normalize_period
 from fitops.backup.event_sync import trigger_async
 from fitops.config.settings import get_settings
 from fitops.dashboard.queries.race import get_all_courses, get_course
-from fitops.dashboard.queries.weather import get_weather_for_activities
 from fitops.dashboard.queries.workouts import (
     get_linked_activities_for_workout,
     get_workout_with_segments,
 )
+from fitops.db.models.activity_weather import ActivityWeather
 from fitops.db.models.workout import Workout
 from fitops.db.models.workout_activity_link import WorkoutActivityLink
 from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
+from fitops.workouts.manage import (
+    build_structured_workout_markdown,
+    safe_workout_file_path,
+    slugify_workout_name,
+    workout_json_from_meta,
+)
 
 router = APIRouter()
 
@@ -123,6 +130,11 @@ def _fmt_pace(pace_s: float | None) -> str | None:
         return None
     m, s = divmod(int(pace_s), 60)
     return f"{m}:{s:02d}"
+
+
+def _fmt_pace_with_unit(pace_s: float | None) -> str | None:
+    formatted = _fmt_pace(pace_s)
+    return f"{formatted}/km" if formatted else None
 
 
 def _fmt_date(value) -> str:
@@ -719,8 +731,239 @@ def register(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
+    @router.get("/workouts/{workout_id}/edit", response_class=HTMLResponse)
+    async def workout_edit_form(request: Request, workout_id: int):
+        settings = get_settings()
+        if not settings.athlete_id:
+            return templates.TemplateResponse(
+                request,
+                "workouts/edit.html",
+                {"request": request, "workout": None, "active_page": "workouts"},
+                status_code=404,
+            )
+
+        async with get_async_session() as session:
+            workout = (
+                await session.execute(
+                    select(Workout).where(
+                        Workout.id == workout_id,
+                        Workout.athlete_id == settings.athlete_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if workout is None:
+                return templates.TemplateResponse(
+                    request,
+                    "workouts/edit.html",
+                    {"request": request, "workout": None, "active_page": "workouts"},
+                    status_code=404,
+                )
+            link_count = len(
+                (
+                    await session.execute(
+                        select(WorkoutActivityLink).where(
+                            WorkoutActivityLink.workout_id == workout_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        workout_json = workout_json_from_meta(workout.workout_meta)
+        json_text = json.dumps(workout_json or {}, indent=2)
+        return templates.TemplateResponse(
+            request,
+            "workouts/edit.html",
+            {
+                "request": request,
+                "workout": workout,
+                "form": {
+                    "name": workout.name,
+                    "sport": workout.sport_type,
+                    "workout_json_str": json_text,
+                },
+                "error": None,
+                "link_count": link_count,
+                "active_page": "workouts",
+            },
+        )
+
+    @router.post("/workouts/{workout_id}/edit", response_class=HTMLResponse)
+    async def workout_edit_post(
+        request: Request,
+        workout_id: int,
+        name: str = Form(...),
+        sport: str = Form("run"),
+        workout_json_str: str = Form(...),
+    ):
+        settings = get_settings()
+        form_vals = {"name": name, "sport": sport, "workout_json_str": workout_json_str}
+
+        def _render_error(workout: Workout | None, link_count: int, msg: str):
+            return templates.TemplateResponse(
+                request,
+                "workouts/edit.html",
+                {
+                    "request": request,
+                    "workout": workout,
+                    "form": form_vals,
+                    "error": msg,
+                    "link_count": link_count,
+                    "active_page": "workouts",
+                },
+            )
+
+        if not settings.athlete_id:
+            return _render_error(None, 0, "Not authenticated.")
+
+        try:
+            workout_json = json.loads(workout_json_str)
+        except json.JSONDecodeError as e:
+            return _render_error(None, 0, f"Invalid JSON: {e}")
+
+        try:
+            built = build_structured_workout_markdown(
+                workout_json,
+                name=name,
+                sport=sport,
+            )
+        except Exception as e:
+            return _render_error(None, 0, f"Failed to parse workout: {e}")
+
+        async with get_async_session() as session:
+            workout = (
+                await session.execute(
+                    select(Workout).where(
+                        Workout.id == workout_id,
+                        Workout.athlete_id == settings.athlete_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if workout is None:
+                return _render_error(None, 0, "Workout not found.")
+
+            links = (
+                (
+                    await session.execute(
+                        select(WorkoutActivityLink).where(
+                            WorkoutActivityLink.workout_id == workout_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            segment_rows = (
+                (
+                    await session.execute(
+                        select(WorkoutSegment).where(
+                            WorkoutSegment.workout_id == workout_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            old_path = safe_workout_file_path(workout.workout_file_name)
+            file_path = old_path
+            if file_path is None:
+                file_path = safe_workout_file_path(f"{slugify_workout_name(name)}.md")
+            if file_path is not None:
+                file_path.write_text(built["markdown"], encoding="utf-8")
+                workout.workout_file_name = file_path.name
+                workout.workout_markdown = built["markdown"]
+
+            workout.name = name
+            workout.sport_type = built["sport"]
+            workout.workout_meta = built["meta_line"]
+            workout.compliance_score = None
+            workout.updated_at = datetime.datetime.now(datetime.UTC)
+
+            for link in links:
+                link.compliance_score = None
+            for segment in segment_rows:
+                await session.delete(segment)
+
+        await trigger_async()
+        return RedirectResponse(f"/workouts/{workout_id}", status_code=303)
+
+    @router.post("/workouts/{workout_id}/delete")
+    async def workout_delete_post(request: Request, workout_id: int):
+        settings = get_settings()
+        if not settings.athlete_id:
+            return RedirectResponse("/workouts", status_code=303)
+
+        file_path = None
+        async with get_async_session() as session:
+            workout = (
+                await session.execute(
+                    select(Workout).where(
+                        Workout.id == workout_id,
+                        Workout.athlete_id == settings.athlete_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if workout is None:
+                return RedirectResponse("/workouts", status_code=303)
+
+            file_path = safe_workout_file_path(workout.workout_file_name)
+            if workout.workout_file_name:
+                other_refs = (
+                    (
+                        await session.execute(
+                            select(Workout).where(
+                                Workout.workout_file_name == workout.workout_file_name,
+                                Workout.id != workout.id,
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if other_refs:
+                    file_path = None
+
+            segment_rows = (
+                (
+                    await session.execute(
+                        select(WorkoutSegment).where(
+                            WorkoutSegment.workout_id == workout_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            link_rows = (
+                (
+                    await session.execute(
+                        select(WorkoutActivityLink).where(
+                            WorkoutActivityLink.workout_id == workout_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for segment in segment_rows:
+                await session.delete(segment)
+            for link in link_rows:
+                await session.delete(link)
+            await session.delete(workout)
+
+        if file_path is not None and file_path.exists():
+            file_path.unlink()
+        await trigger_async()
+        return RedirectResponse("/workouts", status_code=303)
+
     @router.get("/workouts/{workout_id}", response_class=HTMLResponse)
-    async def workout_detail(request: Request, workout_id: int):
+    async def workout_detail(
+        request: Request,
+        workout_id: int,
+        contribution_period: str = "year",
+    ):
         settings = get_settings()
         athlete_id = settings.athlete_id
 
@@ -745,14 +988,35 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         # All linked activities (newest first)
         raw_links = await get_linked_activities_for_workout(workout_id)
-
-        # Batch-load weather for all linked activities
-        linked_strava_ids = [act.strava_id for _, act in raw_links]
-        weather_map = (
-            await get_weather_for_activities(linked_strava_ids)
-            if linked_strava_ids
-            else {}
+        contribution_period = normalize_period(contribution_period)
+        workout_contribution = await get_workout_contribution(
+            athlete_id,
+            workout_id,
+            period=contribution_period,
         )
+
+        # Batch-load weather for all linked activities. Production weather rows are
+        # keyed by Strava id; older tests/dev rows may be keyed by internal id.
+        linked_weather_ids = list(
+            {
+                key
+                for _, act in raw_links
+                for key in (act.strava_id, act.id)
+                if key is not None
+            }
+        )
+        if linked_weather_ids:
+            async with get_async_session() as session:
+                weather_result = await session.execute(
+                    select(ActivityWeather).where(
+                        ActivityWeather.activity_id.in_(linked_weather_ids)
+                    )
+                )
+                weather_map = {
+                    row.activity_id: row for row in weather_result.scalars().all()
+                }
+        else:
+            weather_map = {}
 
         _athlete_settings = get_athlete_settings()
 
@@ -777,10 +1041,19 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 if lnk.compliance_score is not None
                 else None
             )
-            aerobic_score = compute_aerobic_score(act, _athlete_settings)
-            anaerobic_score = compute_anaerobic_score(act, _athlete_settings)
-            w = weather_map.get(act.strava_id)
+            aerobic_score = (
+                act.aerobic_score
+                if act.aerobic_score is not None
+                else compute_aerobic_score(act, _athlete_settings)
+            )
+            anaerobic_score = (
+                act.anaerobic_score
+                if act.anaerobic_score is not None
+                else compute_anaerobic_score(act, _athlete_settings)
+            )
+            w = weather_map.get(act.strava_id) or weather_map.get(act.id)
             weather_info = weather_row_to_dict(w) if w else None
+            true_pace_fmt = _fmt_pace_with_unit(w.true_pace_s_per_km) if w else None
             linked_activities.append(
                 {
                     "strava_id": act.strava_id,
@@ -792,8 +1065,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "distance_km": dist_km,
                     "duration": dur_fmt,
                     "pace": pace_fmt,
+                    "true_pace": true_pace_fmt,
                     "avg_hr": round(act.average_heartrate)
                     if act.average_heartrate
+                    else None,
+                    "tss": round(act.training_stress_score, 1)
+                    if act.training_stress_score is not None
                     else None,
                     "elevation_m": round(act.total_elevation_gain_m)
                     if act.total_elevation_gain_m
@@ -928,6 +1205,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "notes": workout.notes,
                 },
                 "linked_activities": linked_activities,
+                "workout_contribution": workout_contribution,
+                "contribution_period": contribution_period,
                 "physiology": physiology,
                 "grouped_segments": _group_interval_segments(seg_rows),
                 "active_page": "workouts",

@@ -26,7 +26,7 @@ Below the dashboard, the main workouts list shows every workout you've created. 
 
 Click a workout to open its full detail — the structured segments, any linked Strava activities, and the compliance breakdown.
 
-## Creating a Workout
+## Creating & Managing Workouts
 
 Hit **New Workout** to open the workout editor. Fill in:
 
@@ -50,6 +50,13 @@ Hit **New Workout** to open the workout editor. Fill in:
 
 Named `##` sections become scoreable segments — FitOps can compare them against your HR data when you link an activity.
 
+Open any workout detail page to manage it:
+
+- **Edit** opens the visual workout builder, pre-filled from the saved definition, with compact section navigation for basic info, warmup, intervals, cooldown, and preview. You can update the structure without editing JSON by hand.
+- **Delete** removes the workout definition, its workout-activity links, stored segment scores, and the markdown file from `~/.fitops/workouts/`.
+
+Saving an edit clears cached segment compliance for that workout, because the stored segment slices may no longer match the new definition. Re-score linked activities when you want fresh compliance analytics.
+
 ## Simulate a Workout
 
 The **Simulate** button on any workout (or the standalone Simulate tool) lets you preview a session before you do it. You pick a course, set your current fitness metrics, and FitOps projects:
@@ -68,10 +75,15 @@ This is useful for deciding whether a planned session is realistic on a given da
 Once you link a workout to a Strava activity (via `fitops workouts link`), the detail view shows:
 
 - A physiology snapshot at the time of the session (CTL, ATL, TSB, VO2max)
+- Workout analytics for the selected workout: period TSS, share of training load, estimated CTL/ATL contribution, compliance-weighted TSS, and true pace change across executions
+- A contribution trend chart with stored TSS, compliance, and true pace per linked execution
 - Per-segment compliance scores — how closely your actual HR matched the zone targets
 - A summary compliance grade for the whole session
+- Linked activity rows with cached TSS, aerobic score, anaerobic score, weather, and compliance
 
 The **In Target** and **Score** column headers include help icons. **In Target** is the percentage of valid segment samples inside the target zone or pace/HR range. **Score** is the compliance score, which weights in-target time and average deviation from the target.
+
+The contribution analytics use saved `activities.training_stress_score`, `activity_weather.true_pace_s_per_km`, `workout_activity_links`, and `workout_segments` rows. The page does not fetch streams, compute true pace, rescore compliance, or estimate missing TSS while rendering. If older linked activities are missing cached TSS or true pace, the chart and cards show coverage so you can tell how complete the attribution is.
 
 ## See Also
 

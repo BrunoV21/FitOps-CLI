@@ -174,6 +174,55 @@ The command generates a `.md` file in `~/.fitops/workouts/` with YAML frontmatte
 
 ---
 
+### `fitops workouts edit <workout> <source>`
+
+Replace an existing workout definition from a JSON file.
+
+```bash
+fitops workouts edit 12 updated-workout.json
+fitops workouts edit "Threshold Tuesday" updated-workout.json --name "Threshold Progression"
+cat updated-workout.json | fitops workouts edit threshold-tuesday.md - --json
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `WORKOUT` | Workout id, exact workout name, or workout filename |
+| `SOURCE` | Path to replacement JSON, or `-` to read from stdin |
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name TEXT` | existing name | Rename the workout while saving |
+| `--sport TYPE` | existing sport | Replace the workout sport |
+| `--json` | false | Output raw JSON |
+
+Editing updates the DB row and the matching markdown file in `~/.fitops/workouts/`. Because the segment structure may have changed, FitOps clears cached segment compliance rows and per-link compliance scores for that workout. Re-run `fitops workouts compliance <activity_id> --recalculate` for linked executions you want to score again.
+
+---
+
+### `fitops workouts delete <workout>`
+
+Delete a workout definition, its workout links, cached segment scores, and its markdown file.
+
+```bash
+fitops workouts delete 12 --yes
+fitops workouts delete threshold-tuesday.md --yes --json
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--yes` | false | Required confirmation for deletion |
+| `--json` | false | Output raw JSON |
+
+If another DB workout row references the same markdown file, FitOps keeps the file and only removes the selected row and its dependent cached data.
+
+---
+
 ### `fitops workouts simulate <name>`
 
 Simulate a workout on a course or past activity route, applying terrain and weather adjustments per segment.
@@ -249,6 +298,30 @@ The summary reads from saved `workout_activity_links`, `workout_segments`, and l
 | `--sport TYPE` | `total` | `run`, `cycle`, `total`, or an exact Strava sport type |
 
 The JSON output includes `_meta`, a `summary` object, and a `data_availability` block that marks `recomputed` as `false`.
+
+---
+
+### `fitops workouts analytics <workout>`
+
+Show contribution analytics for one workout definition.
+
+```bash
+fitops workouts analytics "Threshold Tuesday"
+fitops workouts analytics 12 --period year
+fitops workouts analytics threshold-tuesday.md --period all --json
+```
+
+The command accepts a workout id, exact workout name, or workout filename. It reads stored workout links, stored activity TSS, stored true pace, and stored segment scores. It does not fetch streams, rescore compliance, compute true pace, or estimate missing TSS on the read path.
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--period week\|month\|year\|all` | `year` | Time window for contribution and trend metrics |
+
+The JSON output includes `_meta`, `workout_analytics.summary`, `workout_analytics.trend`, `workout_analytics.segment_summary`, and a `data_availability` block. Rows without stored `activities.training_stress_score` are counted in `missing_tss_sessions` and excluded from load contribution metrics. Rows without stored `activity_weather.true_pace_s_per_km` are counted in `missing_true_pace_sessions` and omitted from the true pace trend.
+
+If older activities are missing cached TSS, run `fitops analytics recalculate-scores` once to backfill activity score and TSS columns.
 
 ---
 

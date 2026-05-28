@@ -39,7 +39,7 @@ $ fitops activities list --sport Run --limit 3
 | [Activities](./activities.md) | `activities list`, `activities get`, `activities streams`, `activities chart` |
 | [Athlete](./athlete.md) | `athlete profile`, `athlete stats`, `athlete zones`, `athlete equipment` |
 | [Analytics](./analytics.md) | `analytics training-load`, `analytics vo2max`, `analytics zones`, `analytics trends`, `analytics performance`, `analytics power-curve`, `analytics pace-zones`, `analytics snapshot` |
-| [Workouts](./workouts.md) | `workouts list`, `workouts link`, `workouts compliance`, `workouts get`, `workouts history` |
+| [Workouts](./workouts.md) | `workouts list`, `workouts link`, `workouts compliance`, `workouts analytics`, `workouts edit`, `workouts delete` |
 | [Weather](./weather.md) | `weather fetch`, `weather show`, `weather forecast` |
 | [Race](./race.md) | `race courses`, `race course`, `race splits`, `race simulate` |
 | [Notes](./notes.md) | `notes list`, `notes get`, `notes create`, `notes tags` |

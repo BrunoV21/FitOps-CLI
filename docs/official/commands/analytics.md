@@ -296,7 +296,7 @@ Threshold pace is stored in `~/.fitops/athlete_settings.json`.
 
 ### `fitops analytics recalculate-scores`
 
-Recompute aerobic and anaerobic scores for all activities and persist them to the database.
+Recompute cached aerobic score, anaerobic score, and training stress score (TSS) for all activities and persist them to the database.
 
 ```bash
 fitops analytics recalculate-scores [OPTIONS]
@@ -313,7 +313,7 @@ fitops analytics recalculate-scores
 fitops analytics recalculate-scores --json
 ```
 
-Scores are derived from each activity's pace, HR, and current physiology settings (`~/.fitops/athlete_settings.json`). Run this command after updating LTHR, max HR, or threshold pace so that historical scores reflect your current settings.
+Scores and TSS are derived from each activity's pace, HR, and current physiology settings (`~/.fitops/athlete_settings.json`). Run this command after updating LTHR, max HR, FTP, or threshold pace so historical activity rows and workout contribution analytics reflect your current settings.
 
 **JSON output:**
 

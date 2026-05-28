@@ -97,6 +97,57 @@ The summary uses stored workout links, stored segment scores, and activity summa
 
 ---
 
+## `fitops workouts analytics`
+
+```bash
+fitops workouts analytics "Threshold Tuesday" --period year
+```
+
+```
+Threshold Tuesday  contribution | This Year
+
+  Metric                    Value        Context
+ ─────────────────────────────────────────────────────────
+  Sessions                  6            9 all-time
+  Training load             412.5 TSS    18.4% of period load
+  CTL contribution          7.42         ATL 3.18
+  Compliance-weighted load  348.7 TSS    85% avg compliance
+  True pace change          4.2% faster  4:58 → 4:45
+  TSS coverage              100%         0 missing sessions
+```
+
+The analytics command uses stored activity TSS, stored true pace, stored workout links, and stored segment rows. If older activities do not have cached TSS or true pace, FitOps reports the missing coverage instead of estimating those values during the read.
+
+---
+
+## `fitops workouts edit`
+
+```bash
+fitops workouts edit "Threshold Tuesday" updated-workout.json --name "Threshold Progression"
+```
+
+```
+Updated workout 12 (Threshold Progression); cleared 18 cached segment rows.
+```
+
+Editing replaces the markdown definition and clears cached segment compliance for linked executions.
+
+---
+
+## `fitops workouts delete`
+
+```bash
+fitops workouts delete "Threshold Progression" --yes
+```
+
+```
+Deleted workout 12 (Threshold Progression); removed 3 links and 18 segment rows.
+```
+
+Deletion removes the workout definition, workout links, cached segment scores, and the markdown file when no other workout row references it.
+
+---
+
 ## JSON output (`--json`)
 
 ```bash

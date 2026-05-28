@@ -745,7 +745,7 @@ def recalculate_scores(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),
 ) -> None:
-    """Recompute aerobic and anaerobic scores for all activities and persist them."""
+    """Recompute cached activity scores and TSS for all activities."""
     settings = get_settings()
     try:
         settings.require_auth()
@@ -759,6 +759,7 @@ def recalculate_scores(
         from sqlalchemy import select
 
         from fitops.analytics.athlete_settings import AthleteSettings
+        from fitops.analytics.training_load import _estimate_tss
         from fitops.analytics.training_scores import (
             compute_aerobic_score,
             compute_anaerobic_score,
@@ -777,6 +778,7 @@ def recalculate_scores(
             for a in activities:
                 a.aerobic_score = compute_aerobic_score(a, athlete_settings)
                 a.anaerobic_score = compute_anaerobic_score(a, athlete_settings)
+                a.training_stress_score = _estimate_tss(a)
                 updated += 1
 
         return updated
@@ -786,4 +788,4 @@ def recalculate_scores(
     if json_output:
         typer.echo(json.dumps(out, indent=2, default=str))
     else:
-        typer.echo(f"Recalculated scores for {count} activities.")
+        typer.echo(f"Recalculated scores and TSS for {count} activities.")

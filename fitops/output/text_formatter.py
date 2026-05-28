@@ -1427,6 +1427,66 @@ def print_workout_summary(data: dict) -> None:
     console.print(table)
 
 
+def print_workout_analytics(data: dict) -> None:
+    analytics = data.get("workout_analytics") or {}
+    workout = analytics.get("workout") or {}
+    summary = analytics.get("summary") or {}
+    period_label = analytics.get("period_label") or "Selected Period"
+
+    console.print()
+    console.print(
+        f"[bold]{workout.get('name') or 'Workout'}[/bold]  [dim]contribution | {period_label}[/dim]"
+    )
+    console.print()
+
+    table = Table(box=box.SIMPLE_HEAD, show_header=True, header_style="bold")
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+    table.add_column("Context")
+
+    share = summary.get("period_load_share_pct")
+    avg_comp = summary.get("period_avg_compliance_pct")
+    pace_change = summary.get("true_pace_change_pct")
+    pace_context = "-"
+    if pace_change is not None:
+        direction = "faster" if pace_change > 0 else "slower"
+        pace_context = f"{abs(pace_change)}% {direction}"
+
+    table.add_row(
+        "Sessions",
+        str(summary.get("period_sessions", 0)),
+        f"{summary.get('total_sessions', 0)} all-time",
+    )
+    table.add_row(
+        "Training load",
+        f"{summary.get('period_tss', 0)} TSS",
+        f"{share}% of period load" if share is not None else "period share unavailable",
+    )
+    table.add_row(
+        "CTL contribution",
+        str(summary.get("period_ctl_contribution", 0)),
+        f"ATL {summary.get('period_atl_contribution', 0)}",
+    )
+    table.add_row(
+        "Compliance-weighted load",
+        f"{summary.get('period_compliance_weighted_tss', 0)} TSS",
+        f"{avg_comp}% avg compliance" if avg_comp is not None else "unscored",
+    )
+    table.add_row(
+        "True pace change",
+        pace_context,
+        f"{summary.get('first_true_pace_formatted') or '-'} → {summary.get('latest_true_pace_formatted') or '-'}",
+    )
+    table.add_row(
+        "TSS coverage",
+        f"{summary.get('period_tss_coverage_pct', 0)}%",
+        f"{summary.get('period_missing_tss_sessions', 0)} missing sessions",
+    )
+
+    console.print(table)
+    console.print()
+
+
 def print_workout_compliance(data: dict) -> None:
     workout_name = data.get("workout_name") or "Workout"
     overall = data.get("overall_compliance_score")
