@@ -110,14 +110,16 @@ async def test_trigger_async_with_config_creates_task():
     cfg = {"token": "tok", "repo": "user/repo"}
     created_tasks = []
 
-    async def fake_run():
-        pass
+    def fake_create_task(coro):
+        created_tasks.append(coro)
+        coro.close()
+        return MagicMock()
 
     with (
         patch("fitops.backup.config.get_github_config", return_value=cfg),
         patch(
             "asyncio.create_task",
-            side_effect=lambda coro: created_tasks.append(coro) or MagicMock(),
+            side_effect=fake_create_task,
         ),
     ):
         await es.trigger_async()
@@ -128,9 +130,14 @@ async def test_trigger_async_with_config_creates_task():
 @pytest.mark.asyncio
 async def test_trigger_async_cooldown_suppresses_second_call():
     cfg = {"token": "tok", "repo": "user/repo"}
+
+    def fake_create_task(coro):
+        coro.close()
+        return MagicMock()
+
     with (
         patch("fitops.backup.config.get_github_config", return_value=cfg),
-        patch("asyncio.create_task") as mock_ct,
+        patch("asyncio.create_task", side_effect=fake_create_task) as mock_ct,
     ):
         await es.trigger_async()
         await es.trigger_async()
