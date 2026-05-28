@@ -55,6 +55,7 @@ Auto-fetched using the coordinates of your most recent GPS activity. Shows:
 - **Pace heat factor** — how much to slow your target pace in the current conditions
 
 This is the same weather data the CLI's `fitops weather forecast` uses.
+If forecast data is unavailable or slow to respond, the Overview loads without the weather widget instead of delaying the page.
 
 ## See Also
 

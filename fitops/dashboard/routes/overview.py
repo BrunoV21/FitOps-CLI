@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -33,6 +34,7 @@ from fitops.db.session import get_async_session
 from fitops.weather.client import fetch_forecast_weather
 
 router = APIRouter()
+_TODAY_WEATHER_TIMEOUT_SECONDS = 0.35
 
 
 def _format_seconds(s: int | None) -> str:
@@ -131,6 +133,18 @@ async def _get_today_weather(athlete_id: int | None) -> dict | None:
     }
 
 
+async def _get_today_weather_with_budget(athlete_id: int | None) -> dict | None:
+    try:
+        return await asyncio.wait_for(
+            _get_today_weather(athlete_id),
+            timeout=_TODAY_WEATHER_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        return None
+    except Exception:
+        return None
+
+
 _PERIOD_LABELS = {
     "week": "This Week",
     "month": "This Month",
@@ -212,44 +226,46 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         athlete_id = settings.athlete_id
 
-        athlete = await get_athlete(athlete_id) if athlete_id else None
-        recent = (
-            await get_recent_activities(
+        load_tasks = {}
+        if athlete_id:
+            load_tasks["athlete"] = get_athlete(athlete_id)
+            load_tasks["recent"] = get_recent_activities(
                 athlete_id, limit=10, since=since, sport_types=sport_types
             )
-            if athlete_id
-            else []
-        )
-        stats = (
-            await get_activity_stats(athlete_id, since=since, sport_types=sport_types)
-            if athlete_id
-            else {}
-        )
-        current_load = (
-            await get_current_training_load(athlete_id)
-            if athlete_id and period == "week"
-            else None
-        )
-        trend_signals = None
-        if athlete_id and period == "week":
-            _tr = await get_trends_data(
-                athlete_id, days=90, sport_types=sport_types or None
+            load_tasks["stats"] = get_activity_stats(
+                athlete_id, since=since, sport_types=sport_types
             )
+            load_tasks["heatmap"] = get_activity_heatmap_data(
+                athlete_id, since=None, sport_types=sport_types
+            )
+            if period == "week":
+                load_tasks["current_load"] = get_current_training_load(athlete_id)
+                load_tasks["trends"] = get_trends_data(
+                    athlete_id, days=90, sport_types=sport_types or None
+                )
+                load_tasks["today_weather"] = _get_today_weather_with_budget(
+                    athlete_id
+                )
+
+        loaded = {}
+        if load_tasks:
+            results = await asyncio.gather(*load_tasks.values())
+            loaded = dict(zip(load_tasks.keys(), results, strict=True))
+
+        athlete = loaded.get("athlete")
+        recent = loaded.get("recent", [])
+        stats = loaded.get("stats", {})
+        current_load = loaded.get("current_load")
+        trend_signals = None
+        if period == "week":
+            _tr = loaded.get("trends")
             if _tr:
                 trend_signals = {
                     "volume": (_tr.volume_trend or {}).get("direction"),
                     "perf": (_tr.performance_trend or {}).get("pace_trend"),
                 }
-        heatmap_data = (
-            await get_activity_heatmap_data(
-                athlete_id, since=None, sport_types=sport_types
-            )
-            if athlete_id
-            else []
-        )
-        today_weather = (
-            await _get_today_weather(athlete_id) if period == "week" else None
-        )
+        heatmap_data = loaded.get("heatmap", [])
+        today_weather = loaded.get("today_weather")
         rolling = _compute_rolling(period, since, stats)
 
         return templates.TemplateResponse(
