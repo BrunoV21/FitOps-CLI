@@ -130,6 +130,16 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     s.strip() for s in scope.split(",") if s.strip()
                 ]
             settings.save_tokens(token_data)
+            try:
+                from fitops.strava.webhook_bootstrap import (
+                    ensure_default_webhook_logged,
+                    get_default_callback_url,
+                )
+
+                if get_default_callback_url():
+                    background_tasks.add_task(ensure_default_webhook_logged)
+            except Exception:
+                pass
             if not is_reauth:
                 background_tasks.add_task(_initial_sync)
         except Exception:

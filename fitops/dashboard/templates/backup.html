@@ -266,8 +266,8 @@ async function loadWebhookStatus() {
     const res = await fetch('/api/strava/webhook/status');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
-    document.getElementById('webhook-url').value = data.callback_url || '';
-    document.getElementById('sync-mode').value = data.sync_mode || 'polling';
+    document.getElementById('webhook-url').value = data.callback_url || data.default_callback_url || '';
+    document.getElementById('sync-mode').value = data.sync_mode || (data.default_callback_url ? 'webhook' : 'polling');
     badge.textContent = data.configured ? `${data.sync_mode}` : 'not configured';
     badge.className = `status-badge ${data.configured && data.sync_mode === 'webhook' ? 'badge-ok' : 'badge-off'}`;
     const rows = (data.recent_events || []).slice(0, 5);

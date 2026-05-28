@@ -50,7 +50,7 @@ You can also pass `--hf-token` via the `HF_TOKEN` env var and `--github-token` v
 3. **Creates a private HF Space** (Docker SDK) and uploads the container files.
 4. **Sets all secrets** on the Space (password hash, TOTP secret, session key, sync token, GitHub credentials).
 5. **Configures GitHub Actions** in your backup repo for keepalive and backup restore sync.
-6. **Prints the Strava webhook callback URL** for this deployed Space.
+6. **Stores the Strava webhook callback URL** as a Space secret so webhook sync is enabled automatically after Strava auth is available.
 
 ---
 
@@ -69,7 +69,7 @@ The workflow has two jobs:
 
 Webhook sync is available for the deployed HF dashboard because it has a public HTTPS URL. It is not available for the normal local dashboard at `localhost`.
 
-After deployment, the command prints:
+`fitops deploy hf` sets the Space's default webhook callback URL:
 
 ```text
 Strava webhook sync:
@@ -77,10 +77,11 @@ Strava webhook sync:
   Strava app callback domain: <owner>-<space>.hf.space
 ```
 
-Use the printed **Callback URL** when enabling webhooks:
+After the Space restores a backup with Strava app credentials, or after you complete Strava auth in the Space setup flow, FitOps automatically registers the Strava push subscription and switches the dashboard sync mode to `webhook`.
+
+You still need to push a backup after deployment so the Space receives your local Strava credentials and data:
 
 ```bash
-fitops webhooks setup --callback-url https://<owner>-<space>.hf.space/api/strava/webhook
 fitops backup create --to github
 ```
 
@@ -113,6 +114,8 @@ Navigate to your Space URL (`https://myuser-fitops-dashboard.hf.space`):
 | `FITOPS_TOTP_SECRET` | `fitops deploy hf` | TOTP seed for your authenticator app |
 | `FITOPS_SESSION_SECRET` | `fitops deploy hf` | Signs session cookies (random 32-byte hex) |
 | `FITOPS_SYNC_TOKEN` | `fitops deploy hf` | Token for `POST /api/internal/sync` |
+| `FITOPS_WEBHOOK_CALLBACK_URL` | `fitops deploy hf` | Public Strava webhook callback URL for this Space |
+| `FITOPS_DEFAULT_SYNC_MODE` | `fitops deploy hf` | Defaults deployed dashboard sync to `webhook` |
 | `GITHUB_BACKUP_TOKEN` | `fitops deploy hf` | GitHub PAT for reading backup releases |
 | `GITHUB_BACKUP_REPO` | `fitops deploy hf` | Backup repo (`owner/repo`) |
 

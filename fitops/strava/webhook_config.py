@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 VALID_SYNC_MODES = {"webhook", "polling", "manual"}
@@ -79,6 +80,9 @@ def get_sync_mode_from_data(data: dict) -> str:
     mode = data.get("sync", {}).get("mode")
     if mode in VALID_SYNC_MODES:
         return mode
+    env_mode = os.environ.get("FITOPS_DEFAULT_SYNC_MODE")
+    if env_mode in VALID_SYNC_MODES:
+        return env_mode
     webhook = data.get("strava", {}).get("webhook")
     if webhook and webhook.get("enabled"):
         return "webhook"
@@ -89,6 +93,11 @@ def get_sync_mode() -> str:
     return get_sync_mode_from_data(_load())
 
 
+def get_saved_sync_mode() -> str | None:
+    mode = _load().get("sync", {}).get("mode")
+    return mode if mode in VALID_SYNC_MODES else None
+
+
 def save_sync_mode(mode: str) -> None:
     if mode not in VALID_SYNC_MODES:
         raise ValueError(
@@ -96,4 +105,10 @@ def save_sync_mode(mode: str) -> None:
         )
     data = _load()
     data.setdefault("sync", {})["mode"] = mode
+    _save(data)
+
+
+def clear_sync_mode() -> None:
+    data = _load()
+    data.get("sync", {}).pop("mode", None)
     _save(data)

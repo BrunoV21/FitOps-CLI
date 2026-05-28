@@ -112,23 +112,23 @@ def deploy_hf(
             repo_type="space",
         )
 
-    space_secrets = {
-        "FITOPS_AUTH_ENABLED": "true",
-        "FITOPS_PASSWORD_HASH": pw_hash,
-        "FITOPS_TOTP_SECRET": totp_secret,
-        "FITOPS_SESSION_SECRET": session_secret,
-        "FITOPS_SYNC_TOKEN": sync_token,
-        "GITHUB_BACKUP_TOKEN": github_backup_token,
-        "GITHUB_BACKUP_REPO": github_backup_repo,
-    }
-    for key, value in space_secrets.items():
-        api.add_space_secret(repo_id=hf_repo, key=key, value=value)
-
     owner, space_name = hf_repo.split("/", 1)
     space_url = f"https://huggingface.co/spaces/{hf_repo}"
     app_url = f"https://{owner}-{space_name}.hf.space"
     app_url_display = f"{app_url}/"
     webhook_url = f"{app_url}/api/strava/webhook"
+
+    space_secrets = _build_hf_space_secrets(
+        pw_hash=pw_hash,
+        totp_secret=totp_secret,
+        session_secret=session_secret,
+        sync_token=sync_token,
+        webhook_url=webhook_url,
+        github_backup_token=github_backup_token,
+        github_backup_repo=github_backup_repo,
+    )
+    for key, value in space_secrets.items():
+        api.add_space_secret(repo_id=hf_repo, key=key, value=value)
 
     typer.echo(f"  Space:   {space_url}")
     typer.echo(f"  App URL: {app_url_display}")
@@ -143,13 +143,36 @@ def deploy_hf(
     typer.echo(f"  Callback URL: {webhook_url}")
     typer.echo(f"  Strava app callback domain: {owner}-{space_name}.hf.space")
     typer.echo(
-        "  After the Space is live, enable it with:\n"
-        f"    fitops webhooks setup --callback-url {webhook_url}\n"
+        "  Webhook sync is the default on this Space. It will be registered "
+        "automatically after Strava auth is restored or completed.\n"
         "    fitops backup create --to github"
     )
 
 
 # ── GitHub helpers ───────────────────────────────────────────────────────────
+
+
+def _build_hf_space_secrets(
+    *,
+    pw_hash: str,
+    totp_secret: str,
+    session_secret: str,
+    sync_token: str,
+    webhook_url: str,
+    github_backup_token: str,
+    github_backup_repo: str,
+) -> dict[str, str]:
+    return {
+        "FITOPS_AUTH_ENABLED": "true",
+        "FITOPS_PASSWORD_HASH": pw_hash,
+        "FITOPS_TOTP_SECRET": totp_secret,
+        "FITOPS_SESSION_SECRET": session_secret,
+        "FITOPS_SYNC_TOKEN": sync_token,
+        "FITOPS_WEBHOOK_CALLBACK_URL": webhook_url,
+        "FITOPS_DEFAULT_SYNC_MODE": "webhook",
+        "GITHUB_BACKUP_TOKEN": github_backup_token,
+        "GITHUB_BACKUP_REPO": github_backup_repo,
+    }
 
 
 def _gh_headers(token: str) -> dict[str, str]:

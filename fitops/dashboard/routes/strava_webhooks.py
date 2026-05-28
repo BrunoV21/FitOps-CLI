@@ -37,6 +37,8 @@ def register() -> APIRouter:
 
     @router.get("/api/strava/webhook/status")
     async def webhook_status():
+        from fitops.strava.webhook_bootstrap import get_default_callback_url
+
         cfg = wcfg.get_webhook_config()
         events = await webhooks.recent_events(limit=10)
         remote: list[dict] | None = None
@@ -52,6 +54,7 @@ def register() -> APIRouter:
                 "configured": bool(cfg),
                 "enabled": bool((cfg or {}).get("enabled")),
                 "callback_url": (cfg or {}).get("callback_url"),
+                "default_callback_url": get_default_callback_url(),
                 "subscription_id": (cfg or {}).get("subscription_id"),
                 "sync_mode": wcfg.get_sync_mode(),
                 "remote_subscriptions": remote,

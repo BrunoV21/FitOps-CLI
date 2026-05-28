@@ -129,6 +129,34 @@ def test_middleware_allows_health_endpoint(auth_app):
         assert data["status"] == "ok"
 
 
+def test_middleware_allows_strava_webhook_without_session(auth_app, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from starlette.testclient import TestClient
+
+    from fitops.strava import webhooks
+
+    process = AsyncMock()
+    monkeypatch.setattr(webhooks, "process_webhook_payload", process)
+
+    with TestClient(auth_app, follow_redirects=False) as c:
+        resp = c.post(
+            "/api/strava/webhook",
+            json={
+                "object_type": "activity",
+                "object_id": 123,
+                "aspect_type": "create",
+                "owner_id": 99,
+                "subscription_id": 1,
+                "event_time": 1714000000,
+            },
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "queued"
+    process.assert_called_once()
+
+
 def test_middleware_allows_static_assets(auth_app):
     from starlette.testclient import TestClient
 

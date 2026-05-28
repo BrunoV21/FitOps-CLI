@@ -20,6 +20,15 @@ def test_webhook_verify_challenge_uses_configured_token(tmp_path, monkeypatch):
     assert verify_challenge("secret-token", "abc123") == {"hub.challenge": "abc123"}
 
 
+def test_default_sync_mode_env_sets_webhook_when_no_saved_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    monkeypatch.setenv("FITOPS_DEFAULT_SYNC_MODE", "webhook")
+
+    from fitops.strava.webhook_config import get_sync_mode
+
+    assert get_sync_mode() == "webhook"
+
+
 def test_dashboard_webhook_endpoint_queues_event(monkeypatch):
     from starlette.testclient import TestClient
 
@@ -87,6 +96,105 @@ async def test_process_webhook_payload_deduplicates_events(tmp_path, monkeypatch
     assert first.status == "processed"
     assert second.status == "duplicate"
     assert calls == [(123, "webhook_create")]
+
+
+@pytest.mark.asyncio
+async def test_default_webhook_bootstrap_creates_hf_subscription(tmp_path, monkeypatch):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "FITOPS_WEBHOOK_CALLBACK_URL",
+        "https://user-fitops-dashboard.hf.space/api/strava/webhook",
+    )
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "strava": {
+                    "client_id": "client-id",
+                    "client_secret": "client-secret",
+                }
+            }
+        )
+    )
+    _reset_settings_and_db()
+
+    monkeypatch.setattr(
+        "fitops.strava.webhook_bootstrap.subs.list_subscriptions", lambda: []
+    )
+    monkeypatch.setattr(
+        "fitops.strava.webhook_bootstrap.subs.create_subscription",
+        lambda callback_url, verify_token: 99,
+    )
+
+    from fitops.strava.webhook_bootstrap import ensure_default_webhook
+
+    result = await ensure_default_webhook()
+
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert result["status"] == "configured"
+    assert result["subscription_id"] == 99
+    assert config["sync"]["mode"] == "webhook"
+    assert config["strava"]["webhook"]["enabled"] is True
+    assert (
+        config["strava"]["webhook"]["callback_url"]
+        == "https://user-fitops-dashboard.hf.space/api/strava/webhook"
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_webhook_bootstrap_noops_without_hf_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "strava": {
+                    "client_id": "client-id",
+                    "client_secret": "client-secret",
+                }
+            }
+        )
+    )
+    _reset_settings_and_db()
+
+    from fitops.strava.webhook_bootstrap import ensure_default_webhook
+
+    result = await ensure_default_webhook()
+
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert result == {"status": "skipped", "reason": "no_default_callback_url"}
+    assert "sync" not in config
+    assert "webhook" not in config["strava"]
+
+
+@pytest.mark.asyncio
+async def test_default_webhook_bootstrap_respects_saved_polling_mode(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "FITOPS_WEBHOOK_CALLBACK_URL",
+        "https://user-fitops-dashboard.hf.space/api/strava/webhook",
+    )
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "strava": {
+                    "client_id": "client-id",
+                    "client_secret": "client-secret",
+                },
+                "sync": {"mode": "polling"},
+            }
+        )
+    )
+    _reset_settings_and_db()
+
+    from fitops.strava.webhook_bootstrap import ensure_default_webhook
+
+    result = await ensure_default_webhook()
+
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert result["reason"] == "saved_sync_mode_not_webhook"
+    assert config["sync"]["mode"] == "polling"
+    assert "webhook" not in config["strava"]
 
 
 @pytest.mark.asyncio

@@ -38,17 +38,30 @@ def create_app(port: int = 8888) -> FastAPI:
 
     _scheduler_task: asyncio.Task | None = None
     _auto_sync_task: asyncio.Task | None = None
+    _webhook_task: asyncio.Task | None = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        nonlocal _scheduler_task, _auto_sync_task
+        nonlocal _scheduler_task, _auto_sync_task, _webhook_task
         # Run schema creation + migrations once at startup so request handlers
         # don't open a write transaction on every page load.
         await create_all_tables()
         _scheduler_task = asyncio.create_task(backup.run_scheduler())
         _auto_sync_task = asyncio.create_task(auto_sync.run_auto_sync_scheduler())
+        try:
+            from fitops.strava.webhook_bootstrap import (
+                ensure_default_webhook_logged,
+                get_default_callback_url,
+            )
+
+            if get_default_callback_url():
+                _webhook_task = asyncio.create_task(
+                    ensure_default_webhook_logged(delay_seconds=5.0)
+                )
+        except Exception:
+            _webhook_task = None
         yield
-        for task in (_scheduler_task, _auto_sync_task):
+        for task in (_scheduler_task, _auto_sync_task, _webhook_task):
             if task:
                 task.cancel()
                 try:

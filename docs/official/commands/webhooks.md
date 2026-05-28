@@ -28,6 +28,8 @@ Use the URL for the deployed dashboard that is actually reachable from Strava:
 
 `http://localhost:8888/api/strava/webhook` only works for requests from your own machine. Strava cannot reach your laptop's localhost. For local FitOps use, keep sync mode as `polling` or `manual`.
 
+HF deployments created with `fitops deploy hf` set the callback URL automatically and register the Strava push subscription after Strava credentials are restored or completed in the Space setup flow. Use `fitops webhooks setup` for non-HF deployed dashboards, or to repair/change a subscription manually.
+
 `fitops webhooks setup` creates the Strava push subscription through Strava's API using the Strava app `client_id` and `client_secret` already saved during auth setup. If the Strava developer settings page asks for an **Authorization Callback Domain**, use the deployed host only, without `https://` and without the path. For example, for `https://myuser-fitops-dashboard.hf.space/api/strava/webhook`, enter `myuser-fitops-dashboard.hf.space`.
 
 ### `fitops webhooks setup`
@@ -45,7 +47,7 @@ Examples:
 fitops webhooks setup --callback-url https://my-fitops.hf.space/api/strava/webhook
 ```
 
-For HF deployments, `fitops deploy hf` prints the exact callback URL and the Strava app callback domain after deployment.
+For HF deployments, `fitops deploy hf` stores the exact callback URL on the Space and prints it for reference.
 
 | Flag | Default | Description |
 |------|---------|-------------|
