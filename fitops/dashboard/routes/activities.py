@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import math
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -59,6 +61,109 @@ from fitops.db.models.activity_weather import ActivityWeather
 from fitops.db.session import get_async_session
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+_stamp_all_task: asyncio.Task | None = None
+_single_stamp_tasks: dict[int, asyncio.Task] = {}
+
+
+async def _run_single_stamp_task(strava_id: int, *, force: bool = False) -> None:
+    from sqlalchemy import select
+
+    from fitops.analytics.stamp import stamp_activity
+    from fitops.db.models.activity import Activity as _Activity
+    from fitops.db.session import get_async_session
+    from fitops.strava.client import StravaClient
+
+    try:
+        client = StravaClient()
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(_Activity).where(_Activity.strava_id == strava_id)
+            )
+            activity = result.scalar_one_or_none()
+            if activity is None:
+                return
+            await stamp_activity(
+                client,
+                session,
+                activity,
+                fetch_fresh_desc=True,
+                skip_existing=not force,
+            )
+    except Exception:
+        logger.exception("Failed to stamp Strava activity %s", strava_id)
+
+
+def _queue_single_stamp_task(strava_id: int, *, force: bool = False) -> str:
+    existing = _single_stamp_tasks.get(strava_id)
+    if existing is not None and not existing.done():
+        return "already_running"
+
+    task = asyncio.create_task(_run_single_stamp_task(strava_id, force=force))
+    _single_stamp_tasks[strava_id] = task
+
+    def _discard(done_task: asyncio.Task) -> None:
+        if _single_stamp_tasks.get(strava_id) is done_task:
+            _single_stamp_tasks.pop(strava_id, None)
+
+    task.add_done_callback(_discard)
+    return "queued"
+
+
+def _queue_stamp_all_task(*, force: bool = False) -> bool:
+    global _stamp_all_task
+    if _stamp_all_task is not None and not _stamp_all_task.done():
+        return False
+
+    async def _run() -> None:
+        from sqlalchemy import select
+
+        from fitops.analytics.stamp import has_fitops_stamp, stamp_activity
+        from fitops.db.models.activity import Activity as _Activity
+        from fitops.db.session import get_async_session
+        from fitops.strava.client import StravaClient
+
+        client = StravaClient()
+        training_load_cache = {}
+
+        async with get_async_session() as session:
+            stmt = select(_Activity.strava_id).order_by(_Activity.start_date.desc())
+            if not force:
+                stmt = stmt.where(_Activity.stamped_at.is_(None))
+            result = await session.execute(stmt)
+            strava_ids = [row[0] for row in result.all()]
+
+        for strava_id in strava_ids:
+            async with get_async_session() as session:
+                activity_result = await session.execute(
+                    select(_Activity).where(_Activity.strava_id == strava_id)
+                )
+                activity = activity_result.scalar_one_or_none()
+                if activity is None:
+                    continue
+                if not force and (
+                    activity.stamped_at is not None
+                    or has_fitops_stamp(activity.description)
+                ):
+                    if activity.stamped_at is None and has_fitops_stamp(
+                        activity.description
+                    ):
+                        activity.stamped_at = datetime.now(UTC)
+                    continue
+                try:
+                    await stamp_activity(
+                        client,
+                        session,
+                        activity,
+                        fetch_fresh_desc=True,
+                        training_load_cache=training_load_cache,
+                        skip_existing=not force,
+                    )
+                except Exception:
+                    continue
+
+    _stamp_all_task = asyncio.create_task(_run())
+    return True
 
 
 def _fmt_seconds(s: int | None) -> str:
@@ -107,6 +212,81 @@ def _avg_positive(values) -> float | None:
     if not valid:
         return None
     return sum(valid) / len(valid)
+
+
+def _stream_has_positive_values(streams: dict, key: str) -> bool:
+    return _avg_positive(streams.get(key, [])) is not None
+
+
+def _set_true_velocity_stream(streams: dict) -> None:
+    true_pace = streams.get("true_pace", [])
+    if not true_pace:
+        return
+    streams["true_velocity"] = [
+        1000.0 / p if p and p > 0 else 0.0 for p in true_pace
+    ]
+
+
+def _ensure_true_pace_streams(streams: dict, weather_obj) -> None:
+    if not streams:
+        return
+
+    if weather_obj:
+        if not _stream_has_positive_values(streams, "wap_pace"):
+            wap_s = compute_wap_stream_points(streams, weather_obj)
+            if wap_s:
+                streams["wap_pace"] = wap_s
+        if not _stream_has_positive_values(streams, "true_pace"):
+            tp_s = compute_true_pace_stream(streams, weather_obj)
+            if tp_s:
+                streams["true_pace"] = tp_s
+
+    if not _stream_has_positive_values(streams, "true_pace"):
+        vel_raw = streams.get("velocity_smooth", [])
+        if vel_raw:
+            streams["true_pace"] = [
+                round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
+            ]
+
+    if _stream_has_positive_values(streams, "true_pace"):
+        _set_true_velocity_stream(streams)
+
+
+def _fmt_pace_without_unit(seconds: float | int | None) -> str | None:
+    formatted = _fmt_pace_per_km(seconds)
+    if not formatted:
+        return None
+    return formatted.removesuffix("/km")
+
+
+def _fill_segment_true_pace_actual(segment: dict, streams: dict) -> dict:
+    actuals = segment.get("actuals")
+    if not isinstance(actuals, dict):
+        return segment
+    if actuals.get("avg_true_pace_formatted"):
+        return segment
+
+    stream_slice = segment.get("stream_slice")
+    true_pace = streams.get("true_pace", [])
+    if not isinstance(stream_slice, dict) or not isinstance(true_pace, list):
+        return segment
+
+    try:
+        start_idx = int(stream_slice.get("start_index") or 0)
+        end_idx = int(stream_slice.get("end_index") or 0)
+    except (TypeError, ValueError):
+        return segment
+
+    if end_idx <= start_idx:
+        return segment
+
+    avg_true_pace = _avg_positive(true_pace[start_idx:end_idx])
+    if avg_true_pace is None:
+        return segment
+
+    actuals["avg_true_pace_per_km"] = round(avg_true_pace, 1)
+    actuals["avg_true_pace_formatted"] = _fmt_pace_without_unit(avg_true_pace)
+    return segment
 
 
 def _deep_analysis_summary_stats(
@@ -559,26 +739,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         _weather_map = await get_weather_for_activities([strava_id])
         _weather_obj = _weather_map.get(strava_id)
 
-        if streams and _weather_obj:
-            wap_s = compute_wap_stream_points(streams, _weather_obj)
-            if wap_s:
-                streams["wap_pace"] = wap_s
-            tp_s = compute_true_pace_stream(streams, _weather_obj)
-            if tp_s:
-                streams["true_pace"] = tp_s
-                # true_velocity (m/s) consumed by analytics engine
-                streams["true_velocity"] = [
-                    1000.0 / p if p and p > 0 else 0.0 for p in tp_s
-                ]
-
-        # Fallback: if true_pace wasn't computed (no weather), derive from velocity_smooth
-        # so pace-based insights always have a stream to read.
-        if streams and "true_pace" not in streams:
-            vel_raw = streams.get("velocity_smooth", [])
-            if vel_raw:
-                streams["true_pace"] = [
-                    round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
-                ]
+        # Empty persisted true_pace streams are treated as missing so charts,
+        # splits, and workout actuals can still use the current stream data.
+        _ensure_true_pace_streams(streams, _weather_obj)
 
         # Running power — compute + persist when streams are available
         if (
@@ -715,22 +878,27 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     if lnk.compliance_score is not None
                     else None,
                     "segments": [
-                        {
-                            **s.to_dict(),
-                            "target_label": _seg_target_label(s),
-                            "compliance_pct": round(s.compliance_score * 100)
-                            if s.compliance_score is not None
-                            else None,
-                            "score_class": (
-                                "green"
-                                if s.compliance_score and s.compliance_score >= 0.8
-                                else "amber"
-                                if s.compliance_score and s.compliance_score >= 0.6
-                                else "red"
+                        _fill_segment_true_pace_actual(
+                            {
+                                **s.to_dict(),
+                                "target_label": _seg_target_label(s),
+                                "compliance_pct": round(s.compliance_score * 100)
                                 if s.compliance_score is not None
-                                else "dim"
-                            ),
-                        }
+                                else None,
+                                "score_class": (
+                                    "green"
+                                    if s.compliance_score
+                                    and s.compliance_score >= 0.8
+                                    else "amber"
+                                    if s.compliance_score
+                                    and s.compliance_score >= 0.6
+                                    else "red"
+                                    if s.compliance_score is not None
+                                    else "dim"
+                                ),
+                            },
+                            streams,
+                        )
                         for s in segs
                     ],
                 }
@@ -788,8 +956,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
             )
             # Inject the true_pace stream back into streams for charts/analysis
             tp_s = weather_panel.pop("true_pace_stream", None)
-            if tp_s:
+            if tp_s and not _stream_has_positive_values(streams, "true_pace"):
                 streams["true_pace"] = tp_s
+                _set_true_velocity_stream(streams)
+                km_splits = compute_km_splits(
+                    streams,
+                    activity_view.sport_type,
+                    true_pace=streams.get("true_pace"),
+                )
             # Also update the standalone true_pace_fmt variable for the template
             true_pace_fmt = weather_panel.get("true_pace_fmt")
 
@@ -933,23 +1107,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         _weather_map = await get_weather_for_activities([strava_id])
         _weather_obj = _weather_map.get(strava_id)
 
-        if streams and _weather_obj:
-            wap_s = compute_wap_stream_points(streams, _weather_obj)
-            if wap_s:
-                streams["wap_pace"] = wap_s
-            tp_s = compute_true_pace_stream(streams, _weather_obj)
-            if tp_s:
-                streams["true_pace"] = tp_s
-                streams["true_velocity"] = [
-                    1000.0 / p if p and p > 0 else 0.0 for p in tp_s
-                ]
-
-        if streams and "true_pace" not in streams:
-            vel_raw = streams.get("velocity_smooth", [])
-            if vel_raw:
-                streams["true_pace"] = [
-                    round(1000.0 / v, 1) if v and v > 0.1 else None for v in vel_raw
-                ]
+        _ensure_true_pace_streams(streams, _weather_obj)
 
         if activity_view and streams:
             analytics = compute_activity_analytics(activity_view, streams)
@@ -1040,8 +1198,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 average_heartrate=activity_view.average_heartrate,
             )
             tp_s = weather_panel.pop("true_pace_stream", None)
-            if tp_s and "true_pace" not in streams:
+            if tp_s and not _stream_has_positive_values(streams, "true_pace"):
                 streams["true_pace"] = tp_s
+                _set_true_velocity_stream(streams)
 
         deep_summary_stats = _deep_analysis_summary_stats(
             activity_view,
@@ -1088,24 +1247,28 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     if lnk.compliance_score is not None
                     else None,
                     "segments": [
-                        {
-                            **s.to_dict(),
-                            "target_label": (
-                                f"HR {int(s.target_hr_min_bpm)}–{int(s.target_hr_max_bpm)} bpm"
-                                if s.target_focus_type == "hr_range"
-                                and s.target_hr_min_bpm
-                                and s.target_hr_max_bpm
-                                else f"{_fmt_pace_local(s.target_pace_min_s_per_km)}–{_fmt_pace_local(s.target_pace_max_s_per_km)}/km"
-                                if s.target_focus_type == "pace_range"
-                                else f"Zone {s.target_zone}"
-                                if s.target_focus_type == "hr_zone" and s.target_zone
-                                else "—"
-                            ),
-                            "actual_zone": _derive_zone(s.avg_heartrate, _lthr),
-                            "compliance_pct": round(s.compliance_score * 100)
-                            if s.compliance_score is not None
-                            else None,
-                        }
+                        _fill_segment_true_pace_actual(
+                            {
+                                **s.to_dict(),
+                                "target_label": (
+                                    f"HR {int(s.target_hr_min_bpm)}–{int(s.target_hr_max_bpm)} bpm"
+                                    if s.target_focus_type == "hr_range"
+                                    and s.target_hr_min_bpm
+                                    and s.target_hr_max_bpm
+                                    else f"{_fmt_pace_local(s.target_pace_min_s_per_km)}–{_fmt_pace_local(s.target_pace_max_s_per_km)}/km"
+                                    if s.target_focus_type == "pace_range"
+                                    else f"Zone {s.target_zone}"
+                                    if s.target_focus_type == "hr_zone"
+                                    and s.target_zone
+                                    else "—"
+                                ),
+                                "actual_zone": _derive_zone(s.avg_heartrate, _lthr),
+                                "compliance_pct": round(s.compliance_score * 100)
+                                if s.compliance_score is not None
+                                else None,
+                            },
+                            streams,
+                        )
                         for s in segs
                     ],
                 }
@@ -1276,11 +1439,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
         from fastapi.responses import JSONResponse
         from sqlalchemy import select
 
-        from fitops.analytics.stamp import stamp_activity
         from fitops.config.settings import get_settings as _get_settings
         from fitops.db.models.activity import Activity as _Activity
         from fitops.db.session import get_async_session
-        from fitops.strava.client import StravaClient
 
         cfg = _get_settings()
         if not cfg.is_authenticated:
@@ -1298,33 +1459,32 @@ def register(templates: Jinja2Templates) -> APIRouter:
             if request.headers.get("content-type", "").startswith("application/json")
             else {}
         )
-        body.get("force", False) if isinstance(body, dict) else False
+        force = bool(body.get("force", False)) if isinstance(body, dict) else False
 
-        client = StravaClient()
         async with get_async_session() as session:
             result = await session.execute(
-                select(_Activity).where(_Activity.strava_id == strava_id)
+                select(_Activity.strava_id).where(_Activity.strava_id == strava_id)
             )
-            activity = result.scalar_one_or_none()
-            if activity is None:
+            if result.scalar_one_or_none() is None:
                 return JSONResponse({"error": "activity not found"}, status_code=404)
-            try:
-                await stamp_activity(client, session, activity, fetch_fresh_desc=True)
-            except Exception as exc:
-                return JSONResponse({"error": str(exc)}, status_code=500)
 
-        return JSONResponse({"ok": True, "strava_id": strava_id})
+        status = _queue_single_stamp_task(strava_id, force=force)
+
+        return JSONResponse(
+            {
+                "ok": True,
+                "strava_id": strava_id,
+                "queued": status == "queued",
+                "status": status,
+            },
+            status_code=202,
+        )
 
     @router.post("/api/activities/stamp-all")
     async def stamp_all_activities_api(request: Request):
         from fastapi.responses import JSONResponse
-        from sqlalchemy import select
 
-        from fitops.analytics.stamp import stamp_activity
         from fitops.config.settings import get_settings as _get_settings
-        from fitops.db.models.activity import Activity as _Activity
-        from fitops.db.session import get_async_session
-        from fitops.strava.client import StravaClient
 
         cfg = _get_settings()
         if not cfg.is_authenticated:
@@ -1337,28 +1497,14 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 status_code=403,
             )
 
-        client = StravaClient()
-        stamped, skipped, failed = [], [], []
-        training_load_cache = {}
-
-        async with get_async_session() as session:
-            result = await session.execute(select(_Activity))
-            activities = result.scalars().all()
-            for activity in activities:
-                try:
-                    await stamp_activity(
-                        client,
-                        session,
-                        activity,
-                        fetch_fresh_desc=True,
-                        training_load_cache=training_load_cache,
-                    )
-                    stamped.append(activity.strava_id)
-                except Exception:
-                    failed.append(activity.strava_id)
-
+        queued = _queue_stamp_all_task(force=False)
         return JSONResponse(
-            {"ok": True, "stamped": stamped, "skipped": skipped, "failed": failed}
+            {
+                "ok": True,
+                "queued": queued,
+                "status": "queued" if queued else "already_running",
+            },
+            status_code=202,
         )
 
     return router

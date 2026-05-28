@@ -66,7 +66,7 @@ The stamp panel lets you embed FitOps analytics into your Strava activity descri
 | Control | What it does |
 |---------|-------------|
 | **Auto-stamp on sync** | When enabled, every newly synced activity is automatically stamped |
-| **Stamp All Activities** | Backfills the stamp to all previously synced activities |
+| **Stamp All Activities** | Queues a background backfill for previously synced activities that do not already contain the FitOps stamp header |
 
 ### What the stamp contains
 
@@ -81,7 +81,7 @@ Each stamp footer includes:
 
 Training load values come from the cached snapshot for the activity date. Stamping does not recompute CTL/ATL/TSB; if that day's snapshot is missing, the form section is skipped.
 
-The stamp is appended after any existing description you've written. Re-stamping replaces only the FitOps footer — your own text is preserved.
+The stamp is appended after any existing description you've written. Re-stamping replaces only the FitOps footer — your own text is preserved. Auto-stamp and backfill skip activities whose description already contains the FitOps stamp header, even if the local `stamped_at` marker was not set yet.
 
 ## See Also
 

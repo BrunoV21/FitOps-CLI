@@ -899,7 +899,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
     const paceData = isRun
       ? streams.velocity_smooth.map(v => v > 0.1 ? 1000 / v : null)
       : streams.velocity_smooth.map(v => v > 0.1 ? v * 3.6 : null);
-    const paceVals = paceData.filter(Boolean);
+    const paceAxisVals = paceData.filter(v => Number.isFinite(v) && v > 0);
     datasets.push({
       label: isRun ? 'Pace' : 'Speed',
       data: paceData,
@@ -913,14 +913,13 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       _metricKey: 'pace',
     });
     if (isRun) {
-      const p95 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.95)] || 600;
       scales.yPace = {
         position: 'right',
         reverse: true,
         title: { display: true, text: 'min/km', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
         grid: { drawOnChartArea: false },
         min: 0,
-        max: p95 * 1.05,
+        max: 600,
         ticks: {
           color: '#00aaff',
           font: { size: 10, family: 'ui-monospace, monospace' },
@@ -929,15 +928,13 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
         },
       };
     } else {
-      const p5 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.05)] || 0;
-      const p95 = paceVals.slice().sort((a, b) => a - b)[Math.floor(paceVals.length * 0.95)] || 50;
       scales.yPace = {
         position: 'right',
         reverse: false,
         title: { display: true, text: 'km/h', color: '#888', font: { size: 10, family: 'ui-monospace, monospace' } },
         grid: { drawOnChartArea: false },
-        min: Math.max(0, p5 * 0.9),
-        max: p95 * 1.1,
+        min: 0,
+        max: 50,
         ticks: {
           color: '#00aaff',
           font: { size: 10, family: 'ui-monospace, monospace' },
@@ -946,6 +943,12 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
         },
       };
     }
+
+    const addPaceAxisVals = (values) => {
+      for (const v of values || []) {
+        if (Number.isFinite(v) && v > 0) paceAxisVals.push(v);
+      }
+    };
 
     // Grade-Adjusted Pace — use Strava's stream if available, else compute from grade_smooth
     const gasStream = streams.grade_adjusted_speed || [];
@@ -961,6 +964,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       });
     }
     if (gapData) {
+      addPaceAxisVals(gapData);
       datasets.push({
         label: 'GAP',
         data: gapData,
@@ -981,6 +985,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       const wapData = isRun
         ? streams.wap_pace
         : streams.wap_pace.map(v => v > 0 ? 3600 / v : null);
+      addPaceAxisVals(wapData);
       datasets.push({
         label: isRun ? 'WAP' : 'WAP Speed',
         data: wapData,
@@ -1001,6 +1006,7 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
       const tpData = isRun
         ? streams.true_pace
         : streams.true_pace.map(v => v > 0 ? 3600 / v : null);
+      addPaceAxisVals(tpData);
       datasets.push({
         label: isRun ? 'True Pace' : 'True Speed',
         data: tpData,
@@ -1014,6 +1020,19 @@ function renderStreamChart(canvasId, streams, sportType, thresholds = {}) {
         hidden: false,
         _metricKey: 'tp',
       });
+    }
+
+    const sortedPaceVals = paceAxisVals.slice().sort((a, b) => a - b);
+    if (sortedPaceVals.length) {
+      const p05 = sortedPaceVals[Math.floor(sortedPaceVals.length * 0.05)];
+      const p95 = sortedPaceVals[Math.floor(sortedPaceVals.length * 0.95)];
+      if (isRun) {
+        scales.yPace.min = Math.max(0, p05 * 0.85);
+        scales.yPace.max = p95 * 1.08;
+      } else {
+        scales.yPace.min = Math.max(0, p05 * 0.9);
+        scales.yPace.max = p95 * 1.1;
+      }
     }
   }
 

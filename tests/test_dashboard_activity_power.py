@@ -16,6 +16,8 @@ import pytest
 from fitops.dashboard.routes.activities import (
     _deep_analysis_summary_stats,
     _downsample_streams,
+    _ensure_true_pace_streams,
+    _fill_segment_true_pace_actual,
 )
 
 # ---------------------------------------------------------------------------
@@ -413,3 +415,31 @@ def test_downsample_streams_preserves_short_streams_without_truncation():
     result = _downsample_streams(streams, target=500)
 
     assert result == streams
+
+
+def test_empty_true_pace_stream_is_rebuilt_for_chart_visibility():
+    streams = {
+        "velocity_smooth": [4.0, 5.0, None, 0.0],
+        "true_pace": [],
+    }
+
+    _ensure_true_pace_streams(streams, weather_obj=None)
+
+    assert streams["true_pace"] == [250.0, 200.0, None, None]
+    assert streams["true_velocity"] == [4.0, 5.0, 0.0, 0.0]
+
+
+def test_segment_table_true_pace_actual_falls_back_to_current_stream():
+    segment = {
+        "stream_slice": {"start_index": 0, "end_index": 3},
+        "actuals": {
+            "avg_true_pace_per_km": None,
+            "avg_true_pace_formatted": None,
+        },
+    }
+    streams = {"true_pace": [250.0, 260.0, None, 280.0]}
+
+    result = _fill_segment_true_pace_actual(segment, streams)
+
+    assert result["actuals"]["avg_true_pace_per_km"] == 255.0
+    assert result["actuals"]["avg_true_pace_formatted"] == "4:15"

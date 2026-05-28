@@ -384,7 +384,7 @@ fitops activities stamp [OPTIONS]
 ```
 
 - `stamped` — Strava IDs of activities successfully updated
-- `skipped` — IDs skipped because they were already stamped (without `--force`)
+- `skipped` — IDs skipped because they were already stamped or already contain the FitOps stamp header (without `--force`)
 - `failed` — IDs that failed (e.g. Strava API error)
 
 **Examples:**
@@ -407,7 +407,7 @@ The stamp footer contains FitOps-only analytics such as aerobic/anaerobic scores
 
 Training load values are read from `analytics_snapshots` for the activity date. Stamping does not recompute CTL/ATL/TSB; if no cached snapshot exists for that activity day, the form section is omitted.
 
-If the activity already has a FitOps stamp, it is replaced — user-written description above the stamp is preserved.
+If the activity already has a FitOps stamp, `--force` replaces it while preserving the user-written description above the stamp. Without `--force`, FitOps skips activities that already contain the FitOps stamp header, even if the local `stamped_at` marker has not been set yet.
 
 ---
 

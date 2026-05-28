@@ -11,6 +11,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select, update
 
 from fitops.analytics.athlete_settings import AthleteSettings, get_athlete_settings
+from fitops.analytics.training_load import _estimate_tss
 from fitops.analytics.training_scores import (
     compute_aerobic_score,
     compute_anaerobic_score,
@@ -236,6 +237,7 @@ async def sync_activity_from_strava(strava_id: int, sync_type: str = "webhook") 
             activity.anaerobic_score = compute_anaerobic_score(
                 activity, athlete_settings
             )
+            activity.training_stress_score = _estimate_tss(activity)
             session.add(activity)
             await session.flush()
             internal_id = activity.id
@@ -246,6 +248,7 @@ async def sync_activity_from_strava(strava_id: int, sync_type: str = "webhook") 
             existing.anaerobic_score = compute_anaerobic_score(
                 existing, athlete_settings
             )
+            existing.training_stress_score = _estimate_tss(existing)
             internal_id = existing.id
             updated = 1
 

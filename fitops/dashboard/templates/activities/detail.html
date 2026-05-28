@@ -495,7 +495,7 @@
 {% set show_cad        = km_splits | selectattr('avg_cad')       | list | length > 0 %}
 {% set show_alt        = km_splits | selectattr('elev_gain')     | list | length > 0 %}
 {% set show_elev_loss  = km_splits | selectattr('elev_loss')     | list | length > 0 %}
-{% set show_true_pace  = km_splits | selectattr('avg_true_pace') | list | length > 0 %}
+{% set show_true_pace  = is_run %}
 <div class="table-wrap" style="--delay:600ms;margin-bottom:1px;">
   <div class="splits-header">
     <p class="panel-label" style="margin:0;">Per-km Splits</p>
@@ -680,8 +680,8 @@ openRaceResultModal();
         <th class="r">Time</th>
         <th class="r">Distance</th>
         <th class="r">Avg Pace</th>
-        <th class="r">Avg HR</th>
         <th class="r">Avg True Pace</th>
+        <th class="r">Avg HR</th>
         <th class="r">Avg Cadence</th>
         <th class="r">In Target <button type="button" class="info-tip" data-tip="Percent of valid samples in this segment that landed inside the target zone or pace/HR range. No-target warmups and recoveries can show 0% because there is no target band." aria-label="In Target: percent of valid samples inside the segment target zone or pace/HR range.">?</button></th>
         <th class="r">Score <button type="button" class="info-tip" data-tip="Compliance score for the segment. It combines 60% in-target time with 40% average-deviation penalty, so it rewards staying near the target across the whole segment." aria-label="Score: segment compliance score from in-target time and average deviation from target.">?</button></th>
@@ -696,8 +696,8 @@ openRaceResultModal();
         <td class="r" style="font-size:12px;">{% if seg.actuals.duration_formatted %}{{ seg.actuals.duration_formatted }}{% else %}—{% endif %}</td>
         <td class="r" style="font-size:12px;">{% if seg.actuals.distance_formatted %}{{ seg.actuals.distance_formatted }}{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_pace_formatted %}{{ seg.actuals.avg_pace_formatted }}/km{% else %}—{% endif %}</td>
-        <td class="r">{% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_true_pace_formatted %}{{ seg.actuals.avg_true_pace_formatted }}/km{% else %}—{% endif %}</td>
+        <td class="r">{% if seg.actuals.avg_heartrate_bpm %}{{ "%.0f" | format(seg.actuals.avg_heartrate_bpm) }} bpm{% else %}—{% endif %}</td>
         <td class="r">{% if seg.actuals.avg_cadence %}{{ "%.0f" | format(seg.actuals.avg_cadence) }} spm{% else %}—{% endif %}</td>
         <td class="r">
           {% if seg.compliance.time_in_target_pct is not none %}
@@ -984,15 +984,23 @@ async function stampActivity(stravaId) {
   const btn = document.getElementById('stamp-btn');
   const msg = document.getElementById('stamp-msg');
   btn.disabled = true;
-  btn.textContent = 'Stamping…';
+  btn.textContent = 'Queueing…';
   msg.style.display = 'none';
 
   try {
     const res  = await fetch(`/api/activities/${stravaId}/stamp`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
-    btn.textContent = 'Done — reloading…';
-    setTimeout(() => location.reload(), 800);
+    msg.textContent = data.status === 'already_running'
+      ? 'Stamp already running. You can keep navigating.'
+      : 'Stamp queued. You can keep navigating.';
+    msg.style.color = 'var(--accent-primary)';
+    msg.style.display = 'inline';
+    btn.textContent = 'Queued';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Stamp Activity';
+    }, 1800);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Stamp Activity';
@@ -1006,7 +1014,8 @@ async function restampActivity(stravaId) {
   const btn = document.getElementById('restamp-btn');
   const msg = document.getElementById('stamp-msg');
   btn.disabled = true;
-  btn.textContent = '…';
+  btn.textContent = 'Queueing…';
+  msg.style.display = 'none';
 
   try {
     const res  = await fetch(`/api/activities/${stravaId}/stamp`, {
@@ -1016,8 +1025,16 @@ async function restampActivity(stravaId) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
-    btn.textContent = 'Done — reloading…';
-    setTimeout(() => location.reload(), 800);
+    msg.textContent = data.status === 'already_running'
+      ? 'Re-stamp already running. You can keep navigating.'
+      : 'Re-stamp queued. You can keep navigating.';
+    msg.style.color = 'var(--accent-primary)';
+    msg.style.display = 'inline';
+    btn.textContent = 'Queued';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Re-stamp';
+    }, 1800);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Re-stamp';

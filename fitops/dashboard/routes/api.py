@@ -26,6 +26,21 @@ router = APIRouter()
 
 # Prevents concurrent backup restores triggered by the /api/internal/sync endpoint
 _restore_lock = asyncio.Lock()
+_stamp_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_stamp_task(strava_ids: list[int]) -> None:
+    async def _run() -> None:
+        try:
+            from fitops.analytics.stamp import auto_stamp_new_activities
+
+            await auto_stamp_new_activities(strava_ids)
+        except Exception:
+            pass
+
+    task = asyncio.create_task(_run())
+    _stamp_tasks.add(task)
+    task.add_done_callback(_stamp_tasks.discard)
 
 
 async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
@@ -170,6 +185,7 @@ def register() -> APIRouter:
 
         streams_result = None
         weather_result = None
+        stamping_result = None
         if result.activities_created > 0:
             streams_result = await _fetch_streams(limit=result.activities_created)
             # Get strava_ids of the newest activities (same count as created)
@@ -182,12 +198,8 @@ def register() -> APIRouter:
                 )
                 new_strava_ids = [r[0] for r in newest.all()]
             weather_result = await _fetch_weather_for_new_activities(new_strava_ids)
-            try:
-                from fitops.analytics.stamp import auto_stamp_new_activities
-
-                await auto_stamp_new_activities(new_strava_ids)
-            except Exception:
-                pass
+            _schedule_stamp_task(new_strava_ids)
+            stamping_result = {"queued": len(new_strava_ids)}
 
         # Always sweep for unlinked plans — catches plans created after their
         # matching activity was already synced.
@@ -208,6 +220,7 @@ def register() -> APIRouter:
                 "duration_s": round(result.duration_s, 2),
                 "streams": streams_result,
                 "weather": weather_result,
+                "stamping": stamping_result,
                 "plans_linked": plans_linked,
                 "synced_at": datetime.now(UTC).isoformat(),
             }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,9 +10,11 @@ import pytest
 
 from fitops.analytics.stamp import (
     STAMP_SENTINEL,
+    _ensure_running_power_for_stamp,
     apply_stamp,
     compose_stamp,
     get_cached_training_load_for_activity,
+    has_fitops_stamp,
 )
 
 # ---------------------------------------------------------------------------
@@ -217,6 +220,46 @@ def test_apply_stamp_idempotent_sentinel_count():
     assert second.count(STAMP_SENTINEL) == 1
 
 
+def test_has_fitops_stamp_detects_existing_header():
+    assert has_fitops_stamp(f"User text{STAMP_SENTINEL}Old stamp")
+    assert not has_fitops_stamp("User text")
+
+
+@pytest.mark.asyncio
+async def test_ensure_running_power_for_stamp_computes_before_compose(monkeypatch):
+    monkeypatch.setattr(
+        "fitops.analytics.athlete_settings.get_athlete_settings",
+        lambda: MagicMock(weight_kg=70.0),
+    )
+
+    class _Stream:
+        def __init__(self, stream_type: str, data: list):
+            self.stream_type = stream_type
+            self.data = data
+
+    stream_result = MagicMock()
+    stream_result.scalars.return_value.all.return_value = [
+        _Stream("velocity_smooth", [3.0] * 60),
+        _Stream("time", list(range(60))),
+    ]
+    existing_power_result = MagicMock()
+    existing_power_result.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[stream_result, existing_power_result])
+    session.add = MagicMock()
+
+    activity = _activity(id=123, est_power_avg_w=None)
+
+    await _ensure_running_power_for_stamp(session, activity)
+
+    assert activity.est_power_avg_w == 210.0
+    assert activity.est_power_np_w == 210.0
+    assert activity.est_power_max_w == 210.0
+    assert activity.est_power_source == "velocity_smooth"
+    assert "Avg 210W" in compose_stamp(activity)
+
+
 @pytest.mark.asyncio
 async def test_get_cached_training_load_for_activity_reads_snapshot_without_compute(
     monkeypatch,
@@ -314,15 +357,11 @@ def test_stamp_activity_returns_404_when_not_found(client, monkeypatch):
     assert resp.status_code == 404
 
 
-def test_stamp_activity_returns_200_on_success(client, monkeypatch):
+def test_stamp_activity_returns_202_on_success(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.config.settings.get_settings",
         lambda: _fake_settings(),
     )
-
-    from fitops.strava.client import StravaClient
-
-    monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
 
     activity = _activity()
     activity.id = 1
@@ -336,12 +375,119 @@ def test_stamp_activity_returns_200_on_success(client, monkeypatch):
     mock_session.execute = AsyncMock(return_value=mock_result)
 
     monkeypatch.setattr("fitops.db.session.get_async_session", lambda: mock_session)
-
-    monkeypatch.setattr("fitops.analytics.stamp.stamp_activity", AsyncMock())
+    queue_mock = MagicMock(return_value="queued")
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities._queue_single_stamp_task",
+        queue_mock,
+    )
 
     resp = client.post("/api/activities/42001/stamp")
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["strava_id"] == 42001
+    assert data["queued"] is True
+    assert data["status"] == "queued"
+    queue_mock.assert_called_once_with(42001, force=False)
+
+
+def test_stamp_activity_returns_already_running(client, monkeypatch):
+    monkeypatch.setattr(
+        "fitops.config.settings.get_settings",
+        lambda: _fake_settings(),
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = 42001
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    monkeypatch.setattr("fitops.db.session.get_async_session", lambda: mock_session)
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities._queue_single_stamp_task",
+        MagicMock(return_value="already_running"),
+    )
+
+    resp = client.post("/api/activities/42001/stamp")
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["queued"] is False
+    assert data["status"] == "already_running"
+
+
+def test_stamp_activity_restamp_preserves_force(client, monkeypatch):
+    monkeypatch.setattr(
+        "fitops.config.settings.get_settings",
+        lambda: _fake_settings(),
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = 42001
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    monkeypatch.setattr("fitops.db.session.get_async_session", lambda: mock_session)
+    queue_mock = MagicMock(return_value="queued")
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities._queue_single_stamp_task",
+        queue_mock,
+    )
+
+    resp = client.post("/api/activities/42001/stamp", json={"force": True})
+    assert resp.status_code == 202
+    queue_mock.assert_called_once_with(42001, force=True)
+
+
+@pytest.mark.asyncio
+async def test_queue_single_stamp_task_reports_already_running():
+    from fitops.dashboard.routes import activities
+
+    async def wait_forever():
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(wait_forever())
+    activities._single_stamp_tasks[42001] = task
+    try:
+        assert activities._queue_single_stamp_task(42001, force=False) == (
+            "already_running"
+        )
+    finally:
+        task.cancel()
+        activities._single_stamp_tasks.clear()
+
+
+@pytest.mark.asyncio
+async def test_single_stamp_task_calls_stamp_activity_with_force(monkeypatch):
+    from fitops.dashboard.routes import activities
+    from fitops.strava.client import StravaClient
+
+    activity = _activity()
+    activity.id = 1
+    activity.strava_id = 42001
+
+    monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = activity
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr("fitops.db.session.get_async_session", lambda: mock_session)
+
+    stamp_mock = AsyncMock()
+    monkeypatch.setattr("fitops.analytics.stamp.stamp_activity", stamp_mock)
+
+    await activities._run_single_stamp_task(42001, force=True)
+
+    stamp_mock.assert_awaited_once()
+    assert stamp_mock.await_args.kwargs["fetch_fresh_desc"] is True
+    assert stamp_mock.await_args.kwargs["skip_existing"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -358,71 +504,42 @@ def test_stamp_all_returns_403_without_write_scope(client, monkeypatch):
     assert resp.status_code == 403
 
 
-def test_stamp_all_returns_200_with_counts(client, monkeypatch):
+def test_stamp_all_queues_background_work(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.config.settings.get_settings",
         lambda: _fake_settings(),
     )
 
-    from fitops.strava.client import StravaClient
-
-    monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
-
-    act1 = _activity()
-    act1.strava_id = 1001
-    act2 = _activity()
-    act2.strava_id = 1002
-
-    mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [act1, act2]
-    mock_session.execute = AsyncMock(return_value=mock_result)
-
-    monkeypatch.setattr("fitops.db.session.get_async_session", lambda: mock_session)
-    monkeypatch.setattr("fitops.analytics.stamp.stamp_activity", AsyncMock())
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.activities._queue_stamp_all_task",
+        lambda force=False: True,
+    )
 
     resp = client.post("/api/activities/stamp-all")
-    assert resp.status_code == 200
+    assert resp.status_code == 202
     data = resp.json()
     assert data["ok"] is True
-    assert len(data["stamped"]) == 2
-    assert data["failed"] == []
+    assert data["queued"] is True
+    assert data["status"] == "queued"
 
 
-def test_stamp_all_reports_failures(client, monkeypatch):
+def test_stamp_all_reports_already_running(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.config.settings.get_settings",
         lambda: _fake_settings(),
     )
 
-    from fitops.strava.client import StravaClient
-
-    monkeypatch.setattr(StravaClient, "__init__", lambda self: None)
-
-    act = _activity()
-    act.strava_id = 2001
-
-    mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [act]
-    mock_session.execute = AsyncMock(return_value=mock_result)
-
-    monkeypatch.setattr("fitops.db.session.get_async_session", lambda: mock_session)
     monkeypatch.setattr(
-        "fitops.analytics.stamp.stamp_activity",
-        AsyncMock(side_effect=RuntimeError("Strava down")),
+        "fitops.dashboard.routes.activities._queue_stamp_all_task",
+        lambda force=False: False,
     )
 
     resp = client.post("/api/activities/stamp-all")
-    assert resp.status_code == 200
+    assert resp.status_code == 202
     data = resp.json()
     assert data["ok"] is True
-    assert data["failed"] == [2001]
-    assert data["stamped"] == []
+    assert data["queued"] is False
+    assert data["status"] == "already_running"
 
 
 # ---------------------------------------------------------------------------

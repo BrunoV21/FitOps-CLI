@@ -957,7 +957,7 @@ def stamp(
     init_db()
 
     async def _run():
-        from fitops.analytics.stamp import stamp_activity
+        from fitops.analytics.stamp import has_fitops_stamp, stamp_activity
         from fitops.strava.client import StravaClient as _Client
 
         client = _Client()
@@ -981,18 +981,26 @@ def stamp(
                 activities = list(result.scalars().all())
 
             for act in activities:
-                if not force and act.stamped_at is not None:
+                if not force and (
+                    act.stamped_at is not None or has_fitops_stamp(act.description)
+                ):
+                    if act.stamped_at is None and has_fitops_stamp(act.description):
+                        act.stamped_at = datetime.now(UTC)
                     skipped.append(act.strava_id)
                     continue
                 try:
-                    await stamp_activity(
+                    updated = await stamp_activity(
                         client,
                         session,
                         act,
                         fetch_fresh_desc=True,
                         training_load_cache=training_load_cache,
+                        skip_existing=not force,
                     )
-                    stamped.append(act.strava_id)
+                    if updated is not False:
+                        stamped.append(act.strava_id)
+                    else:
+                        skipped.append(act.strava_id)
                 except Exception as exc:
                     typer.echo(f"Failed to stamp {act.strava_id}: {exc}", err=True)
                     failed.append(act.strava_id)

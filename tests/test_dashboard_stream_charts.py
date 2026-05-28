@@ -132,3 +132,59 @@ assert.equal(reset.hidden, false);
 assert.equal(updated, true);
 """
     subprocess.run(["node", "-e", script], cwd=REPO_ROOT, check=True)
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None, reason="node is required for JS chart tests"
+)
+def test_stream_chart_pace_axis_includes_true_pace_series():
+    script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+
+const elements = {
+  'stream-chart': { id: 'stream-chart' },
+  'stream-mobile-scrubber': { hidden: false },
+  'stream-scrub-range': {
+    min: '0',
+    max: '0',
+    value: '0',
+    addEventListener: () => {},
+  },
+  'stream-scrub-label': { textContent: '' },
+  'stream-zoom-reset': { hidden: true },
+};
+function Chart(ctx, config) {
+  this.ctx = ctx;
+  this.data = config.data;
+  this.options = config.options;
+  this.plugins = config.plugins;
+  this.update = () => {};
+  this.destroy = () => {};
+  this.isDatasetVisible = () => true;
+  return this;
+}
+Chart.defaults = { font: {} };
+Chart.getChart = () => null;
+
+const context = {
+  console,
+  setTimeout,
+  window: { matchMedia: () => ({ matches: false }) },
+  document: { getElementById: (id) => elements[id] || null },
+  Chart,
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync('fitops/dashboard/static/js/charts.js', 'utf8'), context);
+
+const chart = context.renderStreamChart('stream-chart', {
+  time: Array.from({ length: 20 }, (_, i) => i),
+  velocity_smooth: Array.from({ length: 20 }, () => 1000 / 300),
+  true_pace: Array.from({ length: 20 }, (_, i) => i < 10 ? 300 : 900),
+}, 'Run', {});
+
+assert(chart.data.datasets.some((ds) => ds.label === 'True Pace'));
+assert(chart.options.scales.yPace.max > 900);
+"""
+    subprocess.run(["node", "-e", script], cwd=REPO_ROOT, check=True)

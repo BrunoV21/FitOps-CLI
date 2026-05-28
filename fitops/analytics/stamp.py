@@ -301,6 +301,11 @@ def compose_stamp(
 _STAMP_ANCHOR = "📊 FitOps Analytics"
 
 
+def has_fitops_stamp(description: str | None) -> bool:
+    """Return True when a Strava description already contains a FitOps stamp."""
+    return _STAMP_ANCHOR in (description or "")
+
+
 def apply_stamp(current_desc: str | None, new_stamp: str) -> str:
     """Replace any existing FitOps stamp block and insert the new one.
 
@@ -314,6 +319,61 @@ def apply_stamp(current_desc: str | None, new_stamp: str) -> str:
     if base:
         return f"{base}{STAMP_SENTINEL}{new_stamp}"
     return f"{_STAMP_ANCHOR}\n{new_stamp}"
+
+
+async def _ensure_running_power_for_stamp(
+    session: AsyncSession, activity: Activity
+) -> None:
+    """Populate estimated running power before composing a stamp when streams exist."""
+    if getattr(activity, "average_watts", None) and activity.average_watts > 0:
+        return
+    if getattr(activity, "est_power_avg_w", None) is not None:
+        return
+
+    from sqlalchemy import select
+
+    from fitops.analytics.athlete_settings import get_athlete_settings
+    from fitops.analytics.running_power import (
+        RUN_SPORT_TYPES,
+        persist_power_for_activity,
+    )
+    from fitops.db.models.activity_stream import ActivityStream
+
+    if (getattr(activity, "sport_type", "") or "") not in RUN_SPORT_TYPES:
+        return
+    activity_id = getattr(activity, "id", None)
+    if activity_id is None:
+        return
+
+    weight_kg = get_athlete_settings().weight_kg
+    if not weight_kg:
+        return
+
+    result = await session.execute(
+        select(ActivityStream).where(
+            ActivityStream.activity_id == activity_id,
+            ActivityStream.stream_type.in_(
+                [
+                    "true_pace",
+                    "gap_pace",
+                    "grade_adjusted_speed",
+                    "velocity_smooth",
+                    "time",
+                ]
+            ),
+        )
+    )
+    streams = {row.stream_type: row.data for row in result.scalars().all()}
+    if not streams:
+        return
+
+    if "gap_pace" not in streams and streams.get("grade_adjusted_speed"):
+        streams["gap_pace"] = [
+            round(1000.0 / v, 2) if v and v > 0.1 else None
+            for v in streams["grade_adjusted_speed"]
+        ]
+
+    await persist_power_for_activity(session, activity_id, activity, streams, weight_kg)
 
 
 async def get_cached_training_load_for_activity(
@@ -388,14 +448,23 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
         if athlete is None or not athlete.stamp_on_sync:
             return
 
-        client = StravaClient()
-        training_load_cache: dict[date, dict | None] = {}
-        for strava_id in strava_ids:
+    client = StravaClient()
+    training_load_cache: dict[date, dict | None] = {}
+    for strava_id in strava_ids:
+        async with get_async_session() as session:
             activity_result = await session.execute(
                 select(ActivityModel).where(ActivityModel.strava_id == strava_id)
             )
             activity = activity_result.scalar_one_or_none()
             if activity is None:
+                continue
+            if activity.stamped_at is not None or has_fitops_stamp(
+                activity.description
+            ):
+                if activity.stamped_at is None and has_fitops_stamp(
+                    activity.description
+                ):
+                    activity.stamped_at = datetime.now(UTC)
                 continue
             try:
                 await stamp_activity(
@@ -404,6 +473,7 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
                     activity,
                     fetch_fresh_desc=True,
                     training_load_cache=training_load_cache,
+                    skip_existing=True,
                 )
             except Exception:
                 pass
@@ -418,7 +488,8 @@ async def stamp_activity(
     performance_insights: list[dict] | None = None,
     fetch_fresh_desc: bool = False,
     training_load_cache: dict[date, dict | None] | None = None,
-) -> None:
+    skip_existing: bool = False,
+) -> bool:
     """Compose stamp, push to Strava, update stamped_at in DB."""
     from sqlalchemy import select
 
@@ -436,6 +507,17 @@ async def stamp_activity(
             base_desc = fresh.get("description") or base_desc
         except Exception:
             pass
+
+    if skip_existing and has_fitops_stamp(base_desc):
+        result = await session.execute(
+            select(ActivityModel).where(ActivityModel.id == activity.id)
+        )
+        row = result.scalar_one_or_none()
+        if row is not None:
+            row.description = base_desc
+            if row.stamped_at is None:
+                row.stamped_at = datetime.now(UTC)
+        return False
 
     # Fetch weather — prefer persisted derived values, lazy-compute if missing
     weather: dict | None = None
@@ -644,6 +726,11 @@ async def stamp_activity(
         except Exception:
             pass
 
+    try:
+        await _ensure_running_power_for_stamp(session, activity)
+    except Exception:
+        pass
+
     new_stamp = compose_stamp(
         activity,
         workout_data,
@@ -664,3 +751,4 @@ async def stamp_activity(
     if row is not None:
         row.description = new_desc
         row.stamped_at = datetime.now(UTC)
+    return True

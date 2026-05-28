@@ -614,10 +614,10 @@ async function stampAll() {
     const res  = await fetch('/api/activities/stamp-all', { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
-    const n = (data.stamped || []).length;
-    const f = (data.failed || []).length;
-    msg.textContent = `Stamped ${n} activit${n === 1 ? 'y' : 'ies'}${f ? ` · ${f} failed` : ''}.`;
-    msg.style.color  = f ? 'var(--accent-amber)' : 'var(--accent-primary)';
+    msg.textContent = data.status === 'already_running'
+      ? 'Stamping is already running in the background.'
+      : 'Stamping queued in the background.';
+    msg.style.color  = 'var(--accent-primary)';
     msg.style.display = 'block';
     btn.textContent = 'Stamp All Activities';
     btn.disabled = false;

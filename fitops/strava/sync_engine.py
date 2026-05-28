@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
 from fitops.analytics.athlete_settings import AthleteSettings
+from fitops.analytics.training_load import _estimate_tss
 from fitops.analytics.training_scores import (
     compute_aerobic_score,
     compute_anaerobic_score,
@@ -130,6 +131,7 @@ class SyncEngine:
                         activity.anaerobic_score = compute_anaerobic_score(
                             activity, settings
                         )
+                        activity.training_stress_score = _estimate_tss(activity)
                         session.add(activity)
                         result.activities_created += 1
                         result.new_strava_ids.append(strava_id)
@@ -141,6 +143,7 @@ class SyncEngine:
                         existing_row.anaerobic_score = compute_anaerobic_score(
                             existing_row, settings
                         )
+                        existing_row.training_stress_score = _estimate_tss(existing_row)
                         result.activities_updated += 1
 
             if len(activities) < PER_PAGE:
@@ -152,7 +155,7 @@ class SyncEngine:
         """Stamp newly-synced activities whose athlete has stamp_on_sync enabled."""
         from sqlalchemy import select
 
-        from fitops.analytics.stamp import stamp_activity
+        from fitops.analytics.stamp import has_fitops_stamp, stamp_activity
         from fitops.db.models.athlete import Athlete
 
         async with get_async_session() as session:
@@ -170,9 +173,21 @@ class SyncEngine:
                 activity = activity_result.scalar_one_or_none()
                 if activity is None:
                     continue
+                if activity.stamped_at is not None or has_fitops_stamp(
+                    activity.description
+                ):
+                    if activity.stamped_at is None and has_fitops_stamp(
+                        activity.description
+                    ):
+                        activity.stamped_at = datetime.now(UTC)
+                    continue
                 try:
                     await stamp_activity(
-                        self._client, session, activity, fetch_fresh_desc=True
+                        self._client,
+                        session,
+                        activity,
+                        fetch_fresh_desc=True,
+                        skip_existing=True,
                     )
                 except Exception:
                     logger.warning("Failed to stamp activity %s", strava_id)
