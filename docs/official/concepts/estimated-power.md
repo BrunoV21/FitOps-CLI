@@ -19,6 +19,9 @@ FitOps selects the best available pace source:
 3. **`velocity_smooth`** — raw GPS speed (fallback)
 
 The `source` field in the `power` output block indicates which stream was used.
+If power was first estimated before weather was available, later write paths that
+have weather and stream data, such as activity stamping, upgrade the estimate to
+`true_pace` instead of keeping the earlier `gap_pace` fallback.
 
 ## Normalized Power (NP)
 

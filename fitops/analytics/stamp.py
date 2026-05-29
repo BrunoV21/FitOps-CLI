@@ -321,13 +321,25 @@ def apply_stamp(current_desc: str | None, new_stamp: str) -> str:
     return f"{_STAMP_ANCHOR}\n{new_stamp}"
 
 
+_POWER_SOURCE_PRIORITY = {
+    None: 0,
+    "": 0,
+    "est": 0,
+    "running_power_model": 0,
+    "velocity_smooth": 1,
+    "gap_pace": 2,
+    "true_pace": 3,
+}
+
+
 async def _ensure_running_power_for_stamp(
-    session: AsyncSession, activity: Activity
+    session: AsyncSession,
+    activity: Activity,
+    *,
+    true_pace_stream: list | None = None,
 ) -> None:
     """Populate estimated running power before composing a stamp when streams exist."""
     if getattr(activity, "average_watts", None) and activity.average_watts > 0:
-        return
-    if getattr(activity, "est_power_avg_w", None) is not None:
         return
 
     from sqlalchemy import select
@@ -335,6 +347,7 @@ async def _ensure_running_power_for_stamp(
     from fitops.analytics.athlete_settings import get_athlete_settings
     from fitops.analytics.running_power import (
         RUN_SPORT_TYPES,
+        pick_pace_stream,
         persist_power_for_activity,
     )
     from fitops.db.models.activity_stream import ActivityStream
@@ -364,6 +377,8 @@ async def _ensure_running_power_for_stamp(
         )
     )
     streams = {row.stream_type: row.data for row in result.scalars().all()}
+    if true_pace_stream:
+        streams["true_pace"] = true_pace_stream
     if not streams:
         return
 
@@ -372,6 +387,19 @@ async def _ensure_running_power_for_stamp(
             round(1000.0 / v, 2) if v and v > 0.1 else None
             for v in streams["grade_adjusted_speed"]
         ]
+
+    source, pace_stream = pick_pace_stream(streams)
+    if source == "none" or not pace_stream:
+        return
+
+    existing_source = getattr(activity, "est_power_source", None)
+    existing_priority = _POWER_SOURCE_PRIORITY.get(existing_source, 0)
+    new_priority = _POWER_SOURCE_PRIORITY.get(source, 0)
+    if (
+        getattr(activity, "est_power_avg_w", None) is not None
+        and new_priority <= existing_priority
+    ):
+        return
 
     await persist_power_for_activity(session, activity_id, activity, streams, weight_kg)
 
@@ -522,6 +550,7 @@ async def stamp_activity(
     # Fetch weather — prefer persisted derived values, lazy-compute if missing
     weather: dict | None = None
     weather_row = None
+    weather_true_pace_stream: list | None = None
     streams_dict: dict[str, list] = {}
     _is_run = (activity.sport_type or "") in RUN_SPORT_TYPES
     try:
@@ -532,37 +561,8 @@ async def stamp_activity(
         )
         weather_row = weather_result.scalar_one_or_none()
         if weather_row:
-            # If derived values not yet persisted, compute and store them
-            if weather_row.wap_factor is None:
-                from fitops.db.models.activity_stream import ActivityStream
-
-                streams_result = await session.execute(
-                    select(ActivityStream).where(
-                        ActivityStream.activity_id == activity.id,
-                        ActivityStream.stream_type.in_(
-                            [
-                                "velocity_smooth",
-                                "grade_smooth",
-                                "latlng",
-                                "grade_adjusted_speed",
-                            ]
-                        ),
-                    )
-                )
-                streams_dict: dict[str, list] = {}
-                for row in streams_result.scalars().all():
-                    streams_dict[row.stream_type] = row.data
-
-                from fitops.analytics.weather_pace import persist_derived_weather
-
-                try:
-                    await persist_derived_weather(
-                        session, weather_row, activity, streams_dict or None
-                    )
-                except Exception:
-                    pass
-
-            # Fetch streams for compute_weather_panel (needed for true_pace_stream chart)
+            # Fetch streams once, then persist derived true pace before the
+            # stamp power calculation chooses a pace source.
             streams_result = await session.execute(
                 select(ActivityStream).where(
                     ActivityStream.activity_id == activity.id,
@@ -580,7 +580,18 @@ async def stamp_activity(
             for srow in streams_result.scalars().all():
                 streams_dict[srow.stream_type] = srow.data
 
-            from fitops.analytics.weather_pace import compute_weather_panel
+            from fitops.analytics.weather_pace import (
+                compute_weather_panel,
+                persist_derived_weather,
+            )
+
+            if streams_dict:
+                try:
+                    await persist_derived_weather(
+                        session, weather_row, activity, streams_dict
+                    )
+                except Exception:
+                    pass
 
             weather = compute_weather_panel(
                 weather_row,
@@ -592,7 +603,7 @@ async def stamp_activity(
                 average_heartrate=activity.average_heartrate,
             )
             # Remove stream data (not needed by stamp composer)
-            weather.pop("true_pace_stream", None)
+            weather_true_pace_stream = weather.pop("true_pace_stream", None)
 
     except Exception:
         pass
@@ -727,7 +738,9 @@ async def stamp_activity(
             pass
 
     try:
-        await _ensure_running_power_for_stamp(session, activity)
+        await _ensure_running_power_for_stamp(
+            session, activity, true_pace_stream=weather_true_pace_stream
+        )
     except Exception:
         pass
 

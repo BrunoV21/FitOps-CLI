@@ -74,7 +74,7 @@ Each stamp footer includes:
 
 - Aerobic and anaerobic scores
 - Activity-day training load when cached: CTL, ATL, TSB, and form label
-- Power — real watts if available, otherwise estimated power with source label
+- Power — real watts if available, otherwise estimated power with source label. When weather and streams are present, stamping upgrades estimated running power to the `true_pace` source.
 - VO2max estimate
 - Weather-adjusted pace for runs or speed for cycling, race calibration, and linked workout segment details when available. Segment true pace is shown whenever it exists, even when it matches the displayed segment pace.
 - A link to the FitOps GitHub repo

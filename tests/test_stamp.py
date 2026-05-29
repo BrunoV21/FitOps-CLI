@@ -261,6 +261,88 @@ async def test_ensure_running_power_for_stamp_computes_before_compose(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_ensure_running_power_for_stamp_upgrades_existing_gap_power(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "fitops.analytics.athlete_settings.get_athlete_settings",
+        lambda: MagicMock(weight_kg=70.0),
+    )
+
+    class _Stream:
+        def __init__(self, stream_type: str, data: list):
+            self.stream_type = stream_type
+            self.data = data
+
+    stream_result = MagicMock()
+    stream_result.scalars.return_value.all.return_value = [
+        _Stream("gap_pace", [250.0] * 60),
+        _Stream("time", list(range(60))),
+    ]
+    existing_power_result = MagicMock()
+    existing_power_result.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[stream_result, existing_power_result])
+    session.add = MagicMock()
+
+    activity = _activity(
+        id=123,
+        est_power_avg_w=280.0,
+        est_power_max_w=280.0,
+        est_power_np_w=280.0,
+        est_power_source="gap_pace",
+    )
+
+    await _ensure_running_power_for_stamp(
+        session, activity, true_pace_stream=[200.0] * 60
+    )
+
+    assert activity.est_power_avg_w == 350.0
+    assert activity.est_power_np_w == 350.0
+    assert activity.est_power_max_w == 350.0
+    assert activity.est_power_source == "true_pace"
+
+
+@pytest.mark.asyncio
+async def test_ensure_running_power_for_stamp_does_not_downgrade_true_pace_power(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "fitops.analytics.athlete_settings.get_athlete_settings",
+        lambda: MagicMock(weight_kg=70.0),
+    )
+
+    class _Stream:
+        def __init__(self, stream_type: str, data: list):
+            self.stream_type = stream_type
+            self.data = data
+
+    stream_result = MagicMock()
+    stream_result.scalars.return_value.all.return_value = [
+        _Stream("gap_pace", [250.0] * 60),
+        _Stream("time", list(range(60))),
+    ]
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=stream_result)
+
+    activity = _activity(
+        id=123,
+        est_power_avg_w=350.0,
+        est_power_max_w=350.0,
+        est_power_np_w=350.0,
+        est_power_source="true_pace",
+    )
+
+    await _ensure_running_power_for_stamp(session, activity)
+
+    assert activity.est_power_avg_w == 350.0
+    assert activity.est_power_source == "true_pace"
+    assert session.execute.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_get_cached_training_load_for_activity_reads_snapshot_without_compute(
     monkeypatch,
 ):
