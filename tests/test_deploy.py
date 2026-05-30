@@ -55,10 +55,13 @@ def test_hf_github_actions_is_keepalive_only():
     assert "/api/internal/sync" not in workflow
 
 
-def test_hf_startup_does_not_restore_from_github():
+def test_hf_startup_restores_only_matching_hf_origin_backup():
     from pathlib import Path
 
     startup = Path("fitops/cloud/hf_space/startup.sh").read_text()
 
-    assert "backup restore" not in startup
-    assert "automatic restore is disabled" in startup
+    assert "fitops backup restore" in startup
+    assert "--origin-kind hf-space" in startup
+    assert "--origin-role primary" in startup
+    assert "--origin-label \"$FITOPS_INSTANCE_LABEL\"" in startup
+    assert "No HF-origin backup found" in startup

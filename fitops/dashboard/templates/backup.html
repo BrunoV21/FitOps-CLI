@@ -21,8 +21,8 @@
   <p style="margin:0;font-size:13px;line-height:1.6;">
     Want your dashboard available 24/7?
     Install <code>fitops[server]</code> and run <code>fitops deploy hf</code> to deploy to a
-    <strong>private HuggingFace Space</strong> with password + TOTP 2FA — your GitHub backup syncs
-    automatically on every push.
+    <strong>private HuggingFace Space</strong> with password + TOTP 2FA, webhook sync,
+    and event-triggered GitHub backups.
     <a href="{{ dashboard_docs.get('deploy', '') }}" target="_blank" rel="noopener"
        style="color:var(--accent-primary);text-decoration:none;">Learn more →</a>
   </p>
@@ -58,14 +58,14 @@
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="saveGithub()">
+      <button class="btn btn-primary" id="gh-save-btn" onclick="saveGithub()">
         <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
         </svg>
-        Save &amp; Validate
+        <span id="gh-save-label">Save &amp; Validate</span>
       </button>
       {% if github_configured %}
-      <button class="btn btn-danger" onclick="removeGithub()">Remove</button>
+      <button class="btn btn-danger" id="gh-remove-btn" onclick="removeGithub()">Remove</button>
       {% endif %}
       <span id="gh-msg" class="inline-msg"></span>
     </div>
@@ -100,9 +100,9 @@
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="setupWebhook()">Enable Webhook Sync</button>
-      <button class="btn btn-ghost" onclick="saveSyncMode()">Save Mode</button>
-      <button class="btn btn-danger" onclick="deleteWebhook()">Delete Subscription</button>
+      <button class="btn btn-primary" id="webhook-enable-btn" onclick="setupWebhook()">Enable Webhook Sync</button>
+      <button class="btn btn-ghost" id="webhook-mode-btn" onclick="saveSyncMode()">Save Mode</button>
+      <button class="btn btn-danger" id="webhook-delete-btn" onclick="deleteWebhook()">Delete Subscription</button>
       <span id="webhook-msg" class="inline-msg"></span>
     </div>
     <div id="webhook-events" style="margin-top:12px;"></div>
@@ -156,7 +156,7 @@
     </p>
     {% endif %}
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="saveSchedule()">Save Schedule</button>
+      <button class="btn btn-primary" id="sched-save-btn" onclick="saveSchedule()">Save Schedule</button>
       <span id="sched-msg" class="inline-msg"></span>
     </div>
   </div>
@@ -198,7 +198,7 @@
 <section class="panel" id="panel-list">
   <div class="panel-header">
     <span class="panel-title">Cloud Backups</span>
-    <button class="btn btn-ghost btn-sm" onclick="loadBackups()">
+    <button class="btn btn-ghost btn-sm" id="backups-refresh-btn" onclick="loadBackups()">
       <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -232,8 +232,48 @@
 {% block scripts %}
 <script>
 let _pendingRestore = null;
+let _githubState = {
+  configured: {{ 'true' if github_configured else 'false' }},
+  repo: {{ github_repo|tojson }}
+};
+let _webhookState = {
+  configured: false,
+  enabled: false,
+  callback_url: '',
+  sync_mode: ''
+};
+let _scheduleState = {
+  enabled: {{ 'true' if schedule and schedule.enabled else 'false' }},
+  interval_hours: {{ schedule.interval_hours if schedule else 24 }},
+  provider: {{ (schedule.provider if schedule else 'github')|tojson }}
+};
 
 /* ── GitHub setup ────────────────────────────────────────────── */
+function updateGithubControls() {
+  const token = document.getElementById('gh-token').value.trim();
+  const repo = document.getElementById('gh-repo').value.trim();
+  const saveBtn = document.getElementById('gh-save-btn');
+  const saveLabel = document.getElementById('gh-save-label');
+  const pushBtn = document.getElementById('create-push-btn');
+  const refreshBtn = document.getElementById('backups-refresh-btn');
+  const hasRealToken = token && token !== '••••••••';
+
+  pushBtn.disabled = !_githubState.configured;
+  refreshBtn.disabled = !_githubState.configured;
+
+  if (_githubState.configured) {
+    saveLabel.textContent = hasRealToken
+      ? 'Update GitHub'
+      : repo !== _githubState.repo
+        ? 'Enter Token to Update'
+        : 'GitHub Configured';
+    saveBtn.disabled = !hasRealToken || !repo;
+  } else {
+    saveLabel.textContent = 'Save & Validate';
+    saveBtn.disabled = !hasRealToken || !repo;
+  }
+}
+
 async function saveGithub() {
   const token = document.getElementById('gh-token').value.trim();
   const repo  = document.getElementById('gh-repo').value.trim();
@@ -250,20 +290,63 @@ async function saveGithub() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
     setMsg(msg, `Saved — ${data.repo}`, 'ok');
+    _githubState = { configured: true, repo: data.repo };
     document.getElementById('gh-badge').textContent = 'configured';
     document.getElementById('gh-badge').className = 'status-badge badge-ok';
+    document.getElementById('gh-token').value = '••••••••';
+    document.getElementById('gh-repo').value = data.repo;
+    updateGithubControls();
+    loadBackups();
   } catch (err) { setMsg(msg, err.message, 'error'); }
 }
 
 async function removeGithub() {
   if (!confirm('Remove GitHub backup configuration?')) return;
   await fetch('/api/backup/setup/github', { method: 'DELETE' });
+  _githubState = { configured: false, repo: '' };
   document.getElementById('gh-badge').textContent = 'not configured';
   document.getElementById('gh-badge').className = 'status-badge badge-off';
+  document.getElementById('gh-token').value = '';
+  document.getElementById('gh-repo').value = '';
+  const removeBtn = document.getElementById('gh-remove-btn');
+  if (removeBtn) removeBtn.style.display = 'none';
   document.getElementById('gh-msg').textContent = 'Removed.';
+  document.getElementById('backups-body').innerHTML = '<p class="empty-state-inline">Connect GitHub to list cloud backups.</p>';
+  updateGithubControls();
 }
 
 /* ── Strava webhook sync ─────────────────────────────────────── */
+function updateWebhookControls() {
+  const callback = document.getElementById('webhook-url').value.trim();
+  const mode = document.getElementById('sync-mode').value;
+  const enableBtn = document.getElementById('webhook-enable-btn');
+  const modeBtn = document.getElementById('webhook-mode-btn');
+  const deleteBtn = document.getElementById('webhook-delete-btn');
+  const activeWebhook =
+    _webhookState.configured &&
+    _webhookState.enabled &&
+    _webhookState.sync_mode === 'webhook' &&
+    _webhookState.callback_url === callback;
+
+  if (activeWebhook) {
+    enableBtn.textContent = 'Webhook Active';
+    enableBtn.disabled = true;
+  } else if (_webhookState.configured && callback !== _webhookState.callback_url) {
+    enableBtn.textContent = 'Update Webhook';
+    enableBtn.disabled = !callback;
+  } else if (_webhookState.configured && mode !== 'webhook') {
+    enableBtn.textContent = 'Activate Webhook';
+    enableBtn.disabled = !callback;
+  } else {
+    enableBtn.textContent = 'Enable Webhook Sync';
+    enableBtn.disabled = !callback;
+  }
+
+  modeBtn.textContent = mode === _webhookState.sync_mode ? 'Mode Saved' : 'Save Mode';
+  modeBtn.disabled = mode === _webhookState.sync_mode;
+  deleteBtn.disabled = !_webhookState.configured;
+}
+
 async function loadWebhookStatus() {
   const badge = document.getElementById('webhook-badge');
   const events = document.getElementById('webhook-events');
@@ -271,10 +354,17 @@ async function loadWebhookStatus() {
     const res = await fetch('/api/strava/webhook/status');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
+    _webhookState = {
+      configured: Boolean(data.configured),
+      enabled: Boolean(data.enabled),
+      callback_url: data.callback_url || data.default_callback_url || '',
+      sync_mode: data.sync_mode || (data.default_callback_url ? 'webhook' : 'polling')
+    };
     document.getElementById('webhook-url').value = data.callback_url || data.default_callback_url || '';
-    document.getElementById('sync-mode').value = data.sync_mode || (data.default_callback_url ? 'webhook' : 'polling');
+    document.getElementById('sync-mode').value = _webhookState.sync_mode;
     badge.textContent = data.configured ? `${data.sync_mode}` : 'not configured';
     badge.className = `status-badge ${data.configured && data.sync_mode === 'webhook' ? 'badge-ok' : 'badge-off'}`;
+    updateWebhookControls();
     const rows = (data.recent_events || []).slice(0, 5);
     if (!rows.length) {
       events.innerHTML = '<p class="empty-state-inline">No webhook events received yet.</p>';
@@ -290,6 +380,7 @@ async function loadWebhookStatus() {
   } catch (err) {
     badge.textContent = 'error';
     badge.className = 'status-badge badge-off';
+    updateWebhookControls();
     events.innerHTML = `<p class="inline-msg msg-error">${err.message}</p>`;
   }
 }
@@ -308,7 +399,7 @@ async function setupWebhook() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
     setMsg(msg, `Enabled — subscription ${data.subscription_id}`, 'ok');
-    loadWebhookStatus();
+    await loadWebhookStatus();
   } catch (err) { setMsg(msg, err.message, 'error'); }
 }
 
@@ -324,7 +415,7 @@ async function saveSyncMode() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
     setMsg(msg, `Sync mode: ${data.sync_mode}`, 'ok');
-    loadWebhookStatus();
+    await loadWebhookStatus();
   } catch (err) { setMsg(msg, err.message, 'error'); }
 }
 
@@ -336,15 +427,36 @@ async function deleteWebhook() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
     setMsg(msg, 'Deleted. Polling fallback is active.', 'ok');
-    loadWebhookStatus();
+    await loadWebhookStatus();
   } catch (err) { setMsg(msg, err.message, 'error'); }
 }
 
 /* ── Schedule ────────────────────────────────────────────────── */
+function currentScheduleForm() {
+  return {
+    interval_hours: parseInt(document.getElementById('sched-interval').value),
+    provider: document.getElementById('sched-provider').value,
+    enabled: document.getElementById('sched-enabled').checked
+  };
+}
+
+function updateScheduleControls() {
+  const form = currentScheduleForm();
+  const saveBtn = document.getElementById('sched-save-btn');
+  const changed =
+    form.enabled !== _scheduleState.enabled ||
+    form.interval_hours !== _scheduleState.interval_hours ||
+    form.provider !== _scheduleState.provider;
+
+  saveBtn.textContent = changed ? 'Save Schedule' : form.enabled ? 'Schedule Saved' : 'Schedule Disabled';
+  saveBtn.disabled = !changed;
+}
+
 async function saveSchedule() {
-  const interval = parseInt(document.getElementById('sched-interval').value);
-  const provider = document.getElementById('sched-provider').value;
-  const enabled  = document.getElementById('sched-enabled').checked;
+  const form = currentScheduleForm();
+  const interval = form.interval_hours;
+  const provider = form.provider;
+  const enabled  = form.enabled;
   const msg      = document.getElementById('sched-msg');
   setMsg(msg, 'Saving…', 'info');
   try {
@@ -363,6 +475,12 @@ async function saveSchedule() {
       badge.textContent = 'disabled';
       badge.className = 'status-badge badge-off';
     }
+    _scheduleState = {
+      enabled: data.enabled,
+      interval_hours: data.interval_hours,
+      provider: data.provider
+    };
+    updateScheduleControls();
     setMsg(msg, 'Saved.', 'ok');
   } catch (err) { setMsg(msg, err.message, 'error'); }
 }
@@ -394,7 +512,8 @@ async function createBackup(provider) {
   } catch (err) {
     setMsg(msg, err.message, 'error');
   } finally {
-    btn.disabled = false;
+    updateGithubControls();
+    if (!provider) btn.disabled = false;
   }
 }
 
@@ -497,7 +616,18 @@ function setMsg(el, text, type) {
 
 /* Auto-load backup list on page load */
 document.addEventListener('DOMContentLoaded', () => {
-  loadBackups();
+  document.getElementById('gh-token').addEventListener('input', updateGithubControls);
+  document.getElementById('gh-repo').addEventListener('input', updateGithubControls);
+  document.getElementById('webhook-url').addEventListener('input', updateWebhookControls);
+  document.getElementById('sync-mode').addEventListener('change', updateWebhookControls);
+  document.getElementById('sched-interval').addEventListener('change', updateScheduleControls);
+  document.getElementById('sched-provider').addEventListener('change', updateScheduleControls);
+  document.getElementById('sched-enabled').addEventListener('change', updateScheduleControls);
+
+  updateGithubControls();
+  updateScheduleControls();
+  if (_githubState.configured) loadBackups();
+  else document.getElementById('backups-body').innerHTML = '<p class="empty-state-inline">Connect GitHub to list cloud backups.</p>';
   loadWebhookStatus();
 });
 </script>

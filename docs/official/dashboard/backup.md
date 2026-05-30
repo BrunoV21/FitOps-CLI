@@ -13,6 +13,7 @@ Before you can back up, connect a GitHub repository:
 3. Enter the target repository in `owner/repo` format (e.g. `yourusername/fitops-backups`)
 
 FitOps stores the token locally and uses it for all subsequent backup and restore operations. To disconnect, click **Remove GitHub**.
+When GitHub is already connected, the save button is disabled until you enter a new token. Cloud backup actions are disabled while no GitHub provider is connected.
 
 ## Creating a Backup
 
@@ -48,6 +49,7 @@ Set a backup schedule so FitOps backs up your data automatically while the dashb
 
 The scheduler runs in the background while the dashboard server is active. If you stop the dashboard, scheduled backups pause until you start it again.
 Successful GitHub uploads also run smart retention per origin, keeping recent backups plus daily, weekly, and monthly checkpoints.
+The schedule button is disabled when the form already matches the saved state. Change the enabled checkbox, interval, or provider to save a new schedule.
 
 For always-on automated backups without keeping the dashboard open, use the CLI:
 
@@ -94,6 +96,8 @@ The **Sync Mode** selector controls automatic Strava sync behavior:
 | Webhook | Use Strava webhooks as the automatic sync trigger |
 | Polling | Use the periodic dashboard auto-sync fallback |
 | Manual | Only sync when you click Sync or run the CLI |
+
+The webhook controls show no-op states directly. **Webhook Active** means the saved callback URL is already active in webhook mode, and **Mode Saved** means the selected sync mode already matches the saved mode.
 
 ## See Also
 

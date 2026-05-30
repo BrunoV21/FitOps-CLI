@@ -145,6 +145,12 @@ fitops backup restore --from github
 # Restore a specific backup from GitHub
 fitops backup restore --from github --backup fitops-backup-2026-04-06-091500
 
+# Restore the newest backup from a specific origin
+fitops backup restore --from github \
+  --origin-kind hf-space \
+  --origin-label user-fitops-dashboard.hf.space \
+  --origin-role primary
+
 # Restore from a local archive file
 fitops backup restore ./fitops-backup-2026-04-06-091500.tar.gz
 
@@ -159,6 +165,9 @@ fitops backup restore --from github --yes
 | `ARCHIVE` (positional) | Path to a local `.tar.gz` archive to restore from |
 | `--from PROVIDER` | Cloud provider to restore from (e.g. `github`) |
 | `--backup NAME` / `-b` | Specific backup name from the cloud list. If omitted, the most recent is used. |
+| `--origin-kind KIND` | Only consider cloud backups whose origin kind matches, such as `hf-space` or `local` |
+| `--origin-label LABEL` | Only consider cloud backups whose origin label matches |
+| `--origin-role ROLE` | Only consider cloud backups whose origin role matches, such as `primary` or `secondary` |
 | `--yes` / `-y` | Skip the confirmation prompt |
 
 Either a local archive path or `--from` is required.
@@ -171,7 +180,7 @@ The restore process:
 5. Replaces SQLite sidecar files (`fitops.db-wal` and `fitops.db-shm`) so the restored database opens cleanly
 6. Prints a summary of restored files
 
-When restoring from GitHub without `--backup`, FitOps tries the newest readable release first. If the current dataset signature already matches the backup, restore exits as a no-op.
+When restoring from GitHub without `--backup`, FitOps tries the newest readable release first. Origin filters are applied before selecting the newest release, which is how deployed HuggingFace Spaces restore only their own HF-origin backups on container startup. If the current dataset signature already matches the backup, restore exits as a no-op.
 
 ```
 Restoring from: fitops-backup-2026-04-06-091500.tar.gz
@@ -263,7 +272,7 @@ fitops backup list [--local] [--provider github]
 
 # Restore
 fitops backup restore [ARCHIVE_PATH]
-fitops backup restore --from github [--backup NAME] [--yes]
+fitops backup restore --from github [--backup NAME] [--origin-kind KIND] [--origin-label LABEL] [--origin-role ROLE] [--yes]
 
 # Schedule
 fitops backup schedule --enable --interval HOURS [--provider github]

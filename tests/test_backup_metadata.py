@@ -146,3 +146,41 @@ def test_retention_keeps_recent_and_prunes_old_same_origin():
 
     assert deletions
     assert "34" not in {backup.id for backup in deletions}
+
+
+def test_restore_origin_filter_matches_hf_label_and_role():
+    from fitops.cli.backup import _backup_matches_origin
+
+    backup = RemoteBackup(
+        id="1",
+        name="backup.tar.gz",
+        created_at="2026-05-30T10:00:00+00:00",
+        size_bytes=1,
+        download_url="",
+        metadata={
+            "origin": {
+                "kind": "hf-space",
+                "label": "user-fitops-dashboard.hf.space",
+                "role": "primary",
+            }
+        },
+    )
+
+    assert _backup_matches_origin(
+        backup,
+        origin_kind="hf-space",
+        origin_label="user-fitops-dashboard.hf.space",
+        origin_role="primary",
+    )
+    assert not _backup_matches_origin(
+        backup,
+        origin_kind="local",
+        origin_label="user-fitops-dashboard.hf.space",
+        origin_role="primary",
+    )
+    assert not _backup_matches_origin(
+        backup,
+        origin_kind="hf-space",
+        origin_label="other-space.hf.space",
+        origin_role="primary",
+    )

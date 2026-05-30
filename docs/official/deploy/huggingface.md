@@ -26,9 +26,10 @@ Deploy the FitOps dashboard to a private HuggingFace Space so you can access you
 
 1. Strava calls the deployed Space's webhook when an activity is created, updated, or deleted.
 2. The Space processes that webhook, fetches the activity detail it needs, and backs up changed data to the GitHub releases backup repo.
-3. A GitHub Actions workflow in the backup repo pings the Space every 20 minutes for keepalive only.
-4. The Space does not restore from GitHub automatically on startup, push, release publication, or a timer.
-5. All dashboard routes are protected by password + TOTP (Google Authenticator, Authy, etc.).
+3. On container startup, the Space restores the newest GitHub backup whose origin matches this HF Space (`hf-space`, the Space host label, `primary`).
+4. A GitHub Actions workflow in the backup repo pings the Space every 20 minutes for keepalive only.
+5. The Space does not restore local-machine backups and does not restore from GitHub on push, release publication, or a timer.
+6. All dashboard routes are protected by password + TOTP (Google Authenticator, Authy, etc.).
 
 ---
 
@@ -65,7 +66,7 @@ The workflow has one job:
 |---|---|---|
 | `keepalive` | Every 20 minutes (cron) | `GET /health` — prevents the Space from sleeping |
 
-The generated workflow does not trigger a dashboard sync or restore. With webhook sync enabled, the HF Space is the active sync origin and pushes backups to GitHub after data changes.
+The generated workflow does not trigger a dashboard sync or restore. With webhook sync enabled, the HF Space is the active sync origin and pushes backups to GitHub after data changes. Startup restore is handled by the Space container itself and is limited to backups produced by that HF Space origin.
 
 ## Strava Webhook Setup
 
@@ -86,7 +87,7 @@ Strava webhook sync:
 
 After you complete Strava auth in the Space setup flow, FitOps automatically registers the Strava push subscription and switches the dashboard sync mode to `webhook`.
 
-If you want to seed the Space from an existing local dataset, restore explicitly from the Backup page or CLI. Restore is intentionally manual; deployment and startup do not pull from GitHub by default.
+If you want to seed the Space from an existing local dataset, restore explicitly from the Backup page or CLI. Automatic startup restore only considers backups that were previously created by the HF Space itself, so a local-machine backup will not overwrite the deployed primary instance by default.
 
 ```bash
 fitops backup restore --from github

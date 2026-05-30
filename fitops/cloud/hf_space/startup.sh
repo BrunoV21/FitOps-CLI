@@ -10,10 +10,14 @@ repo = os.environ["GITHUB_BACKUP_REPO"]
 save_github_config(token, repo)
 PYEOF
 
-# HF Spaces are a webhook-sync origin. They upload changed data to the GitHub
-# releases backup repo after webhook writes, but do not restore remote backups
-# automatically on boot.
-echo "[startup] GitHub backup configured; automatic restore is disabled"
+# Restore the newest backup produced by this HF Space origin. This recovers
+# persisted dashboard data after an HF container restart without pulling a
+# local-machine backup into the deployed primary instance.
+restore_args=(--from github --origin-kind hf-space --origin-role primary --yes)
+if [[ -n "${FITOPS_INSTANCE_LABEL:-}" ]]; then
+  restore_args+=(--origin-label "$FITOPS_INSTANCE_LABEL")
+fi
+fitops backup restore "${restore_args[@]}" || echo "[startup] No HF-origin backup found or restore failed — starting with current data"
 
 # Start dashboard (no browser open, bind to all interfaces on HF port)
 exec fitops dashboard serve --host 0.0.0.0 --port 7860 --no-open

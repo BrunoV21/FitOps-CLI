@@ -50,6 +50,23 @@ def _default_backup_dir(settings) -> Path:
     return settings.fitops_dir / "backups"
 
 
+def _backup_matches_origin(
+    backup,
+    *,
+    origin_kind: str | None = None,
+    origin_label: str | None = None,
+    origin_role: str | None = None,
+) -> bool:
+    origin = (backup.metadata or {}).get("origin") or {}
+    if origin_kind and origin.get("kind") != origin_kind:
+        return False
+    if origin_label and origin.get("label") != origin_label:
+        return False
+    if origin_role and origin.get("role") != origin_role:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # setup
 # ---------------------------------------------------------------------------
@@ -239,6 +256,21 @@ def restore(
         help="Specific backup name to restore (from cloud list). "
         "If omitted, the most recent one is used.",
     ),
+    origin_kind: str | None = typer.Option(
+        None,
+        "--origin-kind",
+        help="Only restore a cloud backup from this origin kind.",
+    ),
+    origin_label: str | None = typer.Option(
+        None,
+        "--origin-label",
+        help="Only restore a cloud backup from this origin label.",
+    ),
+    origin_role: str | None = typer.Option(
+        None,
+        "--origin-role",
+        help="Only restore a cloud backup from this origin role.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
 ) -> None:
     """Restore FitOps data from a backup archive.
@@ -270,8 +302,27 @@ def restore(
     if from_provider:
         prov = _resolve_provider(from_provider)
         backups = prov.list_backups()
+        if origin_kind or origin_label or origin_role:
+            backups = [
+                b
+                for b in backups
+                if _backup_matches_origin(
+                    b,
+                    origin_kind=origin_kind,
+                    origin_label=origin_label,
+                    origin_role=origin_role,
+                )
+            ]
         if not backups:
-            typer.echo(f"No backups found on {from_provider}.", err=True)
+            detail = ""
+            if origin_kind or origin_label or origin_role:
+                filters = [
+                    f"kind={origin_kind}" if origin_kind else "",
+                    f"label={origin_label}" if origin_label else "",
+                    f"role={origin_role}" if origin_role else "",
+                ]
+                detail = f" matching origin ({', '.join(f for f in filters if f)})"
+            typer.echo(f"No backups{detail} found on {from_provider}.", err=True)
             raise typer.Exit(1)
 
         if backup_name:
@@ -279,7 +330,7 @@ def restore(
             if match is None:
                 typer.echo(
                     f"Backup '{backup_name}' not found. "
-                    "Run `fitops backup list --provider {from_provider}` to see available backups.",
+                    f"Run `fitops backup list --provider {from_provider}` to see available backups.",
                     err=True,
                 )
                 raise typer.Exit(1)

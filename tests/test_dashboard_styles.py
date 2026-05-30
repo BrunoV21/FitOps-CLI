@@ -228,6 +228,39 @@ def test_notes_use_shared_button_contract():
     assert 'class="empty-state"' in notes_list
 
 
+def test_backup_page_controls_expose_saved_state_buttons():
+    template = Path("fitops/dashboard/templates/backup.html").read_text()
+
+    for marker in [
+        "id=\"gh-save-btn\"",
+        "id=\"webhook-enable-btn\"",
+        "id=\"webhook-mode-btn\"",
+        "id=\"webhook-delete-btn\"",
+        "id=\"sched-save-btn\"",
+        "id=\"create-push-btn\"",
+        "id=\"backups-refresh-btn\"",
+        "let _githubState =",
+        "let _webhookState =",
+        "let _scheduleState =",
+        "Webhook Active",
+        "Mode Saved",
+        "Schedule Disabled",
+        "updateGithubControls();",
+        "updateWebhookControls();",
+        "updateScheduleControls();",
+    ]:
+        assert marker in template
+
+
+def test_backup_docs_describe_noop_button_states():
+    docs = Path("docs/official/dashboard/backup.md").read_text()
+
+    assert "disabled until you enter a new token" in docs
+    assert "already matches the saved state" in docs
+    assert "Webhook Active" in docs
+    assert "Mode Saved" in docs
+
+
 def test_mobile_identity_and_filter_markup_are_clean():
     base_template = Path("fitops/dashboard/templates/base.html").read_text()
     activity_list = Path("fitops/dashboard/templates/activities/list.html").read_text()
