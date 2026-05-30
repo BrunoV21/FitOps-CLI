@@ -44,11 +44,21 @@ def test_hf_webhook_setup_message_uses_derived_url_and_domain():
     assert "Do not paste the full webhook URL" in message
 
 
-def test_hf_github_actions_syncs_on_release_publish():
+def test_hf_github_actions_is_keepalive_only():
     from fitops.cli.deploy import _build_gha_yaml
 
     workflow = _build_gha_yaml("https://user-fitops-dashboard.hf.space")
 
-    assert "release:" in workflow
-    assert "types: [published]" in workflow
-    assert "github.event_name == 'release'" in workflow
+    assert "name: FitOps Keepalive" in workflow
+    assert "curl -sf https://user-fitops-dashboard.hf.space/health" in workflow
+    assert "release:" not in workflow
+    assert "/api/internal/sync" not in workflow
+
+
+def test_hf_startup_does_not_restore_from_github():
+    from pathlib import Path
+
+    startup = Path("fitops/cloud/hf_space/startup.sh").read_text()
+
+    assert "backup restore" not in startup
+    assert "automatic restore is disabled" in startup

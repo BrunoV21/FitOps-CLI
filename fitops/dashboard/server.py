@@ -47,7 +47,15 @@ def create_app(port: int = 8888) -> FastAPI:
         # don't open a write transaction on every page load.
         await create_all_tables()
         _scheduler_task = asyncio.create_task(backup.run_scheduler())
-        _auto_sync_task = asyncio.create_task(auto_sync.run_auto_sync_scheduler())
+        try:
+            from fitops.strava.webhook_config import get_sync_mode
+
+            if get_sync_mode() == "polling":
+                _auto_sync_task = asyncio.create_task(
+                    auto_sync.run_auto_sync_scheduler()
+                )
+        except Exception:
+            _auto_sync_task = None
         try:
             from fitops.strava.webhook_bootstrap import (
                 ensure_default_webhook_logged,

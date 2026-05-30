@@ -279,7 +279,8 @@ def _setup_github_actions(
     ).raise_for_status()
     typer.echo(f"  {'Updated' if sha else 'Created'} {_GH_WORKFLOW_PATH}")
 
-    # Set FITOPS_SYNC_TOKEN repo secret
+    # Keep the token secret current for older deployments or manual workflows,
+    # but the generated workflow no longer calls the restore endpoint.
     pk_resp = s.get(f"{_GH_API}/repos/{repo}/actions/secrets/public-key", timeout=10)
     pk_resp.raise_for_status()
     pk_data = pk_resp.json()
@@ -307,15 +308,13 @@ def _build_gha_yaml(app_url: str) -> str:
     # {{ and }} in f-strings produce literal { } — what GitHub Actions expects.
     return f"""\
 ---
-name: FitOps Keepalive & Sync
+name: FitOps Keepalive
 
 on:
   schedule:
     - cron: '*/20 * * * *'
   push:
     branches: [main]
-  release:
-    types: [published]
 
 jobs:
   keepalive:
@@ -323,14 +322,4 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: curl -sf {app_url}/health || echo "Health check failed (Space may be cold-starting)"
-
-  sync:
-    if: github.event_name == 'push' || github.event_name == 'release'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger dashboard sync
-        run: |
-          curl -sf -X POST {app_url}/api/internal/sync \\
-            -H "X-Sync-Token: ${{{{ secrets.FITOPS_SYNC_TOKEN }}}}" \\
-            || echo "Sync trigger failed"
 """

@@ -287,6 +287,30 @@ async def test_auto_sync_skips_when_not_polling(monkeypatch):
     await _maybe_auto_sync()
 
 
+def test_dashboard_does_not_start_auto_sync_scheduler_in_webhook_mode(
+    tmp_path, monkeypatch
+):
+    from starlette.testclient import TestClient
+
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    monkeypatch.setenv("FITOPS_DEFAULT_SYNC_MODE", "webhook")
+
+    with patch("fitops.db.migrations.create_all_tables", new_callable=AsyncMock):
+        with patch(
+            "fitops.dashboard.routes.backup.run_scheduler", new_callable=AsyncMock
+        ):
+            with patch(
+                "fitops.dashboard.routes.auto_sync.run_auto_sync_scheduler",
+                new_callable=AsyncMock,
+            ) as auto_sync:
+                from fitops.dashboard.server import create_app
+
+                with TestClient(create_app()) as client:
+                    assert client.get("/health").status_code == 200
+
+    auto_sync.assert_not_called()
+
+
 def test_cli_webhooks_status_json(monkeypatch):
     from typer.testing import CliRunner
 
