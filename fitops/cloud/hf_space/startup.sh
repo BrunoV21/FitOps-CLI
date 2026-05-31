@@ -19,5 +19,17 @@ if [[ -n "${FITOPS_INSTANCE_LABEL:-}" ]]; then
 fi
 fitops backup restore "${restore_args[@]}" || echo "[startup] No HF-origin backup found or restore failed — starting with current data"
 
+if [[ -n "${FITOPS_STRAVA_CLIENT_ID:-}" && -n "${FITOPS_STRAVA_CLIENT_SECRET:-}" ]]; then
+  python - <<'PYEOF'
+import os
+from fitops.config.settings import get_settings
+settings = get_settings()
+settings.save_credentials(
+    os.environ["FITOPS_STRAVA_CLIENT_ID"],
+    os.environ["FITOPS_STRAVA_CLIENT_SECRET"],
+)
+PYEOF
+fi
+
 # Start dashboard (no browser open, bind to all interfaces on HF port)
 exec fitops dashboard serve --host 0.0.0.0 --port 7860 --no-open

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import os
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -11,6 +12,31 @@ from fitops.config.settings import get_settings
 from fitops.strava.oauth import DEFAULT_SCOPES, STRAVA_AUTH_URL, StravaOAuth
 
 router = APIRouter()
+
+
+def _public_base_url() -> str | None:
+    raw = (os.environ.get("FITOPS_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
+        return None
+    return raw
+
+
+def _oauth_redirect_uri(request: Request) -> str:
+    base_url = _public_base_url()
+    if base_url:
+        return f"{base_url}/callback"
+    port = getattr(request.app.state, "dashboard_port", 8888)
+    return f"http://localhost:{port}/callback"
+
+
+def _callback_domain() -> str:
+    base_url = _public_base_url()
+    if not base_url:
+        return "localhost"
+    return urlparse(base_url).netloc
 
 
 async def _initial_sync() -> None:
@@ -37,6 +63,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "request": request,
                 "has_credentials": bool(settings.client_id and settings.client_secret),
                 "connected": connected == "1",
+                "callback_domain": _callback_domain(),
             },
         )
 
@@ -47,22 +74,24 @@ def register(templates: Jinja2Templates) -> APIRouter:
         except Exception:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
-        client_id = (payload.get("client_id") or "").strip()
-        client_secret = (payload.get("client_secret") or "").strip()
+        settings = get_settings()
+        client_id = (payload.get("client_id") or settings.client_id or "").strip()
+        client_secret = (
+            payload.get("client_secret") or settings.client_secret or ""
+        ).strip()
         if not client_id or not client_secret:
             return JSONResponse(
                 {"error": "client_id and client_secret are required"}, status_code=400
             )
 
-        settings = get_settings()
-        settings.save_credentials(client_id, client_secret)
+        if client_id != settings.client_id or client_secret != settings.client_secret:
+            settings.save_credentials(client_id, client_secret)
         settings.reload()
 
-        port = getattr(request.app.state, "dashboard_port", 8888)
         state = secrets.token_urlsafe(32)
         settings.save_pending_state(state)
 
-        redirect_uri = f"http://localhost:{port}/callback"
+        redirect_uri = _oauth_redirect_uri(request)
         params = {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
@@ -81,7 +110,6 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if not settings.client_id or not settings.client_secret:
             return RedirectResponse("/setup")
 
-        port = getattr(request.app.state, "dashboard_port", 8888)
         state = secrets.token_urlsafe(32)
         # Prefix state so the callback knows to return to /profile
         tagged_state = f"reauth:{state}"
@@ -89,7 +117,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         params = {
             "client_id": settings.client_id,
-            "redirect_uri": f"http://localhost:{port}/callback",
+            "redirect_uri": _oauth_redirect_uri(request),
             "response_type": "code",
             "scope": ",".join(DEFAULT_SCOPES),
             "state": tagged_state,
@@ -119,10 +147,11 @@ def register(templates: Jinja2Templates) -> APIRouter:
         if expected_state and state != expected_state:
             return RedirectResponse("/setup?error=state_mismatch")
 
-        port = getattr(request.app.state, "dashboard_port", 8888)
         try:
             oauth = StravaOAuth(settings)
-            token_data = await oauth.exchange_code_for_token(code, port=port)
+            token_data = await oauth.exchange_code_for_token(
+                code, redirect_uri=_oauth_redirect_uri(request)
+            )
             # Prefer the scope from the callback URL — Strava always includes it
             # and it's more reliable than the token exchange response body.
             if scope:

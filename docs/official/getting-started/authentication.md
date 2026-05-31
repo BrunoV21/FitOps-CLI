@@ -17,6 +17,12 @@ Go to [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
 | Website | `https://github.com/BrunoV21/FitOps-CLI` |
 | Authorization Callback Domain | `localhost` |
 
+For a HuggingFace Space created from the [browser deploy flow](../deploy/browser.md), use the callback domain shown by the deploy wizard instead of `localhost`. It looks like:
+
+```text
+<owner>-<space>.hf.space
+```
+
 Once created, copy your **Client ID** and **Client Secret** from the [Strava API Settings page](https://www.strava.com/settings/api).
 
 ## Step 2: Enter Your Credentials
