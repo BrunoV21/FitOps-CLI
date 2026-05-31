@@ -7,6 +7,9 @@ hero:
   tagline: "Talk to your training data the way a coach would.\nRich terminal output by default. JSON on demand. Local dashboard included.\nNo cloud. No subscriptions. All your data, your way."
   actions:
     - theme: brand
+      text: "Try in Browser"
+      link: /#deploy-online
+    - theme: alt
       text: "→ Get Started"
       link: /getting-started/
     - theme: alt
@@ -17,6 +20,13 @@ hero:
       link: /comparison
 
 features:
+  - icon:
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M4 14.5A4.5 4.5 0 0 1 8.5 10H9a6 6 0 0 1 11 3.5A3.5 3.5 0 0 1 16.5 17H7a3 3 0 0 1-3-2.5z"/><path d="M12 12v7"/><path d="M9 16l3 3 3-3"/></svg>'
+    title: "Deploy in the Browser"
+    details: "Create a private HuggingFace Space from the docs page. Bring your HF and GitHub tokens, set password + 2FA, and finish with a live FitOps dashboard URL."
+    link: /#deploy-online
+    linkText: "Start browser deploy"
+
   - icon:
       svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
     title: "Training Load"
@@ -67,7 +77,15 @@ features:
     linkText: "See comparison"
 ---
 
+<script setup>
+import DeployWizard from './.vitepress/theme/components/DeployWizard.vue'
+</script>
+
+<DeployWizard />
+
 ## Install FitOps
+
+Want the fastest path to a running dashboard? Use the [browser deploy flow](./deploy/browser.md) to create a private HuggingFace Space directly from the docs.
 
 Get started in one command:
 

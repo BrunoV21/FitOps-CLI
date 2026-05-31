@@ -1,0 +1,24 @@
+---
+name: FitOps Deploy API Keepalive
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-api-keepalive.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    env:
+      FITOPS_DEPLOY_API_SPACE_URL: ${{ vars.FITOPS_DEPLOY_API_SPACE_URL }}
+    steps:
+      - name: Ping deploy API health endpoint
+        run: |
+          test -n "$FITOPS_DEPLOY_API_SPACE_URL" || (echo "Missing FITOPS_DEPLOY_API_SPACE_URL variable" && exit 1)
+          curl -sf "${FITOPS_DEPLOY_API_SPACE_URL%/}/health" || echo "Health check failed (Space may be cold-starting)"
