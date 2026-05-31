@@ -101,7 +101,8 @@ export default defineConfig({
       {
         text: '// DEPLOY',
         items: [
-          { text: 'HuggingFace Spaces', link: '/deploy/huggingface' },
+          { text: 'Browser Deploy', link: '/deploy/browser' },
+          { text: 'HuggingFace Spaces (CLI)', link: '/deploy/huggingface' },
         ]
       },
       {
