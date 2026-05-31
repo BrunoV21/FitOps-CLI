@@ -516,7 +516,7 @@ async function triggerStreams(force) {
   var _tabId = Math.random().toString(36).slice(2);
   var LEADER_KEY = 'fitops_stamp_leader';
   var LEADER_TTL = 20000;
-  var POLL_MS = 15000;
+  var POLL_MS = 3000;
   var _bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('fitops_sync') : null;
 
   function isLeader() {

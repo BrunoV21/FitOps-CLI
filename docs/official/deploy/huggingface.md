@@ -31,6 +31,8 @@ Deploy the FitOps dashboard to a private HuggingFace Space so you can access you
 5. The Space does not restore local-machine backups and does not restore from GitHub on push, release publication, or a timer.
 6. All dashboard routes are protected by password + TOTP (Google Authenticator, Authy, etc.).
 
+Open dashboard tabs poll a lightweight local update stamp every few seconds. When a webhook commits an activity row, the page reloads without waiting for slower follow-up work such as stream fetches, weather, Strava stamping, training-load snapshot writes, or GitHub backup upload.
+
 ---
 
 ## Deploy

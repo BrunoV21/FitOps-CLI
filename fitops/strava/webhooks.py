@@ -252,6 +252,17 @@ async def sync_activity_from_strava(strava_id: int, sync_type: str = "webhook") 
             internal_id = existing.id
             updated = 1
 
+    if created or updated:
+        get_sync_state().mark_data_updated(
+            sync_type,
+            {
+                "object_type": "activity",
+                "object_id": strava_id,
+                "activities_created": created,
+                "activities_updated": updated,
+            },
+        )
+
     streams = (
         await fetch_streams_for_activities([internal_id], [strava_id])
         if internal_id
@@ -280,6 +291,7 @@ async def sync_activity_from_strava(strava_id: int, sync_type: str = "webhook") 
         activities_created=created,
         activities_updated=updated,
         duration_s=0.0,
+        mark_data_update=False,
     )
 
     try:

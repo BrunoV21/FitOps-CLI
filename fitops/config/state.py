@@ -43,6 +43,13 @@ class SyncState:
         return datetime.fromisoformat(str(val))
 
     @property
+    def last_data_update_at(self) -> datetime | None:
+        val = self._data.get("last_data_update_at")
+        if val is None:
+            return None
+        return datetime.fromisoformat(str(val))
+
+    @property
     def last_sync_epoch(self) -> int | None:
         dt = self.last_sync_at
         return int(dt.timestamp()) if dt else None
@@ -62,10 +69,14 @@ class SyncState:
         activities_created: int,
         activities_updated: int,
         duration_s: float,
+        mark_data_update: bool = True,
     ) -> None:
         now = datetime.now(UTC)
         self._data["last_sync_at"] = now.isoformat()
         self._data["last_sync_type"] = sync_type
+        if mark_data_update:
+            self._data["last_data_update_at"] = now.isoformat()
+            self._data["last_data_update_reason"] = sync_type
         self._data["activities_synced_total"] = (
             self.activities_synced_total + activities_created
         )
@@ -79,6 +90,15 @@ class SyncState:
         history = self._data.get("sync_history", [])
         history.insert(0, history_entry)
         self._data["sync_history"] = history[:50]  # keep last 50
+        _save_state(self._data)
+        self.reload()
+
+    def mark_data_updated(self, reason: str, details: dict | None = None) -> None:
+        now = datetime.now(UTC)
+        self._data["last_data_update_at"] = now.isoformat()
+        self._data["last_data_update_reason"] = reason
+        if details:
+            self._data["last_data_update_details"] = details
         _save_state(self._data)
         self.reload()
 
