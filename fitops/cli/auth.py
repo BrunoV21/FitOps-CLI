@@ -43,12 +43,10 @@ def login(
         typer.echo(
             "  Go to https://www.strava.com/settings/api and create an app with these settings:"
         )
-        typer.echo("    Application Name:           Surge")
+        typer.echo("    Application Name:           FitOps")
         typer.echo("    Category:                   Performance Analysis")
-        typer.echo("    Website:                    https://brunov21.github.io/Surge/")
-        typer.echo(
-            "    Authorization Callback Domain: mclovinittt-kinetic-run-api.hf.space"
-        )
+        typer.echo("    Website:                    https://github.com/BrunoV21/FitOps-CLI")
+        typer.echo("    Authorization Callback Domain: localhost")
         typer.echo("")
         typer.echo("Step 2 — Enter your credentials:")
         typer.echo(

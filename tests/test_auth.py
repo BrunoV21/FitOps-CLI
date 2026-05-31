@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -211,6 +212,62 @@ def test_health_no_auth():
                     resp = c.get("/health")
                     assert resp.status_code == 200
                     assert resp.json()["status"] == "ok"
+
+
+def test_setup_credentials_uses_public_base_url_for_deployed_oauth(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    monkeypatch.setenv("FITOPS_PUBLIC_BASE_URL", "https://user-fitops.hf.space")
+
+    with patch("fitops.db.migrations.create_all_tables", new_callable=AsyncMock):
+        with patch(
+            "fitops.dashboard.routes.backup.run_scheduler", new_callable=AsyncMock
+        ):
+            with patch(
+                "fitops.dashboard.routes.auto_sync.run_auto_sync_scheduler",
+                new_callable=AsyncMock,
+            ):
+                from starlette.testclient import TestClient
+
+                from fitops.dashboard.server import create_app
+
+                with TestClient(create_app()) as c:
+                    resp = c.post(
+                        "/api/setup/credentials",
+                        json={"client_id": "175267", "client_secret": "secret"},
+                    )
+
+    assert resp.status_code == 200
+    params = parse_qs(urlparse(resp.json()["auth_url"]).query)
+    assert params["redirect_uri"] == ["https://user-fitops.hf.space/callback"]
+
+
+def test_setup_credentials_uses_localhost_redirect_by_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    monkeypatch.delenv("FITOPS_PUBLIC_BASE_URL", raising=False)
+
+    with patch("fitops.db.migrations.create_all_tables", new_callable=AsyncMock):
+        with patch(
+            "fitops.dashboard.routes.backup.run_scheduler", new_callable=AsyncMock
+        ):
+            with patch(
+                "fitops.dashboard.routes.auto_sync.run_auto_sync_scheduler",
+                new_callable=AsyncMock,
+            ):
+                from starlette.testclient import TestClient
+
+                from fitops.dashboard.server import create_app
+
+                with TestClient(create_app(port=8899)) as c:
+                    resp = c.post(
+                        "/api/setup/credentials",
+                        json={"client_id": "175267", "client_secret": "secret"},
+                    )
+
+    assert resp.status_code == 200
+    params = parse_qs(urlparse(resp.json()["auth_url"]).query)
+    assert params["redirect_uri"] == ["http://localhost:8899/callback"]
 
 
 # ---------------------------------------------------------------------------
