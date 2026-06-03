@@ -36,6 +36,8 @@ If you haven't connected Strava yet, the dashboard opens a **Setup** screen. You
 
 If you've already authenticated via the CLI, the dashboard picks up your credentials and opens directly on your training summary.
 
+When dashboard authentication is enabled for a deployed instance, the sign-in page links to the FitOps [Privacy Policy](../legal/privacy.md) and [User Agreement](../legal/user-agreement.md). The same links are also available from the dashboard sidebar footer after sign-in.
+
 ## What's Available
 
 | Page | What you do there |

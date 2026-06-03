@@ -89,6 +89,23 @@ def test_chart_static_asset_is_cache_busted():
     assert 'src="/static/js/charts.js?v=' in base_template
 
 
+def test_dashboard_surfaces_legal_links():
+    base_template = Path("fitops/dashboard/templates/base.html").read_text()
+    login_template = Path("fitops/dashboard/templates/auth/login.html").read_text()
+    docs = Path("docs/official/dashboard/index.md").read_text()
+    docs_urls = Path("fitops/docs_urls.py").read_text()
+
+    assert "LEGAL_DOCS" in docs_urls
+    assert "legal/privacy" in docs_urls
+    assert "legal/user-agreement" in docs_urls
+    assert "{{ legal_docs.privacy }}" in base_template
+    assert "{{ legal_docs.user_agreement }}" in base_template
+    assert "{{ legal_docs.privacy }}" in login_template
+    assert "{{ legal_docs.user_agreement }}" in login_template
+    assert "Privacy Policy](../legal/privacy.md)" in docs
+    assert "User Agreement](../legal/user-agreement.md)" in docs
+
+
 def test_stream_chart_sideways_mode_still_supports_manual_metric_toggles():
     charts_js = Path("fitops/dashboard/static/js/charts.js").read_text()
 
