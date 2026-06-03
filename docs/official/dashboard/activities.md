@@ -95,8 +95,6 @@ The **Deep Analysis** view uses the same range selection feel across its stacked
 
 The Deep Analysis sidebar also shows paired average stats for the session, including available values such as average heart rate, average pace or speed, True Pace, GAP, WAP, cadence, power, normalized power, elevation, and TSS. Overall True Pace and WAP use the same activity-level values shown on the main activity page.
 
-![Activity Analysis — streams, HR drift, scatter plots](../assets/dashboard-activity-analysis.png)
-
 If streams are not yet cached for an activity, a **Fetch Streams** button appears. Click it to pull the full time-series data from Strava — this enables the charts, HR drift analysis, and zone-time breakdowns.
 
 When a workout is linked to the activity, the workout segment table includes **In Target** and **Score** help icons. **In Target** is the share of valid samples inside the segment's target zone or pace/HR range. **Score** is the compliance score, combining time in target with the average deviation from target.

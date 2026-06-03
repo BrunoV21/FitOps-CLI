@@ -12,8 +12,6 @@ A time-series chart showing three lines across your training history:
 
 Hover over any point on the chart to see the exact values for that date. On mobile, the chart panels can be expanded fullscreen and are sized to the available browser viewport so the full plot remains visible after entering or exiting fullscreen.
 
-![Training Load Chart](../assets/dashboard-training-load-detailed.png)
-
 **Controls:**
 
 - **Days** — how many days of history to display (default: 90)

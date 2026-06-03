@@ -162,7 +162,7 @@ fitops race simulate 1 --target-time 3:05:00 --pacer-pace 4:40 --drop-at-km 35
 
 #### Per-Split Output
 
-![Race Simulation Results](../assets/dashboard-race-simulate-results.png)
+![Race Simulation Results](../assets/fitops-race-prediction-example.png)
 
 Each row in the output shows:
 
