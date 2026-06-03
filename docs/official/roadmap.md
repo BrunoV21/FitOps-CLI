@@ -1,7 +1,5 @@
 # FitOps-CLI Roadmap
 
-![FitOps Roadmap Timeline](./assets/roadmap-timeline.png)
-
 ## Phase 1 — Foundation ✅
 
 **Goal:** Strava auth, incremental sync, local SQLite storage, LLM-friendly activity output.
@@ -127,6 +125,8 @@ fitops import ~/exports/ --watch      # watch a folder and auto-import new files
 | **Samsung Health** | Samsung Health Platform API | Activities, HR, sleep, steps |
 | **Apple Health** | HealthKit export (XML) or Apple Health REST (future) | Workouts, HR, HRV, sleep, body metrics |
 | **Huawei Health** | HUAWEI Health Kit API | Activities, HR, sleep, stress |
+
+The Huawei application material and public policy links live in the [Huawei Health Kit Access](./getting-started/huawei-health-kit.md) checklist. Huawei scopes should only be requested for features that FitOps has implemented across the shared logic, CLI, dashboard, docs, and tests.
 
 ### Architecture
 

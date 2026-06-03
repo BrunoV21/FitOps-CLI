@@ -62,6 +62,8 @@ FitOps is built around the principle that **your training data should be yours t
 2. [Authentication](./authentication.md) — Connect your Strava account
 3. [First Sync](./first-sync.md) — Download your activities
 
+Planning Huawei Health Kit access? Use the [Huawei Health Kit Access](./huawei-health-kit.md) checklist for the public privacy policy, user agreement, icon, and review material links requested by Huawei Developer Console.
+
 ---
 
 ## After Setup
