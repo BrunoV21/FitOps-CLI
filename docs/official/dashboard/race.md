@@ -6,7 +6,7 @@ The Race page (`/race`) is your race planning hub. Import a course, generate a p
 
 The main race view lists every course you've imported. Each entry shows the course name, total distance, and elevation gain. Click a course to open its detail page.
 
-To add a new course, click **Import Course** and upload a GPX or TCX file. FitOps reads the GPS track and elevation profile and stores it locally.
+To add a new course, click **Import Course** and upload a GPX, TCX, or KMZ file, or paste a Strava or MapMyRun URL. FitOps reads the GPS track and elevation profile and stores it locally.
 
 ## Course Detail
 

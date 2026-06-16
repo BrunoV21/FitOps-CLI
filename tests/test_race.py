@@ -154,6 +154,27 @@ def test_negative_split_halves():
     assert sum(second_half) / len(second_half) < sum(first_half) / len(first_half)
 
 
+def test_even_split_wind_changes_flat_course_paces():
+    segs = [
+        {"km": 1, "distance_m": 1000.0, "grade": 0.0, "bearing": 0.0},
+        {"km": 2, "distance_m": 1000.0, "grade": 0.0, "bearing": 90.0},
+        {"km": 3, "distance_m": 1000.0, "grade": 0.0, "bearing": 180.0},
+    ]
+    weather = {
+        "temperature_c": 15.0,
+        "humidity_pct": 40.0,
+        "wind_speed_ms": 4.0,
+        "wind_direction_deg": 0.0,
+    }
+    splits = simulate_splits(segs, 12 * 60.0, weather, strategy="even")
+
+    assert len(splits) == 3
+    assert splits[0]["wind_factor"] > 1.0
+    assert splits[1]["wind_factor"] == pytest.approx(1.0, abs=0.001)
+    assert splits[2]["wind_factor"] < 1.0
+    assert splits[0]["target_pace_s"] > splits[1]["target_pace_s"] > splits[2]["target_pace_s"]
+
+
 def test_pacer_mode_total_time():
     points = _make_flat_points(5)
     segs = build_km_segments(points)

@@ -8,7 +8,7 @@ Output is human-readable by default. Add `--json` for raw JSON output.
 
 ### `fitops race import <source>`
 
-Import a race course from a GPX or TCX file, a Strava activity ID, or a MapMyRun URL.
+Import a race course from a GPX, TCX, or KMZ file, a Strava activity ID or URL, or a MapMyRun URL.
 
 ```bash
 fitops race import <source> --name "Course Name"
@@ -18,7 +18,7 @@ fitops race import <source> --name "Course Name"
 
 | Argument | Description |
 |----------|-------------|
-| `SOURCE` | GPX/TCX file path, Strava activity ID, or MapMyRun URL |
+| `SOURCE` | GPX/TCX/KMZ file path, Strava activity ID or URL, or a MapMyRun URL |
 
 **Options:**
 
@@ -35,8 +35,14 @@ fitops race import berlin-marathon.gpx --name "Berlin Marathon 2026"
 # Import from a TCX file
 fitops race import course.tcx --name "Local 10K"
 
+# Import from a KMZ file
+fitops race import berlin-course.kmz --name "Berlin Marathon 2026"
+
 # Build course from a Strava activity you've already done (pass the activity ID as the source)
 fitops race import 12345678901 --name "My Race Course"
+
+# Import from a Strava activity URL
+fitops race import "https://www.strava.com/activities/12345678901" --name "My Race Course"
 
 # Import from a MapMyRun URL
 fitops race import "https://www.mapmyrun.com/routes/view/..." --name "Local 10K"

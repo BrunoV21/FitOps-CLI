@@ -248,14 +248,16 @@
           </td>
           <td style="font-size:0.78rem; white-space:nowrap;">
             {%- set gap_pct = ((sp.gap_factor - 1) * 100) if sp.gap_factor is defined else 0 -%}
-            {%- set wap = ((sp.wap_factor - 1) * 100) if sp.wap_factor is defined else 0 -%}
+            {%- set heat_pct = ((sp.wap_factor - 1) * 100) if sp.wap_factor is defined else 0 -%}
+            {%- set wind_pct = ((sp.wind_factor - 1) * 100) if sp.wind_factor is defined else 0 -%}
             {%- if gap_pct > 0.5 %}<span style="color:#f87171;" title="Grade penalty">hill +{{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
             {%- if gap_pct < -0.5 %}<span style="color:#4ade80;" title="Grade bonus">hill {{ "%.1f"|format(gap_pct) }}%</span>{%- endif -%}
-            {%- if wap > 0.5 %}<span style="color:#f87171; margin-left:4px;" title="Wind penalty">wind +{{ "%.1f"|format(wap) }}%</span>{%- endif -%}
-            {%- if wap < -0.5 %}<span style="color:#4ade80; margin-left:4px;" title="Wind bonus">wind {{ "%.1f"|format(wap) }}%</span>{%- endif -%}
-            {%- if gap_pct|abs <= 0.5 and wap|abs <= 0.5 %}<span style="color:#555;">—</span>{%- endif -%}
+            {%- if heat_pct > 0.5 %}<span style="color:#f59e0b; margin-left:4px;" title="Heat and humidity penalty">heat +{{ "%.1f"|format(heat_pct) }}%</span>{%- endif -%}
+            {%- if wind_pct > 0.5 %}<span style="color:#f87171; margin-left:4px;" title="Headwind penalty">wind +{{ "%.1f"|format(wind_pct) }}%</span>{%- endif -%}
+            {%- if wind_pct < -0.5 %}<span style="color:#4ade80; margin-left:4px;" title="Tailwind benefit">wind {{ "%.1f"|format(wind_pct) }}%</span>{%- endif -%}
+            {%- if gap_pct|abs <= 0.5 and heat_pct|abs <= 0.5 and wind_pct|abs <= 0.5 %}<span style="color:#555;">—</span>{%- endif -%}
           </td>
-          <td style="text-align:right;"><strong style="font-size:1rem; letter-spacing:0.01em;">{{ sp.target_pace_fmt }}</strong><span style="color:#555; font-size:0.75rem;">/km</span></td>
+          <td style="text-align:right;"><strong style="font-size:1rem; letter-spacing:0.01em;">{{ sp.target_pace_fmt }}</strong></td>
           <td style="text-align:right; color:#888; font-size:0.88rem;">{{ sp.cumulative_time_fmt }}</td>
           {% if pacer_data %}<td style="font-size:0.72rem; color:#888;">{{ sp.phase | upper }}</td>{% endif %}
         </tr>

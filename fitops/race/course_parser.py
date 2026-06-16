@@ -2,7 +2,7 @@
 fitops/race/course_parser.py
 
 Course import parsers and segment builder for race simulation.
-Supports GPX, TCX, MapMyRun HTML/URL, and Strava activity streams.
+Supports GPX, TCX, KMZ, MapMyRun HTML/URL, and Strava activity streams.
 All parsers return a list of CoursePoint dicts in the same normalised format.
 """
 
@@ -12,6 +12,8 @@ import json
 import math
 import os
 import re
+import xml.etree.ElementTree as ET
+import zipfile
 from typing import TypedDict
 
 import gpxpy
@@ -63,6 +65,7 @@ def detect_source(arg: str) -> tuple[str, str]:
     - MapMyRun URL  → ("mapmyrun", url)
     - .gpx file     → ("gpx", path)
     - .tcx file     → ("tcx", path)
+    - .kmz file     → ("kmz", path)
     - numeric ID    → ("strava", id_str)   # legacy: fetch from local DB streams
     """
     if "strava.com/activities/" in arg:
@@ -71,16 +74,30 @@ def detect_source(arg: str) -> tuple[str, str]:
         return ("mapmyrun", arg)
     if os.path.isfile(arg):
         ext = os.path.splitext(arg)[1].lower()
-        if ext == ".gpx":
-            return ("gpx", arg)
-        if ext == ".tcx":
-            return ("tcx", arg)
-        raise ValueError(f"Unsupported file extension: {ext!r}. Expected .gpx or .tcx")
+        if ext in {".gpx", ".tcx", ".kmz"}:
+            return (ext.lstrip("."), arg)
+        raise ValueError(
+            f"Unsupported file extension: {ext!r}. Expected .gpx, .tcx, or .kmz"
+        )
     if re.match(r"^\d+$", arg):
         return ("strava", arg)
     raise ValueError(
         f"Cannot determine source for {arg!r}. "
-        "Provide a Strava URL, MapMyRun URL, .gpx/.tcx file path, or numeric Strava activity ID."
+        "Provide a Strava URL, MapMyRun URL, .gpx/.tcx/.kmz file path, or numeric Strava activity ID."
+    )
+
+
+def parse_course_file(file_path: str) -> tuple[str, list[CoursePoint]]:
+    """Parse a local course file and return (format, normalized points)."""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".gpx":
+        return ("gpx", parse_gpx(file_path))
+    if ext == ".tcx":
+        return ("tcx", parse_tcx(file_path))
+    if ext == ".kmz":
+        return ("kmz", parse_kmz(file_path))
+    raise ValueError(
+        f"Unsupported file extension: {ext!r}. Expected .gpx, .tcx, or .kmz"
     )
 
 
@@ -193,6 +210,107 @@ def parse_tcx(file_path: str) -> list[CoursePoint]:
         prev_lon = tp.longitude
 
     return result
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _course_points_from_coords(
+    coords: list[tuple[float, float, float]]
+) -> list[CoursePoint]:
+    result: list[CoursePoint] = []
+    cumulative = 0.0
+    prev_lat: float | None = None
+    prev_lon: float | None = None
+
+    for lat, lon, elevation_m in coords:
+        if prev_lat is not None and prev_lon is not None:
+            cumulative += _haversine_m(prev_lat, prev_lon, lat, lon)
+        result.append(
+            {
+                "lat": lat,
+                "lon": lon,
+                "elevation_m": elevation_m,
+                "distance_from_start_m": cumulative,
+            }
+        )
+        prev_lat = lat
+        prev_lon = lon
+
+    return result
+
+
+def _parse_kml_linestring_coords(
+    coordinates_text: str,
+) -> list[tuple[float, float, float]]:
+    coords: list[tuple[float, float, float]] = []
+    for token in coordinates_text.split():
+        parts = [part.strip() for part in token.split(",")]
+        if len(parts) < 2:
+            continue
+        lon = float(parts[0])
+        lat = float(parts[1])
+        elevation_m = float(parts[2]) if len(parts) >= 3 and parts[2] else 0.0
+        coords.append((lat, lon, elevation_m))
+    return coords
+
+
+def _parse_kml_track_coords(track: ET.Element) -> list[tuple[float, float, float]]:
+    coords: list[tuple[float, float, float]] = []
+    for elem in track.iter():
+        if _local_name(elem.tag) != "coord" or not elem.text:
+            continue
+        parts = elem.text.split()
+        if len(parts) < 2:
+            continue
+        lon = float(parts[0])
+        lat = float(parts[1])
+        elevation_m = float(parts[2]) if len(parts) >= 3 else 0.0
+        coords.append((lat, lon, elevation_m))
+    return coords
+
+
+def _parse_kml_content(kml_content: str) -> list[CoursePoint]:
+    root = ET.fromstring(kml_content)
+
+    coords: list[tuple[float, float, float]] = []
+    for elem in root.iter():
+        if _local_name(elem.tag) != "LineString":
+            continue
+        for child in elem.iter():
+            if _local_name(child.tag) == "coordinates" and child.text:
+                coords.extend(_parse_kml_linestring_coords(child.text))
+                break
+        if coords:
+            return _course_points_from_coords(coords)
+
+    for elem in root.iter():
+        if _local_name(elem.tag) != "Track":
+            continue
+        coords.extend(_parse_kml_track_coords(elem))
+        if coords:
+            return _course_points_from_coords(coords)
+
+    return []
+
+
+def parse_kmz(file_path: str) -> list[CoursePoint]:
+    """Parse a KMZ archive by reading the first embedded KML LineString or Track."""
+    with zipfile.ZipFile(file_path) as archive:
+        kml_names = [
+            name for name in archive.namelist() if name.lower().endswith(".kml")
+        ]
+        if not kml_names:
+            raise ValueError("KMZ archive does not contain a KML file.")
+        preferred = next(
+            (name for name in kml_names if os.path.basename(name).lower() == "doc.kml"),
+            kml_names[0],
+        )
+        with archive.open(preferred) as fh:
+            kml_content = fh.read().decode("utf-8-sig")
+
+    return _parse_kml_content(kml_content)
 
 
 # ---------------------------------------------------------------------------
