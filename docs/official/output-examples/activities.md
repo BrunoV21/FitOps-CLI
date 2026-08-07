@@ -21,7 +21,7 @@ fitops activities import morning-run.tcx --json
     "activity_id": 42,
     "strava_activity_id": null,
     "origin": "tcx",
-    "name": "Morning Run",
+    "name": "Outdoor run",
     "sport_type": "Run",
     "data_availability": {
       "has_gps": true,
@@ -38,6 +38,16 @@ fitops activities import morning-run.tcx --json
     "sha256": "…",
     "sport_inference_source": "file_metadata",
     "sport_inference_confidence": "high"
+  },
+  "weather": {
+    "status": "fetched",
+    "data": {
+      "temperature_c": 18.4,
+      "humidity_pct": 68,
+      "wbgt_c": 15.2,
+      "wap_factor": 1.008,
+      "true_pace_s_per_km": 302.7
+    }
   }
 }
 ```

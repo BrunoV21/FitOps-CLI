@@ -12,6 +12,8 @@ For running race activities, FitOps can store an official **chip time** and **ra
 
 Import an original GPX or TCX recording without contacting Strava. FitOps retains the original file locally, normalizes its summary, streams, and laps, and computes the same cached analytics used for synced activities. Exact re-imports, equivalent GPX/TCX exports, and matching activities already synced from Strava reuse the existing activity instead of creating a duplicate. A file matched to a Strava activity can supply missing streams and becomes its retained source file.
 
+Without `--name`, running activities use **Outdoor run** and cycling activities use **Outdoor cycle**. After persistence, FitOps automatically fetches Open-Meteo weather from the recording's start coordinates and time, then stores WBGT, weather-adjusted pace, terrain-and-weather-adjusted true pace, course bearing, and applicable heart-rate heat impact. The import still succeeds when weather is unavailable and reports that status in its output.
+
 ```bash
 fitops athlete init --name "Jane Runner"
 fitops activities import ~/Downloads/morning-run.gpx
@@ -21,12 +23,12 @@ fitops activities import race.tcx --sport Run --name "City 10K" --json
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--sport TYPE` | `auto` | Override the inferred sport (`Run`, `Ride`, `Walk`, and so on) |
-| `--name TEXT` | file name or generated | Override the activity title |
+| `--name TEXT` | `Outdoor run` or `Outdoor cycle` | Override the activity title |
 | `--json` | false | Return the activity, provenance hash, and inference details as JSON |
 
 Automatic detection prefers sport metadata embedded in TCX, then file/title keywords, then median moving speed. Use `--sport` whenever the heuristic is wrong.
 
-The JSON activity object includes a provider-neutral `activity_id`, a nullable `strava_activity_id`, and `origin` (`gpx`, `tcx`, or `strava`).
+The JSON activity object includes a provider-neutral `activity_id`, a nullable `strava_activity_id`, and `origin` (`gpx`, `tcx`, or `strava`). The `weather.status` field is `fetched`, `already_available`, `unavailable`, or a specific skipped reason such as `skipped_no_gps`; `weather.data` contains the stored raw and derived values when available.
 
 ---
 

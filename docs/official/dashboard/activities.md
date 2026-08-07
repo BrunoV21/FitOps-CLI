@@ -6,6 +6,8 @@ The Activities page (`/activities`) is your full training history in one place, 
 
 Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching as one import operation.
 
+When the title is blank, FitOps uses **Outdoor run** for a run or **Outdoor cycle** for a ride. It then fetches weather automatically from the activity's GPS start and time. Weather, WBGT, weather-adjusted pace, course bearing, and terrain-and-weather-adjusted true pace are stored before the activity detail page opens. A temporary weather-provider failure does not discard the imported activity.
+
 FitOps recognizes exact re-imports and the same recording exported in both GPX and TCX. It also matches an upload to an activity already synced from Strava using its start time, sport, duration, and distance, retaining the file and filling missing stream data without adding a second activity.
 
 The Upload Activity control is always available from the Activities page. At dashboard launch, FitOps also performs a short cached Strava health check. When Strava does not return HTTP 200, the sidebar replaces **Sync** with **Upload Activity** and hides **Streams**. A failed manual sync causes the same switch. The `/api/sync` response preserves meaningful upstream status codes such as 403 rather than returning an unrelated 500.
