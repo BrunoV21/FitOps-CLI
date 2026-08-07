@@ -19,6 +19,7 @@ from fitops.db.models.activity import Activity
 from fitops.db.models.activity_import import ActivityImport
 from fitops.db.models.activity_laps import ActivityLap
 from fitops.db.models.activity_stream import ActivityStream
+from fitops.db.models.activity_weather import ActivityWeather
 from fitops.db.session import dispose_engine, get_async_session
 from fitops.importers.activity_files import (
     ActivityFileError,
@@ -46,6 +47,29 @@ TIMED_GPX = b"""<?xml version="1.0" encoding="UTF-8"?>
 </gpx>"""
 
 
+@pytest.fixture(autouse=True)
+def mock_import_weather(monkeypatch):
+    weather = {
+        "temperature_c": 22.0,
+        "humidity_pct": 55.0,
+        "apparent_temp_c": 22.5,
+        "dew_point_c": 12.5,
+        "wind_speed_ms": 2.0,
+        "wind_direction_deg": 180.0,
+        "wind_gusts_ms": 3.0,
+        "precipitation_mm": 0.0,
+        "weather_code": 1,
+    }
+    monkeypatch.setattr(
+        "fitops.weather.service.fetch_activity_weather",
+        AsyncMock(return_value=weather),
+    )
+    monkeypatch.setattr(
+        "fitops.weather.service.fetch_forecast_weather",
+        AsyncMock(return_value=None),
+    )
+
+
 @pytest.fixture
 async def isolated_fitops(tmp_path, monkeypatch):
     monkeypatch.setenv("FITOPS_DIR", str(tmp_path / "fitops"))
@@ -66,6 +90,7 @@ def test_tcx_parser_normalizes_summary_streams_and_laps():
     assert parsed.distance_m == pytest.approx(400.0)
     assert parsed.moving_time_s == 120
     assert parsed.streams["distance"][-1] == pytest.approx(400.0)
+    assert len(parsed.streams["grade_smooth"]) == len(parsed.streams["time"])
     assert parsed.laps[0].index == 0
 
 
@@ -78,7 +103,20 @@ def test_tcx_parser_recognizes_health_outdoor_sport_metadata():
 
     assert parsed.sport_type == "Run"
     assert parsed.sport_inference_source == "file_metadata"
-    assert parsed.name == "Run on 2026-01-01"
+    assert parsed.name == "Outdoor run"
+
+
+def test_import_default_cycle_title_can_be_overridden():
+    parsed = parse_activity_bytes(TIMED_GPX, "activity.gpx", sport_type="Ride")
+    overridden = parse_activity_bytes(
+        TIMED_GPX,
+        "activity.gpx",
+        sport_type="Ride",
+        name="Sunday club ride",
+    )
+
+    assert parsed.name == "Outdoor cycle"
+    assert overridden.name == "Sunday club ride"
 
 
 def test_parser_rejects_mismatched_and_unsafe_xml():
@@ -105,6 +143,9 @@ async def test_import_persists_processed_activity_and_deduplicates(isolated_fito
     assert first.activity.athlete_id == athlete.id
     assert first.activity.strava_id is None
     assert first.activity.origin == "tcx"
+    assert first.activity.name == "Outdoor run"
+    assert first.weather_status == "fetched"
+    assert second.weather_status == "already_available"
     assert (isolated_fitops / first.import_record.relative_path).read_bytes() == (
         FIXTURES / "sample.tcx"
     ).read_bytes()
@@ -120,8 +161,28 @@ async def test_import_persists_processed_activity_and_deduplicates(isolated_fito
         import_count = (
             await session.execute(select(func.count()).select_from(ActivityImport))
         ).scalar_one()
+        weather = (
+            await session.execute(
+                select(ActivityWeather).where(
+                    ActivityWeather.activity_id == first.activity.id
+                )
+            )
+        ).scalar_one()
+        stream_types = set(
+            (
+                await session.execute(
+                    select(ActivityStream.stream_type).where(
+                        ActivityStream.activity_id == first.activity.id
+                    )
+                )
+            ).scalars()
+        )
     assert stream_count >= 4
     assert import_count == 1
+    assert weather.wbgt_c is not None
+    assert weather.wap_factor is not None
+    assert weather.true_pace_s_per_km is not None
+    assert {"grade_smooth", "true_pace"}.issubset(stream_types)
 
 
 async def test_import_deduplicates_same_recording_across_gpx_and_tcx(
@@ -297,6 +358,7 @@ def test_cli_init_import_and_list_json(tmp_path, monkeypatch):
     assert payload["activity"]["activity_id"] == 1
     assert payload["activity"]["strava_activity_id"] is None
     assert payload["import"]["created"] is True
+    assert payload["weather"]["status"] == "fetched"
 
     listed = runner.invoke(app, ["activities", "list", "--json"])
     assert listed.exit_code == 0, listed.output
