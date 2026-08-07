@@ -55,7 +55,10 @@ if (importForm) importForm.addEventListener('submit', async function(event) {
     const response = await fetch('/api/activities/import', {method: 'POST', body: new FormData(importForm)});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Import failed');
-    status.textContent = result.import.created ? 'Imported successfully.' : 'This file was already imported.';
+    const weather = result.weather && result.weather.status === 'fetched'
+      ? ' Weather and true-pace calculations completed.'
+      : '';
+    status.textContent = (result.import.created ? 'Imported successfully.' : 'This activity already exists.') + weather;
     window.location.href = '/activities/' + result.activity.activity_id;
   } catch (error) {
     status.textContent = error.message;

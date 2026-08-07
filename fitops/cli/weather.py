@@ -31,7 +31,8 @@ from fitops.output.text_formatter import (
     print_weather_fetch_all,
     print_weather_forecast,
 )
-from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
+from fitops.weather.client import fetch_forecast_weather
+from fitops.weather.service import fetch_and_store_activity_weather
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -73,38 +74,18 @@ async def _fetch_and_store(activity_id: int) -> dict | None:
 
     if act is None:
         return None
-
-    latlng = _parse_latlng(act.start_latlng)
-    if latlng is None:
-        return {
-            "error": "No GPS coordinates for this activity.",
-            "activity_id": activity_id,
-        }
-
-    lat, lng = latlng
-    start_utc = act.start_date
-    if start_utc is None:
-        return {"error": "Activity has no start_date.", "activity_id": activity_id}
-
-    weather = await fetch_activity_weather(lat, lng, start_utc)
-    if weather is None:
-        date_str = start_utc.strftime("%Y-%m-%d")
-        weather = await fetch_forecast_weather(lat, lng, date_str, start_utc.hour)
-    if weather is None:
-        return {
-            "error": "Failed to fetch weather from Open-Meteo.",
-            "activity_id": activity_id,
-        }
-
-    # Compute derived fields
-    temp_c = weather.get("temperature_c")
-    humidity = weather.get("humidity_pct")
-    if temp_c is not None and humidity is not None:
-        weather["wbgt_c"] = round(wbgt_approx(temp_c, humidity), 2)
-        weather["pace_heat_factor"] = round(pace_heat_factor(temp_c, humidity), 4)
-
-    stored = await upsert_activity_weather(act.id, weather, source="open-meteo")
-    return stored
+    result = await fetch_and_store_activity_weather(act.id, force=True)
+    if result.weather is not None:
+        return result.weather
+    messages = {
+        "skipped_no_gps": "No GPS coordinates for this activity.",
+        "skipped_no_start_date": "Activity has no start_date.",
+        "unavailable": "Failed to fetch weather from Open-Meteo.",
+    }
+    return {
+        "error": messages.get(result.status, "Failed to fetch activity weather."),
+        "activity_id": activity_id,
+    }
 
 
 # ---------------------------------------------------------------------------

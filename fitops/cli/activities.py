@@ -78,6 +78,10 @@ def import_activity(
             "sport_inference_source": result.sport_inference_source,
             "sport_inference_confidence": result.sport_inference_confidence,
         },
+        "weather": {
+            "status": result.weather_status,
+            "data": result.weather,
+        },
     }
     if json_output:
         typer.echo(json.dumps(payload, indent=2, default=str))
@@ -89,7 +93,8 @@ def import_activity(
         else:
             action = "Matched existing activity"
         typer.echo(
-            f"{action}: {activity.name} ({activity.sport_type}, ID {activity.id})"
+            f"{action}: {activity.name} ({activity.sport_type}, ID {activity.id}); "
+            f"weather: {result.weather_status}"
         )
 
 

@@ -79,6 +79,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "sport_inference_source": result.sport_inference_source,
                     "sport_inference_confidence": result.sport_inference_confidence,
                 },
+                "weather": {
+                    "status": result.weather_status,
+                    "data": result.weather,
+                },
             },
             status_code=201 if result.created else 200,
         )

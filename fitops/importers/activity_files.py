@@ -85,6 +85,8 @@ class ActivityImportResult:
     match_type: str
     sport_inference_source: str
     sport_inference_confidence: str
+    weather_status: str = "not_attempted"
+    weather: dict | None = None
 
 
 def _local_name(tag: str) -> str:
@@ -138,6 +140,46 @@ def _haversine_m(a: list[float], b: list[float]) -> float:
 
 def _positive(values: list[float | None]) -> list[float]:
     return [float(value) for value in values if value is not None]
+
+
+def _smoothed_grade(
+    distance: list[float], altitude: list[float | None], *, radius: int = 5
+) -> list[float] | None:
+    """Derive a stable grade percentage stream from recorded elevation."""
+    if len(distance) != len(altitude) or not any(value is not None for value in altitude):
+        return None
+    result: list[float] = []
+    last_altitude = next((float(value) for value in altitude if value is not None), 0.0)
+    filled_altitude: list[float] = []
+    for value in altitude:
+        if value is not None:
+            last_altitude = float(value)
+        filled_altitude.append(last_altitude)
+    for index in range(len(distance)):
+        left = max(0, index - radius)
+        right = min(len(distance) - 1, index + radius)
+        horizontal_m = distance[right] - distance[left]
+        if horizontal_m < 5:
+            result.append(0.0)
+            continue
+        grade_pct = (
+            (filled_altitude[right] - filled_altitude[left]) / horizontal_m * 100
+        )
+        result.append(round(max(-30.0, min(30.0, grade_pct)), 3))
+    return result
+
+
+def _default_activity_name(sport_type: str) -> str:
+    if _sport_family(sport_type) == "run":
+        return "Outdoor run"
+    if _sport_family(sport_type) == "ride":
+        return "Outdoor cycle"
+    labels = {
+        "Walk": "Outdoor walk",
+        "Hike": "Outdoor hike",
+        "Swim": "Outdoor swim",
+    }
+    return labels.get(sport_type, f"Outdoor {sport_type.lower()}")
 
 
 def _extension_value(element: ET.Element, names: set[str]) -> float | None:
@@ -284,7 +326,7 @@ def _build_common(
         label=label,
         speeds=speeds,
     )
-    name = requested_name or file_name or f"{sport} on {times[0].date().isoformat()}"
+    name = requested_name or _default_activity_name(sport)
 
     elevation_gain = 0.0
     previous_altitude: float | None = None
@@ -322,6 +364,9 @@ def _build_common(
     ):
         if any(value is not None for value in values):
             streams[key] = values
+    grade_smooth = _smoothed_grade(distance, altitude)
+    if grade_smooth is not None:
+        streams["grade_smooth"] = grade_smooth
 
     points = [point for point in latlng if point is not None]
     return NormalizedActivity(
@@ -715,6 +760,21 @@ async def _enrich_matching_activity(
     activity.detail_fetched = True
 
 
+async def _attach_import_weather(
+    result: ActivityImportResult,
+) -> ActivityImportResult:
+    from fitops.weather.service import fetch_and_store_activity_weather
+
+    try:
+        weather_result = await fetch_and_store_activity_weather(result.activity.id)
+    except Exception:
+        result.weather_status = "error"
+        return result
+    result.weather_status = weather_result.status
+    result.weather = weather_result.weather
+    return result
+
+
 async def import_activity_bytes(
     data: bytes,
     filename: str,
@@ -736,6 +796,7 @@ async def import_activity_bytes(
     normalized = parse_activity_bytes(data, filename, name=name, sport_type=sport_type)
     digest = hashlib.sha256(data).hexdigest()
     matched_activity_id: int | None = None
+    existing_result: ActivityImportResult | None = None
 
     async with get_async_session() as session:
         duplicate = (
@@ -752,7 +813,7 @@ async def import_activity_bytes(
                     select(Activity).where(Activity.id == duplicate.activity_id)
                 )
             ).scalar_one()
-            return ActivityImportResult(
+            existing_result = ActivityImportResult(
                 activity=activity,
                 import_record=duplicate,
                 created=False,
@@ -761,10 +822,12 @@ async def import_activity_bytes(
                 sport_inference_confidence=normalized.sport_inference_confidence,
             )
 
-        matched_activity = await _find_matching_activity(
-            session, local_athlete_id, normalized
-        )
-        if matched_activity is not None:
+        matched_activity = None
+        if existing_result is None:
+            matched_activity = await _find_matching_activity(
+                session, local_athlete_id, normalized
+            )
+        if existing_result is None and matched_activity is not None:
             existing_import = (
                 await session.execute(
                     select(ActivityImport).where(
@@ -779,7 +842,7 @@ async def import_activity_bytes(
                     normalized,
                     description=description,
                 )
-                return ActivityImportResult(
+                existing_result = ActivityImportResult(
                     activity=matched_activity,
                     import_record=existing_import,
                     created=False,
@@ -787,7 +850,11 @@ async def import_activity_bytes(
                     sport_inference_source=normalized.sport_inference_source,
                     sport_inference_confidence=normalized.sport_inference_confidence,
                 )
-            matched_activity_id = matched_activity.id
+            else:
+                matched_activity_id = matched_activity.id
+
+    if existing_result is not None:
+        return await _attach_import_weather(existing_result)
 
     extension = Path(filename).suffix.lower()
     relative_path = Path("activity-files") / f"{digest}{extension}"
@@ -952,7 +1019,7 @@ async def import_activity_bytes(
     except Exception:
         pass
 
-    return ActivityImportResult(
+    result = ActivityImportResult(
         activity=activity,
         import_record=import_record,
         created=matched_activity_id is None,
@@ -960,6 +1027,7 @@ async def import_activity_bytes(
         sport_inference_source=normalized.sport_inference_source,
         sport_inference_confidence=normalized.sport_inference_confidence,
     )
+    return await _attach_import_weather(result)
 
 
 async def import_activity_file(
