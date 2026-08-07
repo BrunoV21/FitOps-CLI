@@ -375,7 +375,7 @@
       <tr>
         <td>{{ row.date }}</td>
         <td>
-          <a href="/activities/{{ row.strava_id }}"
+          <a href="/activities/{{ row.activity_id or row.strava_id }}"
              style="color:var(--text-muted);transition:color 0.1s;"
              onmouseenter="this.style.color='var(--text-primary)'"
              onmouseleave="this.style.color=''">

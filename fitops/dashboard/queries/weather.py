@@ -13,14 +13,14 @@ from fitops.db.session import get_async_session
 
 
 async def get_weather_for_activities(
-    strava_ids: list[int],
+    activity_ids: list[int],
 ) -> dict[int, ActivityWeather]:
-    """Batch load weather rows for a list of strava_ids. Returns {strava_id: ActivityWeather}."""
-    if not strava_ids:
+    """Batch load weather rows keyed by provider-neutral local activity ID."""
+    if not activity_ids:
         return {}
     async with get_async_session() as session:
         result = await session.execute(
-            select(ActivityWeather).where(ActivityWeather.activity_id.in_(strava_ids))
+            select(ActivityWeather).where(ActivityWeather.activity_id.in_(activity_ids))
         )
         return {w.activity_id: w for w in result.scalars().all()}
 
@@ -48,7 +48,7 @@ async def get_wap_history(
     async with get_async_session() as session:
         q = (
             select(Activity, ActivityWeather)
-            .join(ActivityWeather, ActivityWeather.activity_id == Activity.strava_id)
+            .join(ActivityWeather, ActivityWeather.activity_id == Activity.id)
             .where(Activity.athlete_id == athlete_id)
             .where(Activity.start_date >= cutoff)
             .where(Activity.average_speed_ms.isnot(None))
@@ -101,6 +101,7 @@ async def get_wap_history(
             {
                 "date": act.start_date.strftime("%Y-%m-%d") if act.start_date else "",
                 "name": act.name,
+                "activity_id": act.id,
                 "strava_id": act.strava_id,
                 "sport_type": act.sport_type,
                 "distance_km": round(act.distance_m / 1000, 2)
@@ -133,7 +134,7 @@ async def get_activities_missing_weather(
             select(Activity)
             .where(Activity.athlete_id == athlete_id)
             .where(Activity.start_latlng.isnot(None))
-            .where(Activity.strava_id.not_in(have_weather))
+            .where(Activity.id.not_in(have_weather))
             .order_by(Activity.start_date.desc())
             .limit(limit)
         )
@@ -184,7 +185,7 @@ async def upsert_activity_weather(
         # We need the Activity row for course_bearing, speed, HR.
         if activity is None:
             act_result = await session.execute(
-                select(Activity).where(Activity.strava_id == activity_id)
+                select(Activity).where(Activity.id == activity_id)
             )
             activity = act_result.scalar_one_or_none()
 

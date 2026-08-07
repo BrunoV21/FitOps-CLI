@@ -13,9 +13,10 @@ class Athlete(Base):
     __tablename__ = "athletes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    strava_id: Mapped[int] = mapped_column(
-        Integer, unique=True, nullable=False, index=True
+    strava_id: Mapped[int | None] = mapped_column(
+        Integer, unique=True, nullable=True, index=True
     )
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="local")
     username: Mapped[str | None] = mapped_column(Text, nullable=True)
     firstname: Mapped[str | None] = mapped_column(Text, nullable=True)
     lastname: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -104,6 +105,7 @@ class Athlete(Base):
         ]
         return cls(
             strava_id=data["id"],
+            source="strava",
             username=data.get("username"),
             firstname=data.get("firstname"),
             lastname=data.get("lastname"),
@@ -119,6 +121,8 @@ class Athlete(Base):
         )
 
     def update_from_strava_data(self, data: dict) -> None:
+        self.strava_id = data.get("id", self.strava_id)
+        self.source = "strava"
         bikes = [
             {
                 "id": b.get("id"),

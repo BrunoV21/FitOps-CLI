@@ -24,6 +24,22 @@
   {% endif %}
 </div>
 
+<div class="panel" style="margin-top:1px;">
+  <p class="panel-label">Browser publishing</p>
+  <p class="panel-sub" style="margin-bottom:14px;">Choose the everyday browser profile where you are already signed in to Strava. Close that profile before publishing; FitOps never copies its cookies.</p>
+  <form method="POST" action="/profile/browser" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+    <label class="form-group"><span class="form-label">Browser</span>
+      <select name="browser_type" class="select-ctrl">
+        {% for value in ['brave', 'chrome', 'edge'] %}<option value="{{ value }}" {% if browser_type == value %}selected{% endif %}>{{ value | title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="form-group"><span class="form-label">User data directory</span><input name="user_data_dir" class="input-ctrl" value="{{ browser_user_data_dir }}" required></label>
+    <label class="form-group"><span class="form-label">Profile directory</span><input name="profile_name" class="input-ctrl" value="{{ browser_profile }}" placeholder="Default"></label>
+    <label class="form-group"><span class="form-label">Executable (optional)</span><input name="executable" class="input-ctrl" value="{{ browser_executable }}"></label>
+    <div><button class="btn btn-primary" type="submit">Save Browser</button></div>
+  </form>
+</div>
+
 <!-- Performance summary card -->
 {% if current_load %}
 <div class="panel" style="margin-bottom:1px;--delay:0ms">

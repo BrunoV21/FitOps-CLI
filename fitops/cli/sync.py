@@ -169,9 +169,7 @@ async def _fetch_weather_for_strava_ids(strava_ids: list[int]) -> dict:
                 if tc is not None and hum is not None:
                     weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
                     weather["pace_heat_factor"] = round(_pace_heat_factor(tc, hum), 4)
-                await upsert_activity_weather(
-                    act.strava_id, weather, source="open-meteo"
-                )
+                await upsert_activity_weather(act.id, weather, source="open-meteo")
                 fetched += 1
         except Exception as e:
             typer.echo(f"    weather error: {e}", err=True)
@@ -255,7 +253,7 @@ def run(
                         .order_by(Activity.start_date.desc())
                         .limit(result.activities_created)
                     )
-                    return [r[0] for r in res.all()]
+                    return [r[0] for r in res.all() if r[0] is not None]
 
             new_ids = asyncio.run(_get_new_ids())
             weather_result = asyncio.run(_fetch_weather_for_strava_ids(new_ids))
@@ -305,8 +303,10 @@ async def _fetch_and_cache_new_streams(limit: int = 0, force: bool = False) -> d
     limit=0 means no limit (fetch all matching activities).
     """
     async with get_async_session() as session:
-        stmt = select(Activity.id, Activity.strava_id).order_by(
-            Activity.start_date.desc()
+        stmt = (
+            select(Activity.id, Activity.strava_id)
+            .order_by(Activity.start_date.desc())
+            .where(Activity.strava_id.is_not(None))
         )
         if not force:
             stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712
@@ -347,8 +347,10 @@ def sync_streams(
 
     async def _run():
         async with get_async_session() as session:
-            stmt = select(Activity.id, Activity.strava_id).order_by(
-                Activity.start_date.desc()
+            stmt = (
+                select(Activity.id, Activity.strava_id)
+                .order_by(Activity.start_date.desc())
+                .where(Activity.strava_id.is_not(None))
             )
             if not force:
                 stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712

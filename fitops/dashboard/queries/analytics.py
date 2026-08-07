@@ -259,6 +259,7 @@ async def get_vo2max_history(athlete_id: int, days: int = 365) -> list[dict]:
                     if a.start_date
                     else "unknown",
                     "name": a.name,
+                    "activity_id": a.id,
                     "strava_id": a.strava_id,
                     "distance_km": round((a.distance_m or 0) / 1000, 2),
                     "avg_hr": a.average_heartrate,
@@ -285,6 +286,7 @@ async def get_vo2max_history(athlete_id: int, days: int = 365) -> list[dict]:
                     if a.start_date
                     else "unknown",
                     "name": a.name,
+                    "activity_id": a.id,
                     "strava_id": a.strava_id,
                     "distance_km": round((a.distance_m or 0) / 1000, 2),
                     "avg_hr": a.average_heartrate,

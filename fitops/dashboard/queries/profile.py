@@ -13,9 +13,7 @@ from fitops.db.session import get_async_session
 
 async def get_athlete(athlete_id: int) -> Athlete | None:
     async with get_async_session() as session:
-        result = await session.execute(
-            select(Athlete).where(Athlete.strava_id == athlete_id)
-        )
+        result = await session.execute(select(Athlete).where(Athlete.id == athlete_id))
         return result.scalar_one_or_none()
 
 
@@ -23,7 +21,7 @@ async def get_equipment_with_stats(athlete_id: int) -> list[dict]:
     """Return shoes and bikes with local activity distance/count stats."""
     async with get_async_session() as session:
         ath_result = await session.execute(
-            select(Athlete).where(Athlete.strava_id == athlete_id)
+            select(Athlete).where(Athlete.id == athlete_id)
         )
         athlete = ath_result.scalar_one_or_none()
         if athlete is None:
@@ -92,6 +90,7 @@ async def get_activity_heatmap_data(
     async with get_async_session() as session:
         stmt = (
             select(
+                Activity.id,
                 Activity.strava_id,
                 Activity.start_date_local,
                 Activity.name,
@@ -129,6 +128,7 @@ async def get_activity_heatmap_data(
         day_map[key]["distance_km"] += (row.distance_m or 0) / 1000
         day_map[key]["activities"].append(
             {
+                "activity_id": row.id,
                 "strava_id": row.strava_id,
                 "name": row.name or row.sport_type or "Activity",
                 "sport_type": row.sport_type or "",

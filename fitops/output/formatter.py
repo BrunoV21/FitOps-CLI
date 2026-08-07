@@ -147,7 +147,9 @@ def format_activity_row(row: dict, gear_lookup: dict | None = None) -> dict:
         race_result = summarize_race_result(type("ActivityRow", (), row)())
 
     return {
+        "activity_id": row.get("id"),
         "strava_activity_id": row.get("strava_id"),
+        "origin": row.get("origin", "strava"),
         "name": row.get("name", ""),
         "sport_type": sport_type,
         "start_date_local": str(row["start_date_local"])

@@ -12,14 +12,25 @@ from fitops.analytics.athlete_settings import get_athlete_settings
 from fitops.analytics.weather_pace import pace_heat_factor, wbgt_approx
 from fitops.backup.event_sync import trigger_async
 from fitops.config.settings import get_settings
+from fitops.dashboard.queries.activities import get_activity_detail
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
 from fitops.db.models.workout import Workout
 from fitops.db.models.workout_activity_link import WorkoutActivityLink
 from fitops.db.models.workout_segment import WorkoutSegment
 from fitops.db.session import get_async_session
+from fitops.strava.availability import (
+    get_strava_availability,
+    record_strava_failure,
+)
 from fitops.strava.client import StravaClient
 from fitops.strava.sync_engine import SyncEngine
+from fitops.utils.exceptions import (
+    NotAuthenticatedError,
+    StravaAPIError,
+    StravaAuthError,
+    SyncError,
+)
 from fitops.weather.client import fetch_activity_weather, fetch_forecast_weather
 
 router = APIRouter()
@@ -49,8 +60,10 @@ async def _fetch_streams(limit: int = 0, force: bool = False) -> dict:
     limit=0 fetches all matching activities.
     """
     async with get_async_session() as session:
-        stmt = select(Activity.id, Activity.strava_id).order_by(
-            Activity.start_date.desc()
+        stmt = (
+            select(Activity.id, Activity.strava_id)
+            .order_by(Activity.start_date.desc())
+            .where(Activity.strava_id.is_not(None))
         )
         if not force:
             stmt = stmt.where(Activity.streams_fetched == False)  # noqa: E712
@@ -159,9 +172,7 @@ async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
                 if tc is not None and hum is not None:
                     weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
                     weather["pace_heat_factor"] = round(pace_heat_factor(tc, hum), 4)
-                await upsert_activity_weather(
-                    act.strava_id, weather, source="open-meteo"
-                )
+                await upsert_activity_weather(act.id, weather, source="open-meteo")
                 fetched += 1
         except Exception:
             errors += 1
@@ -171,17 +182,54 @@ async def _fetch_weather_for_new_activities(strava_ids: list[int]) -> dict:
 
 
 def register() -> APIRouter:
+    @router.get("/api/strava/status")
+    async def api_strava_status(force: bool = False):
+        status = await get_strava_availability(force=force)
+        return JSONResponse(status.to_dict(), status_code=200)
+
     @router.post("/api/sync")
     async def api_sync():
         settings = get_settings()
-        if not settings.athlete_id:
+        if not settings.is_authenticated:
             return JSONResponse(
                 {"error": "Not authenticated. Run fitops auth login first."},
                 status_code=401,
             )
 
         engine = SyncEngine()
-        result = await engine.run(full=False)
+        try:
+            result = await engine.run(full=False)
+        except StravaAPIError as exc:
+            record_strava_failure(exc.status_code)
+            return JSONResponse(
+                {
+                    "error": str(exc),
+                    "code": "strava_api_error",
+                    "upstream_status": exc.status_code,
+                },
+                status_code=exc.status_code,
+            )
+        except (StravaAuthError, NotAuthenticatedError) as exc:
+            record_strava_failure(401, "authentication_failed")
+            return JSONResponse(
+                {"error": str(exc), "code": "strava_authentication_failed"},
+                status_code=401,
+            )
+        except SyncError as exc:
+            record_strava_failure(502, "sync_failed")
+            return JSONResponse(
+                {"error": str(exc), "code": "strava_sync_failed"},
+                status_code=502,
+            )
+        except Exception:
+            record_strava_failure(503, "unreachable")
+            return JSONResponse(
+                {
+                    "error": "Strava is currently unavailable.",
+                    "code": "strava_unavailable",
+                },
+                status_code=503,
+            )
 
         streams_result = None
         weather_result = None
@@ -196,7 +244,7 @@ def register() -> APIRouter:
                     .order_by(Activity.start_date.desc())
                     .limit(result.activities_created)
                 )
-                new_strava_ids = [r[0] for r in newest.all()]
+                new_strava_ids = [r[0] for r in newest.all() if r[0] is not None]
             weather_result = await _fetch_weather_for_new_activities(new_strava_ids)
             _schedule_stamp_task(new_strava_ids)
             stamping_result = {"queued": len(new_strava_ids)}
@@ -229,7 +277,7 @@ def register() -> APIRouter:
     @router.post("/api/sync/streams")
     async def api_sync_streams(force: bool = False, limit: int = 0):
         settings = get_settings()
-        if not settings.athlete_id:
+        if not settings.is_authenticated:
             return JSONResponse(
                 {"error": "Not authenticated. Run fitops auth login first."},
                 status_code=401,
@@ -251,8 +299,8 @@ def register() -> APIRouter:
             }
         )
 
-    @router.post("/api/sync/streams/{strava_id}")
-    async def api_sync_activity_streams(strava_id: int):
+    @router.post("/api/sync/streams/{activity_ref}")
+    async def api_sync_activity_streams(activity_ref: int):
         settings = get_settings()
         if not settings.athlete_id:
             return JSONResponse(
@@ -260,24 +308,24 @@ def register() -> APIRouter:
                 status_code=401,
             )
 
-        async with get_async_session() as session:
-            row = (
-                await session.execute(
-                    select(Activity).where(Activity.strava_id == strava_id)
-                )
-            ).scalar_one_or_none()
+        row = await get_activity_detail(settings.athlete_id, activity_ref)
 
         if row is None:
             return JSONResponse({"error": "Activity not found."}, status_code=404)
+        if row.strava_id is None:
+            return JSONResponse(
+                {
+                    "error": "Imported activities already include their original streams."
+                },
+                status_code=422,
+            )
 
         client = StravaClient()
         try:
-            stream_data = await client.get_activity_streams(strava_id)
+            stream_data = await client.get_activity_streams(row.strava_id)
             async with get_async_session() as session:
                 activity = (
-                    await session.execute(
-                        select(Activity).where(Activity.strava_id == strava_id)
-                    )
+                    await session.execute(select(Activity).where(Activity.id == row.id))
                 ).scalar_one_or_none()
                 if activity:
                     for stream_type, stream_obj in stream_data.items():
@@ -302,7 +350,7 @@ def register() -> APIRouter:
             # Also fetch weather while we're here
             weather_ok = False
             try:
-                wr = await _fetch_weather_for_new_activities([strava_id])
+                wr = await _fetch_weather_for_new_activities([row.strava_id])
                 weather_ok = wr.get("weather_fetched", 0) > 0
             except Exception:
                 pass
@@ -316,8 +364,8 @@ def register() -> APIRouter:
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
-    @router.post("/api/sync/weather/{strava_id}")
-    async def api_sync_activity_weather(strava_id: int):
+    @router.post("/api/sync/weather/{activity_ref}")
+    async def api_sync_activity_weather(activity_ref: int):
         import json as _json
 
         from fitops.dashboard.queries.weather import upsert_activity_weather
@@ -326,12 +374,7 @@ def register() -> APIRouter:
         if not settings.athlete_id:
             return JSONResponse({"error": "Not authenticated."}, status_code=401)
 
-        async with get_async_session() as session:
-            row = (
-                await session.execute(
-                    select(Activity).where(Activity.strava_id == strava_id)
-                )
-            ).scalar_one_or_none()
+        row = await get_activity_detail(settings.athlete_id, activity_ref)
 
         if row is None:
             return JSONResponse({"error": "Activity not found."}, status_code=404)
@@ -368,7 +411,7 @@ def register() -> APIRouter:
             weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
             weather["pace_heat_factor"] = round(pace_heat_factor(tc, hum), 4)
 
-        await upsert_activity_weather(strava_id, weather, source="open-meteo")
+        await upsert_activity_weather(row.id, weather, source="open-meteo")
         return JSONResponse({"ok": True})
 
     _ALLOWED_METRIC_KEYS = {
@@ -397,8 +440,8 @@ def register() -> APIRouter:
         get_athlete_settings().set(**{key: value})
         return JSONResponse({"ok": True, "key": key, "value": value})
 
-    @router.post("/api/activities/{strava_id}/assign-workout")
-    async def assign_workout(strava_id: int, request: Request):
+    @router.post("/api/activities/{activity_ref}/assign-workout")
+    async def assign_workout(activity_ref: int, request: Request):
         settings = get_settings()
         if not settings.athlete_id:
             return JSONResponse({"error": "Not authenticated."}, status_code=401)
@@ -412,14 +455,16 @@ def register() -> APIRouter:
 
         async with get_async_session() as session:
             # Resolve activity
-            act = (
-                await session.execute(
-                    select(Activity).where(
-                        Activity.strava_id == strava_id,
-                        Activity.athlete_id == settings.athlete_id,
+            act = await session.get(Activity, activity_ref)
+            if act is None or act.athlete_id != settings.athlete_id:
+                act = (
+                    await session.execute(
+                        select(Activity).where(
+                            Activity.strava_id == activity_ref,
+                            Activity.athlete_id == settings.athlete_id,
+                        )
                     )
-                )
-            ).scalar_one_or_none()
+                ).scalar_one_or_none()
             if act is None:
                 return JSONResponse({"error": "Activity not found."}, status_code=404)
 
@@ -490,21 +535,23 @@ def register() -> APIRouter:
             }
         )
 
-    @router.post("/api/activities/{strava_id}/unassign-workout")
-    async def unassign_workout(strava_id: int):
+    @router.post("/api/activities/{activity_ref}/unassign-workout")
+    async def unassign_workout(activity_ref: int):
         settings = get_settings()
         if not settings.athlete_id:
             return JSONResponse({"error": "Not authenticated."}, status_code=401)
 
         async with get_async_session() as session:
-            act = (
-                await session.execute(
-                    select(Activity).where(
-                        Activity.strava_id == strava_id,
-                        Activity.athlete_id == settings.athlete_id,
+            act = await session.get(Activity, activity_ref)
+            if act is None or act.athlete_id != settings.athlete_id:
+                act = (
+                    await session.execute(
+                        select(Activity).where(
+                            Activity.strava_id == activity_ref,
+                            Activity.athlete_id == settings.athlete_id,
+                        )
                     )
-                )
-            ).scalar_one_or_none()
+                ).scalar_one_or_none()
             if act is None:
                 return JSONResponse({"error": "Activity not found."}, status_code=404)
 

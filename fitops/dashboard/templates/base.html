@@ -147,6 +147,12 @@
         </svg>
         <span id="streams-label">Streams</span>
       </button>
+      <a id="upload-activity-btn" href="/activities/import" class="sync-btn" style="display:none;">
+        <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14"/>
+        </svg>
+        <span>Upload Activity</span>
+      </a>
       {% if doc_url %}
       <a href="{{ doc_url }}" target="_blank" rel="noopener noreferrer" class="sync-btn">
         <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -177,10 +183,24 @@
 function toggleSidebar() {
   document.body.classList.toggle('sidebar-open');
 }
+
+function setStravaAvailability(available) {
+  const sync = document.getElementById('sync-btn');
+  const streams = document.getElementById('streams-btn');
+  const upload = document.getElementById('upload-activity-btn');
+  if (sync) sync.style.display = available ? '' : 'none';
+  if (streams) streams.style.display = available ? '' : 'none';
+  if (upload) upload.style.display = available ? 'none' : '';
+}
+
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') document.body.classList.remove('sidebar-open');
 });
 document.addEventListener('DOMContentLoaded', function() {
+  fetch('/api/strava/status')
+    .then(function(response) { return response.json(); })
+    .then(function(status) { setStravaAvailability(status.available === true); })
+    .catch(function() { setStravaAvailability(false); });
   document.querySelectorAll('.sidebar-link').forEach(function(link) {
     link.addEventListener('click', function() {
       if (window.innerWidth <= 767) document.body.classList.remove('sidebar-open');
@@ -447,6 +467,7 @@ async function triggerSync() {
 
     setTimeout(() => location.reload(), 1800);
   } catch (err) {
+    setStravaAvailability(false);
     icon.classList.remove('spinning');
     icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>`;
     icon.style.stroke = 'var(--accent-red)';

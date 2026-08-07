@@ -5,7 +5,7 @@ import json
 import time
 
 import typer
-from sqlalchemy import select
+from sqlalchemy import case, or_, select
 
 from fitops.analytics.weather_pace import (
     compute_bearing,
@@ -17,6 +17,7 @@ from fitops.analytics.weather_pace import (
     wbgt_flag,
     weather_condition_label,
 )
+from fitops.config.settings import get_settings
 from fitops.dashboard.queries.weather import (
     get_activities_missing_weather,
     upsert_activity_weather,
@@ -59,12 +60,16 @@ def _fmt_pace(s_per_km: float) -> str:
 
 
 async def _fetch_and_store(activity_id: int) -> dict | None:
-    """Fetch weather for one activity by strava_id, store it, return result dict."""
+    """Fetch weather for one activity by local or legacy Strava ID."""
     async with get_async_session() as session:
-        result = await session.execute(
-            select(Activity).where(Activity.strava_id == activity_id)
+        stmt = (
+            select(Activity)
+            .where(or_(Activity.id == activity_id, Activity.strava_id == activity_id))
+            .order_by(case((Activity.id == activity_id, 0), else_=1))
         )
-        act = result.scalar_one_or_none()
+        if get_settings().athlete_id:
+            stmt = stmt.where(Activity.athlete_id == get_settings().athlete_id)
+        act = (await session.execute(stmt)).scalars().first()
 
     if act is None:
         return None
@@ -98,7 +103,7 @@ async def _fetch_and_store(activity_id: int) -> dict | None:
         weather["wbgt_c"] = round(wbgt_approx(temp_c, humidity), 2)
         weather["pace_heat_factor"] = round(pace_heat_factor(temp_c, humidity), 4)
 
-    stored = await upsert_activity_weather(activity_id, weather, source="open-meteo")
+    stored = await upsert_activity_weather(act.id, weather, source="open-meteo")
     return stored
 
 
@@ -110,7 +115,7 @@ async def _fetch_and_store(activity_id: int) -> dict | None:
 @app.command("fetch")
 def fetch_weather(
     activity_id: int | None = typer.Argument(
-        None, help="Strava activity ID to fetch weather for."
+        None, help="Local FitOps ID or Strava activity ID to fetch weather for."
     ),
     all_activities: bool = typer.Option(
         False, "--all", help="Backfill all GPS activities missing weather."
@@ -142,7 +147,7 @@ def fetch_weather(
                 q = (
                     select(Activity)
                     .where(Activity.start_latlng.isnot(None))
-                    .where(Activity.strava_id.not_in(have))
+                    .where(Activity.id.not_in(have))
                     .order_by(Activity.start_date.desc())
                 )
                 if lim > 0:
@@ -156,10 +161,10 @@ def fetch_weather(
             typer.echo(
                 f"  Fetching weather for activity {act.strava_id} ({act.name})..."
             )
-            result = asyncio.run(_fetch_and_store(act.strava_id))
+            result = asyncio.run(_fetch_and_store(act.id))
             if result:
                 results.append(
-                    {"activity_id": act.strava_id, "name": act.name, "result": result}
+                    {"activity_id": act.id, "name": act.name, "result": result}
                 )
             time.sleep(0.1)  # rate-limit respect
 
@@ -204,7 +209,7 @@ def fetch_weather(
 
 @app.command("show")
 def show_weather(
-    activity_id: int = typer.Argument(..., help="Strava activity ID."),
+    activity_id: int = typer.Argument(..., help="Local FitOps ID or Strava activity ID."),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),
@@ -217,21 +222,22 @@ def show_weather(
         from fitops.db.session import get_async_session
 
         async with get_async_session() as session:
-            # Load weather
+            stmt = (
+                select(Activity)
+                .where(or_(Activity.id == activity_id, Activity.strava_id == activity_id))
+                .order_by(case((Activity.id == activity_id, 0), else_=1))
+            )
+            act = (await session.execute(stmt)).scalars().first()
+            if act is None:
+                return None
             res = await session.execute(
                 select(ActivityWeather).where(
-                    ActivityWeather.activity_id == activity_id
+                    ActivityWeather.activity_id == act.id
                 )
             )
             weather = res.scalar_one_or_none()
             if weather is None:
                 return None
-
-            # Load activity for bearing
-            act_res = await session.execute(
-                select(Activity).where(Activity.strava_id == activity_id)
-            )
-            act = act_res.scalar_one_or_none()
 
         d = weather.to_dict()
 
@@ -395,7 +401,7 @@ def forecast_weather(
 
 @app.command("set")
 def set_weather(
-    activity_id: int = typer.Argument(..., help="Strava activity ID."),
+    activity_id: int = typer.Argument(..., help="Local FitOps ID or Strava activity ID."),
     temp: float | None = typer.Option(None, "--temp", help="Temperature (°C)."),
     humidity: float | None = typer.Option(
         None, "--humidity", help="Relative humidity (%)."
@@ -428,5 +434,20 @@ def set_weather(
         )
         raise typer.Exit(1)
 
-    result = asyncio.run(upsert_activity_weather(activity_id, weather, source="manual"))
+    async def _store_manual() -> dict | None:
+        async with get_async_session() as session:
+            stmt = (
+                select(Activity)
+                .where(or_(Activity.id == activity_id, Activity.strava_id == activity_id))
+                .order_by(case((Activity.id == activity_id, 0), else_=1))
+            )
+            activity = (await session.execute(stmt)).scalars().first()
+        if activity is None:
+            return None
+        return await upsert_activity_weather(activity.id, weather, source="manual")
+
+    result = asyncio.run(_store_manual())
+    if result is None:
+        typer.echo(f"Activity {activity_id} not found in DB.", err=True)
+        raise typer.Exit(1)
     typer.echo(json.dumps({"_meta": make_meta(), "weather": result}, indent=2))

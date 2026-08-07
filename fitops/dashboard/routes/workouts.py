@@ -1056,6 +1056,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
             true_pace_fmt = _fmt_pace_with_unit(w.true_pace_s_per_km) if w else None
             linked_activities.append(
                 {
+                    "id": act.id,
                     "strava_id": act.strava_id,
                     "name": act.name,
                     "date": act.start_date_local.strftime("%d %b %Y")

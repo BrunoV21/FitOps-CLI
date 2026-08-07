@@ -27,6 +27,43 @@ from fitops.utils.exceptions import NotAuthenticatedError
 app = typer.Typer(no_args_is_help=True)
 
 
+@app.command("init")
+def init_local_athlete(
+    name: str = typer.Option(..., "--name", help="Name for the local athlete."),
+    weight_kg: float | None = typer.Option(None, "--weight-kg"),
+    birthday: str | None = typer.Option(None, "--birthday", help="YYYY-MM-DD."),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Create an athlete profile that works without Strava."""
+    from fitops.athlete_service import create_local_athlete
+
+    init_db()
+    try:
+        athlete, created = asyncio.run(
+            create_local_athlete(name, weight_kg=weight_kg, birthday=birthday)
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2)
+    payload = {
+        "_meta": make_meta(total_count=1, filters_applied={}),
+        "athlete": {
+            "athlete_id": athlete.id,
+            "strava_id": athlete.strava_id,
+            "name": f"{athlete.firstname or ''} {athlete.lastname or ''}".strip(),
+            "source": athlete.source,
+            "created": created,
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, default=str))
+    else:
+        action = "Created" if created else "Using"
+        typer.echo(
+            f"{action} local athlete {payload['athlete']['name']} (ID {athlete.id})."
+        )
+
+
 @app.command("profile")
 def profile(
     json_output: bool = typer.Option(
@@ -35,18 +72,12 @@ def profile(
 ) -> None:
     """Show athlete profile and equipment."""
     settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1)
-
     init_db()
 
     async def _fetch():
         async with get_async_session() as session:
             result = await session.execute(
-                select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+                select(Athlete).where(Athlete.id == settings.athlete_id)
             )
             athlete = result.scalar_one_or_none()
 
@@ -101,7 +132,9 @@ def profile(
         return {
             "_meta": make_meta(),
             "athlete": {
+                "athlete_id": athlete.id,
                 "strava_id": athlete.strava_id,
+                "source": athlete.source,
                 "name": f"{athlete.firstname or ''} {athlete.lastname or ''}".strip(),
                 "username": athlete.username,
                 "city": athlete.city,
@@ -141,7 +174,9 @@ def stats(
 
     async def _fetch():
         client = StravaClient()
-        data = await client.get_athlete_stats(settings.athlete_id)
+        if settings.strava_athlete_id is None:
+            raise RuntimeError("No Strava athlete is linked to this local profile.")
+        data = await client.get_athlete_stats(settings.strava_athlete_id)
         return {"_meta": make_meta(), "stats": data}
 
     out = asyncio.run(_fetch())
@@ -250,7 +285,7 @@ def set_physiology(
         async def _update_db():
             async with get_async_session() as session:
                 result = await session.execute(
-                    select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+                    select(Athlete).where(Athlete.id == settings.athlete_id)
                 )
                 athlete = result.scalar_one_or_none()
                 if athlete:
@@ -288,7 +323,7 @@ def equipment(
     async def _fetch():
         async with get_async_session() as session:
             ath_res = await session.execute(
-                select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+                select(Athlete).where(Athlete.id == settings.athlete_id)
             )
             athlete = ath_res.scalar_one_or_none()
 

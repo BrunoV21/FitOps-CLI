@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Upload Activity — FitOps{% endblock %}
+{% block page_name %}Upload Activity{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-title">Upload activity</p>
+    <p class="page-subtitle">Import and process an original GPX or TCX file locally.</p>
+  </div>
+</div>
+
+{% if not has_athlete %}
+<div class="empty-state">
+  Create an offline profile first with <code>fitops athlete init --name "Your Name"</code>.
+</div>
+{% else %}
+<form id="activity-import-form" class="card" style="display:flex;flex-direction:column;gap:16px;max-width:680px;" enctype="multipart/form-data">
+  <label>Activity file
+    <input class="input-ctrl" type="file" name="file" accept=".gpx,.tcx,application/gpx+xml,application/vnd.garmin.tcx+xml" required style="display:block;width:100%;margin-top:6px;">
+  </label>
+  <label>Name (optional)
+    <input class="input-ctrl" type="text" name="name" placeholder="Morning Run" style="display:block;width:100%;margin-top:6px;">
+  </label>
+  <label>Sport
+    <select class="select-ctrl" name="sport" style="display:block;width:100%;margin-top:6px;">
+      <option value="auto">Detect automatically</option>
+      <option value="Run">Run</option>
+      <option value="TrailRun">Trail run</option>
+      <option value="Ride">Ride</option>
+      <option value="Walk">Walk</option>
+      <option value="Hike">Hike</option>
+      <option value="Swim">Swim</option>
+    </select>
+  </label>
+  <label>Description (optional)
+    <textarea class="input-ctrl" name="description" rows="4" style="display:block;width:100%;margin-top:6px;"></textarea>
+  </label>
+  <div><button class="btn btn-primary" type="submit">Import Activity</button></div>
+  <p id="activity-import-status" class="text-dim" role="status"></p>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const importForm = document.getElementById('activity-import-form');
+if (importForm) importForm.addEventListener('submit', async function(event) {
+  event.preventDefault();
+  const status = document.getElementById('activity-import-status');
+  const submit = importForm.querySelector('button[type=submit]');
+  submit.disabled = true;
+  status.textContent = 'Importing and processing…';
+  try {
+    const response = await fetch('/api/activities/import', {method: 'POST', body: new FormData(importForm)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Import failed');
+    status.textContent = result.import.created ? 'Imported successfully.' : 'This file was already imported.';
+    window.location.href = '/activities/' + result.activity.activity_id;
+  } catch (error) {
+    status.textContent = error.message;
+    submit.disabled = false;
+  }
+});
+</script>
+{% endblock %}

@@ -78,7 +78,23 @@ class FitOpsSettings:
 
     @property
     def athlete_id(self) -> int | None:
-        return self._data.get("strava", {}).get("athlete_id")
+        """Return the active, provider-neutral local athlete ID.
+
+        Older configurations only contain ``strava.athlete_id``.  That value is
+        retained as a fallback until the startup migration resolves and stores
+        the corresponding local ``Athlete.id``.
+        """
+        return self.active_athlete_id or self.strava_athlete_id
+
+    @property
+    def active_athlete_id(self) -> int | None:
+        value = self._data.get("preferences", {}).get("active_athlete_id")
+        return int(value) if value is not None else None
+
+    @property
+    def strava_athlete_id(self) -> int | None:
+        value = self._data.get("strava", {}).get("athlete_id")
+        return int(value) if value is not None else None
 
     @property
     def scopes(self) -> list[str]:
@@ -100,12 +116,41 @@ class FitOpsSettings:
 
     @property
     def db_path(self) -> Path:
-        raw = self._data.get("preferences", {}).get("db_path", "~/.fitops/fitops.db")
-        return Path(raw).expanduser()
+        raw = self._data.get("preferences", {}).get("db_path")
+        if raw:
+            return Path(raw).expanduser()
+        return self.fitops_dir / "fitops.db"
 
     @property
     def fitops_dir(self) -> Path:
         return _fitops_dir()
+
+    # ------------------------------------------------------------------
+    # Browser publishing
+    # ------------------------------------------------------------------
+
+    def _browser_value(self, key: str, env_name: str) -> str | None:
+        value = os.environ.get(env_name)
+        if value:
+            return value
+        stored = self._data.get("browser", {}).get(key)
+        return str(stored) if stored else None
+
+    @property
+    def browser_type(self) -> str | None:
+        return self._browser_value("type", "FITOPS_BROWSER_TYPE")
+
+    @property
+    def browser_executable(self) -> str | None:
+        return self._browser_value("executable", "FITOPS_BROWSER_EXECUTABLE")
+
+    @property
+    def browser_user_data_dir(self) -> str | None:
+        return self._browser_value("user_data_dir", "FITOPS_BROWSER_USER_DATA_DIR")
+
+    @property
+    def browser_profile(self) -> str | None:
+        return self._browser_value("profile", "FITOPS_BROWSER_PROFILE")
 
     # ------------------------------------------------------------------
     # Mutations
@@ -131,6 +176,29 @@ class FitOpsSettings:
             s["athlete_id"] = token_data["athlete_id"]
         if "scopes" in token_data:
             s["scopes"] = token_data["scopes"]
+        _save_config(self._data)
+        self.reload()
+
+    def save_active_athlete_id(self, athlete_id: int) -> None:
+        self._data.setdefault("preferences", {})["active_athlete_id"] = int(athlete_id)
+        _save_config(self._data)
+        self.reload()
+
+    def save_browser_preferences(
+        self,
+        *,
+        browser_type: str,
+        user_data_dir: str,
+        profile: str,
+        executable: str | None = None,
+    ) -> None:
+        self._data["browser"] = {
+            "type": browser_type,
+            "user_data_dir": user_data_dir,
+            "profile": profile,
+        }
+        if executable:
+            self._data["browser"]["executable"] = executable
         _save_config(self._data)
         self.reload()
 

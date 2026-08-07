@@ -18,6 +18,7 @@ _HERE = Path(__file__).parent
 def create_app(port: int = 8888) -> FastAPI:
     from fitops.dashboard.routes import (
         activities,
+        activity_imports,
         analytics,
         api,
         auto_sync,
@@ -39,13 +40,24 @@ def create_app(port: int = 8888) -> FastAPI:
     _scheduler_task: asyncio.Task | None = None
     _auto_sync_task: asyncio.Task | None = None
     _webhook_task: asyncio.Task | None = None
+    _availability_task: asyncio.Task | None = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        nonlocal _scheduler_task, _auto_sync_task, _webhook_task
+        nonlocal _scheduler_task, _auto_sync_task, _webhook_task, _availability_task
         # Run schema creation + migrations once at startup so request handlers
         # don't open a write transaction on every page load.
         await create_all_tables()
+        try:
+            from fitops.config.settings import get_settings
+            from fitops.strava.availability import get_strava_availability
+
+            if get_settings().is_authenticated:
+                _availability_task = asyncio.create_task(
+                    get_strava_availability(force=True)
+                )
+        except Exception:
+            _availability_task = None
         _scheduler_task = asyncio.create_task(backup.run_scheduler())
         try:
             from fitops.strava.webhook_config import get_sync_mode
@@ -69,7 +81,12 @@ def create_app(port: int = 8888) -> FastAPI:
         except Exception:
             _webhook_task = None
         yield
-        for task in (_scheduler_task, _auto_sync_task, _webhook_task):
+        for task in (
+            _scheduler_task,
+            _auto_sync_task,
+            _webhook_task,
+            _availability_task,
+        ):
             if task:
                 task.cancel()
                 try:
@@ -242,6 +259,7 @@ def create_app(port: int = 8888) -> FastAPI:
         app.include_router(auth_route.register_local(templates))
     app.include_router(setup.register(templates))
     app.include_router(overview.register(templates))
+    app.include_router(activity_imports.register(templates))
     app.include_router(activities.register(templates))
     app.include_router(analytics.register(templates))
     app.include_router(profile.register(templates))

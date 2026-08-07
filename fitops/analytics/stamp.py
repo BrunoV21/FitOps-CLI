@@ -347,8 +347,8 @@ async def _ensure_running_power_for_stamp(
     from fitops.analytics.athlete_settings import get_athlete_settings
     from fitops.analytics.running_power import (
         RUN_SPORT_TYPES,
-        pick_pace_stream,
         persist_power_for_activity,
+        pick_pace_stream,
     )
     from fitops.db.models.activity_stream import ActivityStream
 
@@ -470,7 +470,7 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
 
     async with get_async_session() as session:
         athlete_result = await session.execute(
-            select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+            select(Athlete).where(Athlete.id == settings.athlete_id)
         )
         athlete = athlete_result.scalar_one_or_none()
         if athlete is None or not athlete.stamp_on_sync:
@@ -555,9 +555,7 @@ async def stamp_activity(
     _is_run = (activity.sport_type or "") in RUN_SPORT_TYPES
     try:
         weather_result = await session.execute(
-            select(ActivityWeather).where(
-                ActivityWeather.activity_id == activity.strava_id
-            )
+            select(ActivityWeather).where(ActivityWeather.activity_id == activity.id)
         )
         weather_row = weather_result.scalar_one_or_none()
         if weather_row:

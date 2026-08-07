@@ -74,6 +74,31 @@ def register(templates: Jinja2Templates) -> APIRouter:
         auth_url = f"{STRAVA_AUTH_URL}?{urlencode(params)}"
         return JSONResponse({"auth_url": auth_url})
 
+    @router.post("/api/setup/offline")
+    async def setup_offline(request: Request):
+        from fitops.athlete_service import create_local_athlete
+
+        try:
+            payload = await request.json()
+            athlete, created = await create_local_athlete(
+                str(payload.get("name") or ""),
+                weight_kg=float(payload["weight_kg"])
+                if payload.get("weight_kg") not in (None, "")
+                else None,
+                birthday=(payload.get("birthday") or None),
+            )
+        except (TypeError, ValueError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        return JSONResponse(
+            {
+                "athlete_id": athlete.id,
+                "name": f"{athlete.firstname or ''} {athlete.lastname or ''}".strip(),
+                "created": created,
+                "redirect_url": "/activities/import",
+            },
+            status_code=201 if created else 200,
+        )
+
     @router.get("/api/auth/reauth")
     async def reauth_redirect(request: Request):
         """Redirect to Strava with force approval to expand scopes (e.g. activity:write)."""

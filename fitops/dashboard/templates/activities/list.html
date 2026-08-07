@@ -9,10 +9,13 @@
     <p class="page-title">Activities</p>
     <p class="page-subtitle">{{ total }} total &middot; showing {{ activities | length }}</p>
   </div>
+  <div style="display:flex;gap:8px;">
+  <a href="/activities/import" class="btn btn-primary">Upload Activity</a>
   <button id="act-filters-btn" class="btn btn-ghost"
           onclick="var f=document.getElementById('act-filters');var open=f.style.display!=='none';f.style.display=open?'none':'flex';this.textContent=open?'Filters ▾':'Filters ▴'">
     {% if _filters_open %}Filters ▴{% else %}Filters ▾{% endif %}
   </button>
+  </div>
 </div>
 
 <!-- Filters -->
@@ -82,7 +85,7 @@
       <tr>
         <td>{{ a.date }}</td>
         <td>
-          <a href="/activities/{{ a.strava_id }}" style="display:flex;align-items:center;gap:8px;">
+          <a href="/activities/{{ a.activity_id }}" style="display:flex;align-items:center;gap:8px;">
             <span style="opacity:0.6;">{{ sport_icon(a.sport_type) }}</span>
             <span class="w" style="font-weight:600;transition:color 0.1s;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                   onmouseenter="this.style.color='var(--accent-primary)'" onmouseleave="this.style.color=''">
@@ -96,6 +99,9 @@
             {% endif %}
             {% if a.trainer %}
               <span class="badge badge-dim">Trainer</span>
+            {% endif %}
+            {% if a.origin != 'strava' %}
+              <span class="badge badge-blue">Imported</span>
             {% endif %}
           </a>
         </td>

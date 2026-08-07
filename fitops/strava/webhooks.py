@@ -427,9 +427,7 @@ async def fetch_weather_for_strava_ids(strava_ids: list[int]) -> dict:
                 if tc is not None and hum is not None:
                     weather["wbgt_c"] = round(wbgt_approx(tc, hum), 2)
                     weather["pace_heat_factor"] = round(pace_heat_factor(tc, hum), 4)
-                await upsert_activity_weather(
-                    activity.strava_id, weather, source="open-meteo"
-                )
+                await upsert_activity_weather(activity.id, weather, source="open-meteo")
                 fetched += 1
         except Exception as exc:
             logger.warning(
@@ -448,11 +446,6 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
             )
         ).scalar_one_or_none()
         if activity is None:
-            await session.execute(
-                sa_delete(ActivityWeather).where(
-                    ActivityWeather.activity_id == strava_id
-                )
-            )
             return {"status": "processed", "action": "delete", "already_deleted": True}
 
         internal_id = activity.id
@@ -470,7 +463,7 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
             (
                 "activity_weather",
                 sa_delete(ActivityWeather).where(
-                    ActivityWeather.activity_id == strava_id
+                    ActivityWeather.activity_id.in_({internal_id, strava_id})
                 ),
             ),
             (
@@ -507,14 +500,16 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
             .values(activity_id=None)
         )
         await session.execute(
-            update(Note).where(Note.activity_id == strava_id).values(activity_id=None)
+            update(Note)
+            .where(Note.activity_id.in_({internal_id, strava_id}))
+            .values(activity_id=None)
         )
 
         primary_sessions = (
             (
                 await session.execute(
                     select(RaceSession.id).where(
-                        RaceSession.primary_activity_id == strava_id
+                        RaceSession.primary_activity_id.in_({internal_id, strava_id})
                     )
                 )
             )
@@ -538,7 +533,7 @@ async def delete_activity_by_strava_id(strava_id: int) -> dict:
 
         await session.execute(
             update(RaceSessionAthlete)
-            .where(RaceSessionAthlete.activity_id == strava_id)
+            .where(RaceSessionAthlete.activity_id.in_({internal_id, strava_id}))
             .values(activity_id=None)
         )
 

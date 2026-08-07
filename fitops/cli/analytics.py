@@ -264,7 +264,7 @@ def vo2max(
             async with get_async_session() as session:
                 ath = (
                     await session.execute(
-                        select(Athlete).where(Athlete.strava_id == settings.athlete_id)
+                        select(Athlete).where(Athlete.id == settings.athlete_id)
                     )
                 ).scalar_one_or_none()
                 return ath.age if ath else None

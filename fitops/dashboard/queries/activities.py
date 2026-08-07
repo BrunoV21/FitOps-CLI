@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_calibration import ActivityCalibration
@@ -105,15 +105,18 @@ async def count_activities(
         return result.scalar_one() or 0
 
 
-async def get_activity_detail(athlete_id: int, strava_id: int) -> Activity | None:
+async def get_activity_detail(athlete_id: int, activity_ref: int) -> Activity | None:
+    """Resolve the stable local ID first, retaining Strava-ID URL compatibility."""
     async with get_async_session() as session:
         result = await session.execute(
-            select(Activity).where(
+            select(Activity)
+            .where(
                 Activity.athlete_id == athlete_id,
-                Activity.strava_id == strava_id,
+                or_(Activity.id == activity_ref, Activity.strava_id == activity_ref),
             )
+            .order_by(case((Activity.id == activity_ref, 0), else_=1))
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
 
 async def get_activity_laps(activity_db_id: int) -> list[ActivityLap]:
