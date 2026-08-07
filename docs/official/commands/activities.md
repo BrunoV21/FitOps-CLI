@@ -1,12 +1,50 @@
 # fitops activities
 
-Browse and query synced activities.
+Import, publish, browse, and query activities from Strava or local GPX/TCX files.
 
 Output is a formatted table by default. Add `--json` to any command for raw JSON output (useful for scripting or AI agents).
 
 For running race activities, FitOps can store an official **chip time** and **race distance** when the watch GPS distance is wrong. Those overrides are local to FitOps; the original Strava values remain unchanged.
 
 ## Commands
+
+### `fitops activities import <PATH>`
+
+Import an original GPX or TCX recording without contacting Strava. FitOps retains the original file locally, normalizes its summary, streams, and laps, and computes the same cached analytics used for synced activities. Exact re-imports, equivalent GPX/TCX exports, and matching activities already synced from Strava reuse the existing activity instead of creating a duplicate. A file matched to a Strava activity can supply missing streams and becomes its retained source file.
+
+```bash
+fitops athlete init --name "Jane Runner"
+fitops activities import ~/Downloads/morning-run.gpx
+fitops activities import race.tcx --sport Run --name "City 10K" --json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--sport TYPE` | `auto` | Override the inferred sport (`Run`, `Ride`, `Walk`, and so on) |
+| `--name TEXT` | file name or generated | Override the activity title |
+| `--json` | false | Return the activity, provenance hash, and inference details as JSON |
+
+Automatic detection prefers sport metadata embedded in TCX, then file/title keywords, then median moving speed. Use `--sport` whenever the heuristic is wrong.
+
+The JSON activity object includes a provider-neutral `activity_id`, a nullable `strava_activity_id`, and `origin` (`gpx`, `tcx`, or `strava`).
+
+---
+
+### `fitops activities publish <ACTIVITY_ID>`
+
+Publish an imported activity through the configured, already logged-in browser profile. FitOps uploads the retained original file, fills the title and FitOps-stamped description, and submits it using your Strava account's default visibility.
+
+```bash
+fitops browser configure --type brave \
+  --user-data-dir "$HOME/Library/Application Support/BraveSoftware/Brave-Browser" \
+  --profile Default
+fitops activities publish 42
+fitops activities publish 42 --strava-id 1234567890 --json
+```
+
+Passing `--strava-id` edits that existing Strava activity's title and description instead of uploading the file. If the selected profile is open, FitOps exits safely and asks you to close it; it never copies cookies or uses a separate cookie store.
+
+---
 
 ### `fitops activities list`
 
@@ -91,7 +129,7 @@ fitops activities get 12345678901 [OPTIONS]
 
 | Argument | Description |
 |----------|-------------|
-| `ID` | Strava activity ID (required) |
+| `ID` | Local FitOps activity ID or legacy Strava activity ID (required) |
 
 **Options:**
 
@@ -161,7 +199,9 @@ When `--json` is used, the output is a single activity object enriched with all 
 
 | Key | Type | Description |
 |-----|------|-------------|
+| `activity_id` | int | Stable local FitOps activity ID |
 | `strava_activity_id` | int | Strava activity ID |
+| `origin` | string | `strava`, `gpx`, or `tcx` |
 | `name` | string | Activity title |
 | `sport_type` | string | e.g. `"Run"`, `"Ride"` |
 | `start_date_local` | string | Local datetime of start |

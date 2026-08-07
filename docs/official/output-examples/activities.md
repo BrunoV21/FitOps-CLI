@@ -4,6 +4,48 @@ All examples show default output. Add `--json` to any command for raw JSON.
 
 ---
 
+## `fitops activities import <PATH>`
+
+```bash
+fitops activities import morning-run.tcx --json
+```
+
+```json
+{
+  "_meta": {
+    "tool": "fitops",
+    "total_count": 1,
+    "filters_applied": {"sport": "auto", "name": null}
+  },
+  "activity": {
+    "activity_id": 42,
+    "strava_activity_id": null,
+    "origin": "tcx",
+    "name": "Morning Run",
+    "sport_type": "Run",
+    "data_availability": {
+      "has_gps": true,
+      "streams_fetched": true,
+      "laps_fetched": true,
+      "detail_fetched": true
+    }
+  },
+  "import": {
+    "created": true,
+    "match_type": "new",
+    "file_format": "tcx",
+    "original_filename": "morning-run.tcx",
+    "sha256": "…",
+    "sport_inference_source": "file_metadata",
+    "sport_inference_confidence": "high"
+  }
+}
+```
+
+Repeating the same import returns the existing local activity with `"created": false` and `"match_type": "file_hash"`. An equivalent GPX/TCX file or an activity already synced from Strava returns `"match_type": "activity_signature"`.
+
+---
+
 ## `fitops activities list`
 
 ```bash

@@ -6,6 +6,19 @@ Output is human-readable by default. Add `--json` to any command for raw JSON ou
 
 ## Commands
 
+### `fitops athlete init`
+
+Create an athlete profile that works entirely offline. This is the only prerequisite for importing GPX or TCX recordings without Strava.
+
+```bash
+fitops athlete init --name "Jane Runner"
+fitops athlete init --name "Jane Runner" --weight-kg 62 --birthday 1992-04-18 --json
+```
+
+If an active profile already exists, the command selects and returns it instead of creating a duplicate. A later successful Strava connection is linked to this local profile, preserving the imported history.
+
+---
+
 ### `fitops athlete profile`
 
 Show athlete profile, equipment, and physiology from the local database.

@@ -1,6 +1,14 @@
 # Dashboard — Activities
 
-The Activities page (`/activities`) is your full training history in one place. Browse every synced session, filter down to what you care about, and spot patterns across your log.
+The Activities page (`/activities`) is your full training history in one place, including both Strava-synced and locally imported sessions.
+
+## Uploading GPX or TCX
+
+Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching as one import operation.
+
+FitOps recognizes exact re-imports and the same recording exported in both GPX and TCX. It also matches an upload to an activity already synced from Strava using its start time, sport, duration, and distance, retaining the file and filling missing stream data without adding a second activity.
+
+The Upload Activity control is always available from the Activities page. At dashboard launch, FitOps also performs a short cached Strava health check. When Strava does not return HTTP 200, the sidebar replaces **Sync** with **Upload Activity** and hides **Streams**. A failed manual sync causes the same switch. The `/api/sync` response preserves meaningful upstream status codes such as 403 rather than returning an unrelated 500.
 
 ## The Activity List
 
@@ -15,7 +23,7 @@ Every synced activity appears in a table, newest first. For each session you can
 - **Avg HR** — average heart rate in bpm
 - **TSS** — Training Stress Score
 
-Click an activity name to open it directly on Strava.
+Click an activity name to open its local FitOps detail page. Imported rows carry an **Imported** badge.
 
 ## Filtering & Search
 
@@ -48,6 +56,8 @@ Click any activity row to open its detail page (`/activities/{id}`). The detail 
 When you save an official race result, the activity detail page switches its split table to the corrected version. This is useful for road races where the watch recorded `9.82 km` but the official course was `10.00 km`.
 
 **Stamp controls** queue a background update to the Strava activity description with the same FitOps footer used by the Profile page backfill tool. Stamp and Re-stamp return immediately, show an inline queued message, and leave you on the page so you can keep navigating while the Strava write finishes. When a cached training-load snapshot exists for the activity date, the stamp includes that day's CTL, ATL, TSB, and form label. The weather-adjusted value is labelled as pace for running activities and speed for cycling activities. Linked workout segments show true pace whenever segment true pace data exists, including when it displays the same value as raw segment pace. The activity page does not recompute training load while stamping; missing snapshots simply omit the form section.
+
+Imported activities instead show **Publish to Strava**. This opens the configured logged-in browser profile, uploads the retained original file, fills the title and stamped description, and submits it with the account's default visibility. If the activity already exists on Strava, enter its Strava ID first; FitOps navigates to that activity and edits its title and description without re-uploading the file. Close the selected browser profile before starting. If the profile is in use, FitOps returns HTTP 409 with instructions and does not copy cookies.
 
 **Insights panel** (when streams are available):
 - **HR Drift** — cardiac decoupling percentage. < 5% means your aerobic system held steady; > 10% means you were pushing near your ceiling.
