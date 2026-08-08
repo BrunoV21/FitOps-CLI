@@ -77,6 +77,62 @@ def test_overview_run_view_filters_heatmap(client, monkeypatch):
     heatmap_mock.assert_awaited_once_with(42, since=None, sport_types=RUNNING_SPORTS)
 
 
+def test_overview_allows_offline_athlete_without_strava_tokens(client, monkeypatch):
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.overview.get_settings",
+        lambda: SimpleNamespace(
+            athlete_id=42,
+            is_authenticated=False,
+            has_write_scope=False,
+        ),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.overview.get_athlete",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.overview.get_recent_activities",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.overview.get_activity_stats",
+        AsyncMock(
+            return_value={
+                "total_count": 0,
+                "total_distance_km": 0.0,
+                "total_elevation_m": 0,
+                "total_duration_h": 0.0,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.overview.get_activity_heatmap_data",
+        AsyncMock(return_value=[]),
+    )
+
+    response = client.get("/?period=month")
+
+    assert response.status_code == 200
+
+
+def test_overview_redirects_when_no_authentication_or_local_athlete(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        "fitops.dashboard.routes.overview.get_settings",
+        lambda: SimpleNamespace(
+            athlete_id=None,
+            is_authenticated=False,
+            has_write_scope=False,
+        ),
+    )
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/setup"
+
+
 def test_overview_omits_weather_when_forecast_is_slow(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.dashboard.routes.overview.get_settings", lambda: _fake_settings()

@@ -215,7 +215,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
     async def overview(request: Request, period: str = "week", view: str = "total"):
         settings = get_settings()
-        if not settings.is_authenticated:
+        if not settings.is_authenticated and not settings.athlete_id:
             return RedirectResponse("/setup")
 
         if period not in _PERIOD_LABELS:
