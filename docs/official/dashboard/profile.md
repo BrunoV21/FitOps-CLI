@@ -1,6 +1,6 @@
 # Dashboard — Profile
 
-The **Browser publishing** panel selects a Brave, Chrome, or Edge user-data directory and profile. Use the profile where you are already logged in to Strava, and close that profile before selecting **Publish to Strava** on an imported activity. FitOps uses the session in place and never copies cookies.
+The **Browser publishing** panel selects a Brave, Chrome, or Edge user-data directory and profile. A dedicated logged-in profile powers default-on Strava posting during GPX/TCX import and ID-based stamp synchronization from local activity pages. FitOps uses the session in place and never copies cookies.
 
 The same panel can append text to any Strava activity you own. Enter the Strava activity ID and text, then select **Append Text**. Existing description text is preserved. Turn on **Dry run** to check that the activity is editable without saving anything. On macOS with Brave, first enable **View → Developer → Allow JavaScript from Apple Events** in Brave. The automation then uses the currently logged-in Brave session without copying its cookies.
 

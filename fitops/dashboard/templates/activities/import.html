@@ -6,7 +6,7 @@
 <div class="page-header">
   <div>
     <p class="page-title">Upload activity</p>
-    <p class="page-subtitle">Import and process an original GPX or TCX file locally.</p>
+    <p class="page-subtitle">Import, process, stamp, and optionally post an original GPX or TCX file.</p>
   </div>
 </div>
 
@@ -17,13 +17,13 @@
 {% else %}
 <form id="activity-import-form" class="card" style="display:flex;flex-direction:column;gap:16px;max-width:680px;" enctype="multipart/form-data">
   <label>Activity file
-    <input class="input-ctrl" type="file" name="file" accept=".gpx,.tcx,application/gpx+xml,application/vnd.garmin.tcx+xml" required style="display:block;width:100%;margin-top:6px;">
+    <input id="activity-file" class="input-ctrl" type="file" name="file" accept=".gpx,.tcx,application/gpx+xml,application/vnd.garmin.tcx+xml" required style="display:block;width:100%;margin-top:6px;">
   </label>
   <label>Name (optional)
-    <input class="input-ctrl" type="text" name="name" placeholder="Morning Run" style="display:block;width:100%;margin-top:6px;">
+    <input id="activity-name" class="input-ctrl" type="text" name="name" placeholder="Morning Run" style="display:block;width:100%;margin-top:6px;">
   </label>
   <label>Sport
-    <select class="select-ctrl" name="sport" style="display:block;width:100%;margin-top:6px;">
+    <select id="activity-sport" class="select-ctrl" name="sport" style="display:block;width:100%;margin-top:6px;">
       <option value="auto">Detect automatically</option>
       <option value="Run">Run</option>
       <option value="TrailRun">Trail run</option>
@@ -36,32 +36,116 @@
   <label>Description (optional)
     <textarea class="input-ctrl" name="description" rows="4" style="display:block;width:100%;margin-top:6px;"></textarea>
   </label>
+  <label class="activity-import-post-option">
+    <input id="post-to-strava" type="checkbox" name="post_to_strava" value="true" checked>
+    <span>
+      <strong>Post to Strava after import</strong>
+      <small>FitOps calculates and stamps the activity first, then uploads this selected file through your configured headless browser session.</small>
+    </span>
+  </label>
   <div><button class="btn btn-primary" type="submit">Import Activity</button></div>
   <p id="activity-import-status" class="text-dim" role="status"></p>
 </form>
+
+<div id="activity-import-loading" class="activity-import-loading" aria-hidden="true" hidden>
+  <div class="activity-import-loading-card" role="status" aria-live="polite">
+    <span class="activity-import-spinner" aria-hidden="true"></span>
+    <h2 id="activity-import-loading-title">Processing activity</h2>
+    <p id="activity-import-loading-text">Reading the recording and calculating FitOps analytics…</p>
+    <small>Keep this page open until the operation finishes.</small>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 const importForm = document.getElementById('activity-import-form');
+const activityFile = document.getElementById('activity-file');
+const activityName = document.getElementById('activity-name');
+const activitySport = document.getElementById('activity-sport');
+let activityNameEdited = Boolean(activityName && activityName.value.trim());
+let activitySportEdited = Boolean(activitySport && activitySport.value !== 'auto');
+let suggestionRequest = 0;
+
+if (activityName) activityName.addEventListener('input', function() {
+  activityNameEdited = true;
+});
+if (activitySport) activitySport.addEventListener('change', function() {
+  activitySportEdited = true;
+});
+if (activityFile) activityFile.addEventListener('change', async function() {
+  const selected = activityFile.files && activityFile.files[0];
+  if (!selected) return;
+  const requestId = ++suggestionRequest;
+  try {
+    const response = await fetch(
+      '/api/activities/import/suggestion?filename=' + encodeURIComponent(selected.name)
+    );
+    if (!response.ok) return;
+    const suggestion = await response.json();
+    if (requestId !== suggestionRequest) return;
+    if (!activityNameEdited && suggestion.name) activityName.value = suggestion.name;
+    if (!activitySportEdited && suggestion.sport_type) activitySport.value = suggestion.sport_type;
+  } catch (error) {
+    // Filename suggestions are optional; import parsing remains authoritative.
+  }
+});
+
 if (importForm) importForm.addEventListener('submit', async function(event) {
   event.preventDefault();
   const status = document.getElementById('activity-import-status');
   const submit = importForm.querySelector('button[type=submit]');
+  const postToStrava = document.getElementById('post-to-strava').checked;
+  const loading = document.getElementById('activity-import-loading');
+  const loadingTitle = document.getElementById('activity-import-loading-title');
+  const loadingText = document.getElementById('activity-import-loading-text');
+  const formData = new FormData(importForm);
+  formData.set('post_to_strava', postToStrava ? 'true' : 'false');
   submit.disabled = true;
-  status.textContent = 'Importing and processing…';
+  status.textContent = '';
+  loading.hidden = false;
+  loading.classList.add('visible');
+  loading.setAttribute('aria-hidden', 'false');
+  loadingTitle.textContent = postToStrava ? 'Importing and posting activity' : 'Importing activity';
+  loadingText.textContent = postToStrava
+    ? 'Calculating weather, true pace, training metrics, and the FitOps stamp before the Strava upload…'
+    : 'Calculating weather, true pace, and training metrics…';
   try {
-    const response = await fetch('/api/activities/import', {method: 'POST', body: new FormData(importForm)});
+    const response = await fetch('/api/activities/import', {method: 'POST', body: formData});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Import failed');
+    if (result.publication && result.publication.status === 'failed') {
+      loading.classList.remove('visible');
+      loading.setAttribute('aria-hidden', 'true');
+      loading.hidden = true;
+      status.replaceChildren();
+      status.appendChild(document.createTextNode(
+        'Activity imported locally, but Strava posting failed: ' + result.publication.error + ' '
+      ));
+      const activityLink = document.createElement('a');
+      activityLink.href = '/activities/' + result.activity.activity_id;
+      activityLink.textContent = 'Open the imported activity';
+      activityLink.className = 'panel-link';
+      status.appendChild(activityLink);
+      status.style.color = 'var(--accent-red)';
+      submit.disabled = false;
+      return;
+    }
     const weather = result.weather && result.weather.status === 'fetched'
       ? ' Weather and true-pace calculations completed.'
       : '';
-    status.textContent = (result.import.created ? 'Imported successfully.' : 'This activity already exists.') + weather;
+    loadingTitle.textContent = result.publication && result.publication.status === 'completed'
+      ? 'Posted to Strava'
+      : 'Import complete';
+    loadingText.textContent = (result.import.created ? 'Imported successfully.' : 'This activity already exists.') + weather;
     window.location.href = '/activities/' + result.activity.activity_id;
   } catch (error) {
+    loading.classList.remove('visible');
+    loading.setAttribute('aria-hidden', 'true');
+    loading.hidden = true;
     status.textContent = error.message;
+    status.style.color = 'var(--accent-red)';
     submit.disabled = false;
   }
 });

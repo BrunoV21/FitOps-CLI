@@ -4,11 +4,15 @@ The Activities page (`/activities`) is your full training history in one place, 
 
 ## Uploading GPX or TCX
 
-Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching as one import operation.
+Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. **Post to Strava after import** is selected by default. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching, builds the stamp, and then uploads the selected file through the configured headless browser session.
+
+Selecting a file immediately suggests its title and sport from the filename. A leading recording date is removed, so `20260808Outdoor run.tcx` becomes **Outdoor run** / **Run**, while `20260807Outdoor cycle.tcx` becomes **Outdoor cycle** / **Ride**. You can edit either suggestion before importing; FitOps preserves manual changes.
 
 When the title is blank, FitOps uses **Outdoor run** for a run or **Outdoor cycle** for a ride. It then fetches weather automatically from the activity's GPS start and time. Weather, WBGT, weather-adjusted pace, course bearing, and terrain-and-weather-adjusted true pace are stored before the activity detail page opens. A temporary weather-provider failure does not discard the imported activity.
 
-FitOps recognizes exact re-imports and the same recording exported in both GPX and TCX. It also matches an upload to an activity already synced from Strava using its start time, sport, duration, and distance, retaining the file and filling missing stream data without adding a second activity.
+The dashboard displays a full-page progress screen while processing and posting. After Strava returns the new activity ID, FitOps links that ID locally and opens the activity page. If browser automation or Strava posting fails, the local import remains available and the page explains the failure with a link to the imported activity. Clear the checkbox when you deliberately want a local-only import.
+
+FitOps recognizes exact re-imports and the same recording exported in both GPX and TCX. It also matches an upload to an activity already synced from Strava using its start time, sport, duration, and distance, filling missing stream data without adding a second activity. FitOps stores provenance metadata and a content hash, but does not retain another copy of the original GPX/TCX file.
 
 The Upload Activity control is always available from the Activities page. At dashboard launch, FitOps also performs a short cached Strava health check. When Strava does not return HTTP 200, the sidebar replaces **Sync** with **Upload Activity** and hides **Streams**. A failed manual sync causes the same switch. The `/api/sync` response preserves meaningful upstream status codes such as 403 rather than returning an unrelated 500.
 
@@ -25,7 +29,7 @@ Every synced activity appears in a table, newest first. For each session you can
 - **Avg HR** — average heart rate in bpm
 - **TSS** — Training Stress Score
 
-Click an activity name to open its local FitOps detail page. Imported rows carry an **Imported** badge.
+Click an activity name to open its local FitOps detail page. The activity list treats synced and imported sessions uniformly; source badges are intentionally omitted there. An imported activity is identified by its **Imported GPX** or **Imported TCX** badge on the detail page instead.
 
 ## Filtering & Search
 
@@ -57,9 +61,9 @@ Click any activity row to open its detail page (`/activities/{id}`). The detail 
 
 When you save an official race result, the activity detail page switches its split table to the corrected version. This is useful for road races where the watch recorded `9.82 km` but the official course was `10.00 km`.
 
-**Stamp controls** queue a background update to the Strava activity description with the same FitOps footer used by the Profile page backfill tool. Stamp and Re-stamp return immediately, show an inline queued message, and leave you on the page so you can keep navigating while the Strava write finishes. When a cached training-load snapshot exists for the activity date, the stamp includes that day's CTL, ATL, TSB, and form label. The weather-adjusted value is labelled as pace for running activities and speed for cycling activities. Linked workout segments show true pace whenever segment true pace data exists, including when it displays the same value as raw segment pace. The activity page does not recompute training load while stamping; missing snapshots simply omit the form section.
+**Stamp controls** build the same FitOps analytics footer for every activity. For Strava activities, Stamp and Re-stamp queue the remote description update. For imported activities, they save the stamp locally immediately so it is visible on the detail page and ready for publishing. Expand the description and double-click anywhere on the FitOps stamp text to copy the complete footer; any personal description above it is left out of the copied text. When a cached training-load snapshot exists for the activity date, the stamp includes that day's CTL, ATL, TSB, and form label. The weather-adjusted value is labelled as pace for running activities and speed for cycling activities. Linked workout segments show true pace whenever segment true pace data exists, including when it displays the same value as raw segment pace. The activity page does not recompute training load while stamping; missing snapshots simply omit the form section.
 
-Imported activities instead show **Publish to Strava**. This opens the configured logged-in browser profile, uploads the retained original file, fills the title and stamped description, and submits it with the account's default visibility. If the activity already exists on Strava, enter its Strava ID first; FitOps navigates to that activity and edits its title and description without re-uploading the file. Close the selected browser profile before starting. If the profile is in use, FitOps returns HTTP 409 with instructions and does not copy cookies.
+Local-only imported activities show a **Strava activity ID** field and **Sync** button. Use these when the recording already exists on Strava—for example, after Strava rejected an immediate upload as a duplicate. Sync builds the current FitOps stamp, appends it to the existing Strava description through the headless browser automation, and associates the supplied ID with the local activity. It never needs or uploads the original file.
 
 **Insights panel** (when streams are available):
 - **HR Drift** — cardiac decoupling percentage. < 5% means your aerobic system held steady; > 10% means you were pushing near your ceiling.

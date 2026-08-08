@@ -127,7 +127,11 @@ def _queue_stamp_all_task(*, force: bool = False) -> bool:
         training_load_cache = {}
 
         async with get_async_session() as session:
-            stmt = select(_Activity.strava_id).order_by(_Activity.start_date.desc())
+            stmt = (
+                select(_Activity.strava_id)
+                .where(_Activity.strava_id.is_not(None))
+                .order_by(_Activity.start_date.desc())
+            )
             if not force:
                 stmt = stmt.where(_Activity.stamped_at.is_(None))
             result = await session.execute(stmt)
@@ -1436,6 +1440,52 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 else None,
                 "active_page": "activities",
             },
+        )
+
+    @router.post("/api/activities/local/{activity_id}/stamp")
+    async def stamp_local_activity_api(request: Request, activity_id: int):
+        from fastapi.responses import JSONResponse
+
+        from fitops.analytics.stamp import stamp_activity
+        from fitops.config.settings import get_settings as _get_settings
+        from fitops.db.models.activity import Activity as _Activity
+        from fitops.db.session import get_async_session
+
+        cfg = _get_settings()
+        if not cfg.athlete_id:
+            return JSONResponse({"error": "athlete profile required"}, status_code=401)
+
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        force = bool(body.get("force", False)) if isinstance(body, dict) else False
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(_Activity).where(
+                    _Activity.id == activity_id,
+                    _Activity.athlete_id == cfg.athlete_id,
+                )
+            )
+            activity = result.scalar_one_or_none()
+            if activity is None:
+                return JSONResponse({"error": "activity not found"}, status_code=404)
+            updated = await stamp_activity(
+                None,
+                session,
+                activity,
+                skip_existing=not force,
+                local_only=True,
+            )
+
+        return JSONResponse(
+            {
+                "ok": True,
+                "activity_id": activity_id,
+                "status": "stamped" if updated else "already_stamped",
+            }
         )
 
     @router.post("/api/activities/{strava_id}/stamp")

@@ -100,9 +100,6 @@
             {% if a.trainer %}
               <span class="badge badge-dim">Trainer</span>
             {% endif %}
-            {% if a.origin != 'strava' %}
-              <span class="badge badge-blue">Imported</span>
-            {% endif %}
           </a>
         </td>
         <td class="r">{% if a.distance_km %}{{ a.distance_km }} km{% else %}—{% endif %}</td>

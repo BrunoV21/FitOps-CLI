@@ -10,6 +10,7 @@ from fitops.importers.activity_files import (
     MAX_ACTIVITY_FILE_BYTES,
     ActivityFileError,
     import_activity_bytes,
+    suggest_activity_from_filename,
 )
 from fitops.output.formatter import format_activity_row
 from fitops.utils.exceptions import BrowserPublicationError
@@ -30,12 +31,17 @@ def register(templates: Jinja2Templates) -> APIRouter:
             },
         )
 
+    @router.get("/api/activities/import/suggestion")
+    async def activity_import_suggestion(filename: str):
+        return JSONResponse(suggest_activity_from_filename(filename[:512]))
+
     @router.post("/api/activities/import")
     async def activity_import_api(
         file: UploadFile = File(...),
         sport: str = Form("auto"),
         name: str = Form(""),
         description: str = Form(""),
+        post_to_strava: bool = Form(True),
     ):
         if not get_settings().athlete_id:
             return JSONResponse(
@@ -60,8 +66,48 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 {"error": str(exc), "code": exc.code}, status_code=status_code
             )
 
-        await trigger_async()
         activity = result.activity
+        publication_payload: dict[str, object] = {
+            "requested": post_to_strava,
+            "status": "not_requested",
+            "strava_id": activity.strava_id,
+        }
+        if post_to_strava and activity.strava_id is not None:
+            publication_payload.update(
+                {
+                    "status": "already_linked",
+                    "strava_id": activity.strava_id,
+                }
+            )
+        elif post_to_strava:
+            from fitops.browser.publisher import publish_activity_bytes
+
+            try:
+                publication = await publish_activity_bytes(
+                    activity.id,
+                    data,
+                    file.filename or "activity",
+                )
+            except BrowserPublicationError as exc:
+                publication_payload.update(
+                    {
+                        "status": "failed",
+                        "error": str(exc),
+                        "code": exc.code,
+                    }
+                )
+            else:
+                activity.strava_id = publication.strava_id
+                publication_payload.update(
+                    {
+                        "id": publication.id,
+                        "action": publication.action,
+                        "status": publication.status,
+                        "strava_id": publication.strava_id,
+                    }
+                )
+
+        await trigger_async()
         return JSONResponse(
             {
                 "activity": format_activity_row(
@@ -83,14 +129,24 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     "status": result.weather_status,
                     "data": result.weather,
                 },
+                "publication": publication_payload,
             },
             status_code=201 if result.created else 200,
         )
 
-    @router.post("/api/activities/{activity_id}/publish")
-    async def activity_publish_api(activity_id: int, strava_id: int | None = None):
+    @router.post("/api/activities/{activity_id}/sync-strava")
+    @router.post("/api/activities/{activity_id}/publish", include_in_schema=False)
+    async def activity_sync_strava_api(activity_id: int, strava_id: int | None = None):
         from fitops.browser.publisher import publish_activity
 
+        if strava_id is None:
+            return JSONResponse(
+                {
+                    "error": "Enter the existing Strava activity ID to sync.",
+                    "code": "strava_id_required",
+                },
+                status_code=422,
+            )
         try:
             result = await publish_activity(activity_id, strava_id=strava_id)
         except BrowserPublicationError as exc:
