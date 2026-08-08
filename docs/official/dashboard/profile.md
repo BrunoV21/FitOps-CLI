@@ -2,6 +2,10 @@
 
 The **Browser publishing** panel selects a Brave, Chrome, or Edge user-data directory and profile. Use the profile where you are already logged in to Strava, and close that profile before selecting **Publish to Strava** on an imported activity. FitOps uses the session in place and never copies cookies.
 
+The same panel can append text to any Strava activity you own. Enter the Strava activity ID and text, then select **Append Text**. Existing description text is preserved. Turn on **Dry run** to check that the activity is editable without saving anything. On macOS with Brave, first enable **View → Developer → Allow JavaScript from Apple Events** in Brave. The automation then uses the currently logged-in Brave session without copying its cookies.
+
+If Browser publishing is configured with a dedicated, non-default Brave user-data directory, the panel automatically switches to native headless Brave and attaches Playwright through a temporary local debugging connection. The automation profile must be closed while a request runs, but your everyday Brave instance can remain open. The panel identifies which mode will be used.
+
 The Profile page (`/profile`) is where you configure your physiology. Set your threshold values once, and every analytics calculation across the dashboard and CLI will use them automatically.
 
 On mobile screens, the paired dashboard panels on this page collapse into single-column rows so Identity, Physiological Estimates, HR Zones, Pace Zones, Race Predictions, and Equipment each get their own full-width block.

@@ -23,6 +23,7 @@ def create_app(port: int = 8888) -> FastAPI:
         api,
         auto_sync,
         backup,
+        browser,
         notes,
         overview,
         profile,
@@ -268,6 +269,7 @@ def create_app(port: int = 8888) -> FastAPI:
     app.include_router(weather.register(templates))
     app.include_router(race.register(templates))
     app.include_router(backup.register(templates))
+    app.include_router(browser.register())
     app.include_router(strava_webhooks.register())
 
     return app

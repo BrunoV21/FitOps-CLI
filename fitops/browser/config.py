@@ -23,11 +23,18 @@ class BrowserProfile:
             for marker in ("SingletonLock", "SingletonSocket", "SingletonCookie")
         )
 
+    @property
+    def is_default_user_data_dir(self) -> bool:
+        """Whether this is the browser's normal OS-level data directory."""
+        _, default_data_dir = _browser_defaults(self.browser_type)
+        return self.user_data_dir.resolve() == default_data_dir.expanduser().resolve()
+
     def to_dict(self) -> dict:
         data = asdict(self)
         data["executable"] = str(self.executable)
         data["user_data_dir"] = str(self.user_data_dir)
         data["is_open"] = self.is_open
+        data["is_default_user_data_dir"] = self.is_default_user_data_dir
         return data
 
 

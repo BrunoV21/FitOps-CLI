@@ -257,17 +257,22 @@ def register(templates: Jinja2Templates) -> APIRouter:
         browser_executable = getattr(cfg, "browser_executable", None) or ""
         browser_user_data_dir = getattr(cfg, "browser_user_data_dir", None) or ""
         browser_profile = getattr(cfg, "browser_profile", None) or "Default"
-        if not browser_user_data_dir:
-            try:
-                from fitops.browser.config import resolve_browser_profile
+        browser_append_backend = None
+        try:
+            from fitops.browser.config import resolve_browser_profile
+            from fitops.browser.description import choose_description_backend
 
-                detected_browser = resolve_browser_profile(cfg)
+            detected_browser = resolve_browser_profile(cfg)
+            browser_append_backend = choose_description_backend(
+                detected_browser, "auto"
+            )
+            if not browser_user_data_dir:
                 browser_type = detected_browser.browser_type
                 browser_executable = str(detected_browser.executable)
                 browser_user_data_dir = str(detected_browser.user_data_dir)
                 browser_profile = detected_browser.profile
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         ctx = _build_profile_context(athlete, settings_data, vo2max_result, equipment)
         ctx.update(
@@ -286,6 +291,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "browser_executable": browser_executable,
                 "browser_user_data_dir": browser_user_data_dir,
                 "browser_profile": browser_profile,
+                "browser_append_backend": browser_append_backend,
             }
         )
         return templates.TemplateResponse(request, "profile.html", ctx)

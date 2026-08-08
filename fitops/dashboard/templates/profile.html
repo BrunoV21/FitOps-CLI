@@ -38,6 +38,21 @@
     <label class="form-group"><span class="form-label">Executable (optional)</span><input name="executable" class="input-ctrl" value="{{ browser_executable }}"></label>
     <div><button class="btn btn-primary" type="submit">Save Browser</button></div>
   </form>
+  <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+    <p class="panel-label">Append to a Strava description</p>
+    {% if browser_append_backend in ['brave-headless', 'playwright'] %}
+    <p class="panel-sub" style="margin-bottom:12px;">Uses the dedicated profile in the background. Native Brave runs headlessly while FitOps attaches through its local debugging interface; your everyday Brave can remain open.</p>
+    {% else %}
+    <p class="panel-sub" style="margin-bottom:12px;">Uses the current logged-in Brave session on macOS. First enable View → Developer → Allow JavaScript from Apple Events in Brave.</p>
+    {% endif %}
+    <form id="append-description-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+      <label class="form-group"><span class="form-label">Strava activity ID</span><input id="append-activity-id" type="number" min="1" class="input-ctrl" required></label>
+      <label class="form-group"><span class="form-label">Text to append</span><textarea id="append-description-text" class="input-ctrl" rows="2" required></textarea></label>
+      <label style="display:flex;align-items:center;gap:7px;padding-bottom:9px;font-size:12px;color:var(--text-muted);"><input id="append-dry-run" type="checkbox"> Dry run</label>
+      <button id="append-description-btn" class="btn btn-primary" type="submit">Append Text</button>
+    </form>
+    <p id="append-description-message" class="panel-sub" style="margin-top:10px;display:none;"></p>
+  </div>
 </div>
 
 <!-- Performance summary card -->
@@ -645,5 +660,37 @@ async function stampAll() {
     btn.disabled = false;
   }
 }
+
+document.getElementById('append-description-form').addEventListener('submit', async function (event) {
+  event.preventDefault();
+  const btn = document.getElementById('append-description-btn');
+  const msg = document.getElementById('append-description-message');
+  const activityId = Number(document.getElementById('append-activity-id').value);
+  const text = document.getElementById('append-description-text').value;
+  const dryRun = document.getElementById('append-dry-run').checked;
+  btn.disabled = true;
+  btn.textContent = dryRun ? 'Checking…' : 'Appending…';
+  msg.style.display = 'none';
+  try {
+    const response = await fetch('/api/browser/append-description', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({activity_id: activityId, text, dry_run: dryRun, headless: true})
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || 'Automation failed');
+    msg.textContent = dryRun
+      ? 'Dry run passed; the description was not changed.'
+      : `Text appended to Strava activity ${activityId}.`;
+    msg.style.color = 'var(--accent-primary)';
+  } catch (error) {
+    msg.textContent = 'Error: ' + error.message;
+    msg.style.color = 'var(--accent-red)';
+  } finally {
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Append Text';
+  }
+});
 </script>
 {% endblock %}

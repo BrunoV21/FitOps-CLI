@@ -278,6 +278,32 @@ fitops activities get ID                            Full activity detail (JSON)
 fitops activities streams ID                        Time-series stream data (JSON)
 ```
 
+### `fitops browser` — Strava Browser Automation
+
+Append text to an activity description using either the current logged-in Brave session on macOS or a dedicated, genuinely headless Brave profile:
+
+```bash
+fitops browser append-description STRAVA_ID "Written from FitOps" --dry-run
+fitops browser append-description STRAVA_ID "Written from FitOps" --json
+```
+
+For unattended jobs, configure a separate browser profile and let FitOps verify and retain its Strava login:
+
+```bash
+mkdir -p "$HOME/.fitops/brave-automation"
+fitops browser configure \
+  --type brave \
+  --user-data-dir "$HOME/.fitops/brave-automation" \
+  --profile Default
+
+fitops browser login-headless
+
+fitops browser append-description STRAVA_ID "Written from FitOps" \
+  --headless --json
+```
+
+Complete the one-time login in the dedicated Brave window. FitOps verifies the session and retains it inside that profile's encrypted cookie store, then closes the window. For later jobs, it launches Brave itself in native headless mode and attaches Playwright through a local debugging connection; this preserves Brave's normal macOS credential handling and your everyday Brave can remain open. Cookie values are never printed or exported to a separate file. See the [complete browser command documentation](docs/official/commands/browser.md).
+
 ### `fitops athlete` — Athlete Profile
 
 ```
