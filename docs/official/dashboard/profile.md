@@ -6,6 +6,8 @@ The same panel can append text to any Strava activity you own. Enter the Strava 
 
 If Browser publishing is configured with a dedicated, non-default Brave user-data directory, the panel automatically switches to native headless Brave and attaches Playwright through a temporary local debugging connection. The automation profile must be closed while a request runs, but your everyday Brave instance can remain open. The panel identifies which mode will be used.
 
+The **Upload an activity to Strava** form accepts a GPX or TCX file, title, description, sport type, and optional gear. Gear may be the numeric value used by Strava or its exact displayed name; the changing distance suffix is optional. The page waits while Strava processes the file and links to the new activity when it succeeds. Duplicate files and unmatched sport or gear values are shown as errors without claiming that an activity was created.
+
 The Profile page (`/profile`) is where you configure your physiology. Set your threshold values once, and every analytics calculation across the dashboard and CLI will use them automatically.
 
 On mobile screens, the paired dashboard panels on this page collapse into single-column rows so Identity, Physiological Estimates, HR Zones, Pace Zones, Race Predictions, and Equipment each get their own full-width block.

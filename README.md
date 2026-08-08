@@ -300,9 +300,16 @@ fitops browser login-headless
 
 fitops browser append-description STRAVA_ID "Written from FitOps" \
   --headless --json
+
+fitops browser upload-activity "$HOME/Downloads/morning-run.tcx" \
+  --title "Morning run" \
+  --description "Uploaded from FitOps" \
+  --sport Run \
+  --gear "Adidas Adistar 4" \
+  --headless --json
 ```
 
-Complete the one-time login in the dedicated Brave window. FitOps verifies the session and retains it inside that profile's encrypted cookie store, then closes the window. For later jobs, it launches Brave itself in native headless mode and attaches Playwright through a local debugging connection; this preserves Brave's normal macOS credential handling and your everyday Brave can remain open. Cookie values are never printed or exported to a separate file. See the [complete browser command documentation](docs/official/commands/browser.md).
+Complete the one-time login in the dedicated Brave window. FitOps verifies the session and retains it inside that profile's encrypted cookie store, then closes the window. For later jobs, it launches Brave itself in native headless mode and attaches Playwright through a local debugging connection; this preserves Brave's normal macOS credential handling and your everyday Brave can remain open. Uploads return the new Strava activity ID and report duplicates before saving. Cookie values are never printed or exported to a separate file. See the [complete browser command documentation](docs/official/commands/browser.md).
 
 ### `fitops athlete` — Athlete Profile
 

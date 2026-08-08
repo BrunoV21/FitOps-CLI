@@ -106,6 +106,16 @@ def _save_button(page):
     )
 
 
+def _replace_react_mentions_field(field, value: str) -> None:
+    """Replace a react-mentions field without merging its stale markup."""
+    select_all = "Meta+A" if platform.system() == "Darwin" else "Control+A"
+    field.click()
+    field.press(select_all)
+    field.press("Backspace")
+    if value:
+        field.type(value)
+
+
 def _append_on_page(
     page,
     *,
@@ -152,11 +162,7 @@ def _append_on_page(
     # synthetic input event, which react-mentions can merge with stale markup
     # and duplicate the old description. Real keyboard replacement keeps the
     # visible textarea and its submitted hidden input in sync.
-    select_all = "Meta+A" if platform.system() == "Darwin" else "Control+A"
-    field.click()
-    field.press(select_all)
-    field.press("Backspace")
-    field.type(updated)
+    _replace_react_mentions_field(field, updated)
     _save_button(page).click()
     page.wait_for_timeout(2_000)
 

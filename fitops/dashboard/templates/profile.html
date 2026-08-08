@@ -53,6 +53,19 @@
     </form>
     <p id="append-description-message" class="panel-sub" style="margin-top:10px;display:none;"></p>
   </div>
+  <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+    <p class="panel-label">Upload an activity to Strava</p>
+    <p class="panel-sub" style="margin-bottom:12px;">Upload a GPX or TCX file through the dedicated background browser profile. Gear may be its Strava value or exact displayed name.</p>
+    <form id="upload-activity-form" enctype="multipart/form-data" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+      <label class="form-group"><span class="form-label">GPX or TCX file</span><input id="upload-activity-file" type="file" accept=".gpx,.tcx" class="input-ctrl" required></label>
+      <label class="form-group"><span class="form-label">Title</span><input id="upload-activity-title" class="input-ctrl" required></label>
+      <label class="form-group"><span class="form-label">Sport type</span><input id="upload-activity-sport" class="input-ctrl" list="strava-sport-types" placeholder="Run" required><datalist id="strava-sport-types"><option value="Run"><option value="Ride"><option value="Walk"><option value="Swim"><option value="Hike"><option value="TrailRun"><option value="MountainBikeRide"><option value="GravelRide"></datalist></label>
+      <label class="form-group"><span class="form-label">Gear (optional)</span><input id="upload-activity-gear" class="input-ctrl" placeholder="Gear value or exact name"></label>
+      <label class="form-group"><span class="form-label">Description</span><textarea id="upload-activity-description" class="input-ctrl" rows="2"></textarea></label>
+      <button id="upload-activity-btn" class="btn btn-primary" type="submit">Upload Activity</button>
+    </form>
+    <p id="upload-activity-message" class="panel-sub" style="margin-top:10px;display:none;"></p>
+  </div>
 </div>
 
 <!-- Performance summary card -->
@@ -690,6 +703,39 @@ document.getElementById('append-description-form').addEventListener('submit', as
     msg.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Append Text';
+  }
+});
+
+document.getElementById('upload-activity-form').addEventListener('submit', async function (event) {
+  event.preventDefault();
+  const btn = document.getElementById('upload-activity-btn');
+  const msg = document.getElementById('upload-activity-message');
+  const form = new FormData();
+  form.append('file', document.getElementById('upload-activity-file').files[0]);
+  form.append('title', document.getElementById('upload-activity-title').value);
+  form.append('description', document.getElementById('upload-activity-description').value);
+  form.append('sport_type', document.getElementById('upload-activity-sport').value);
+  form.append('gear', document.getElementById('upload-activity-gear').value);
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  msg.style.display = 'none';
+  try {
+    const response = await fetch('/api/browser/upload-activity', {
+      method: 'POST',
+      body: form
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || 'Upload failed');
+    const id = result.activity_upload.strava_activity_id;
+    msg.innerHTML = `Uploaded Strava activity <a href="https://www.strava.com/activities/${id}" target="_blank" rel="noopener">${id}</a>.`;
+    msg.style.color = 'var(--accent-primary)';
+  } catch (error) {
+    msg.textContent = 'Error: ' + error.message;
+    msg.style.color = 'var(--accent-red)';
+  } finally {
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Upload Activity';
   }
 });
 </script>

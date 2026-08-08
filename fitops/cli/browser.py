@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import typer
 
@@ -117,6 +118,74 @@ def append_description(
         )
     else:
         typer.echo(f"Appended text to Strava activity {activity_id}.")
+
+
+@app.command("upload-activity")
+def upload_activity(
+    file_path: Path = typer.Argument(..., help="GPX or TCX file to upload."),
+    title: str = typer.Option(..., "--title", help="Strava activity title."),
+    description: str = typer.Option(
+        "", "--description", help="Strava activity description."
+    ),
+    sport_type: str = typer.Option(
+        ..., "--sport", help="Strava sport value or displayed name, such as Run."
+    ),
+    gear: str | None = typer.Option(
+        None,
+        "--gear",
+        help="Optional Strava gear value or exact displayed gear name.",
+    ),
+    headless: bool = typer.Option(
+        True,
+        "--headless/--show-browser",
+        help="Run the supported automation backend without a visible window.",
+    ),
+    backend: str = typer.Option(
+        "auto",
+        "--backend",
+        help="auto, brave-headless, or playwright.",
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Upload a GPX/TCX file to Strava through a logged-in browser profile."""
+    from fitops.browser.upload import upload_activity_file
+
+    filters = {
+        "file_name": file_path.name,
+        "sport_type": sport_type,
+        "gear": gear,
+        "headless": headless,
+        "backend": backend,
+    }
+    try:
+        result = upload_activity_file(
+            file_path,
+            title=title,
+            description=description,
+            sport_type=sport_type,
+            gear=gear,
+            headless=headless,
+            backend=backend,
+        )
+    except BrowserPublicationError as exc:
+        payload = {
+            "_meta": make_meta(total_count=0, filters_applied=filters),
+            "error": {"code": exc.code, "message": str(exc)},
+        }
+        if json_output:
+            typer.echo(json.dumps(payload, indent=2), err=True)
+        else:
+            typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    payload = {
+        "_meta": make_meta(total_count=1, filters_applied=filters),
+        "activity_upload": result.to_dict(),
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2))
+    else:
+        typer.echo(f"Uploaded Strava activity {result.strava_activity_id}.")
 
 
 @app.command("configure")
