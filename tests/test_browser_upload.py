@@ -18,6 +18,7 @@ from fitops.browser.upload import (
     _wait_for_upload_editor,
     duplicate_upload_message,
     match_upload_option,
+    upload_activity_bytes,
     upload_activity_file,
 )
 from fitops.utils.exceptions import BrowserPublicationError
@@ -98,6 +99,31 @@ def test_upload_input_validation_requires_supported_existing_file(tmp_path):
     with pytest.raises(BrowserPublicationError) as raised:
         _validate_upload_inputs(tmp_path / "missing.gpx", "Morning run", "Run")
     assert raised.value.code == "upload_file_not_found"
+
+
+def test_upload_bytes_uses_playwright_payload_without_writing_file(monkeypatch):
+    expected = _upload_result()
+    upload_source = MagicMock(return_value=expected)
+    monkeypatch.setattr("fitops.browser.upload._upload_activity_source", upload_source)
+    data = b"<TrainingCenterDatabase />"
+
+    result = upload_activity_bytes(
+        data,
+        "../run.tcx",
+        title="Outdoor run",
+        description="FitOps stamp",
+        sport_type="Run",
+    )
+
+    assert result is expected
+    source = upload_source.call_args.args[0]
+    assert source.name == "run.tcx"
+    assert source.file_format == "tcx"
+    assert source.playwright_payload == {
+        "name": "run.tcx",
+        "mimeType": "application/vnd.garmin.tcx+xml",
+        "buffer": data,
+    }
 
 
 def test_custom_brave_profile_routes_upload_to_native_headless(monkeypatch, tmp_path):

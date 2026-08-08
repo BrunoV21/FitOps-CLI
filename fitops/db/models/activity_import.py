@@ -9,7 +9,7 @@ from fitops.db.base import Base
 
 
 class ActivityImport(Base):
-    """Provenance and retained source file for a locally imported activity."""
+    """Provenance metadata for a locally imported activity."""
 
     __tablename__ = "activity_imports"
 
@@ -18,7 +18,9 @@ class ActivityImport(Base):
     athlete_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     file_format: Mapped[str] = mapped_column(Text, nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
-    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    # Legacy rows may point at a source file retained by older FitOps builds.
+    # New imports use an empty value because upload happens during import.
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
     sha256: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     imported_at: Mapped[datetime] = mapped_column(

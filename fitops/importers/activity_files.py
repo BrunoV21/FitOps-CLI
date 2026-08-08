@@ -3,8 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
-import tempfile
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -29,6 +28,9 @@ from fitops.db.session import get_async_session
 
 MAX_ACTIVITY_FILE_BYTES = 25 * 1024 * 1024
 RUN_TYPES = {"Run", "TrailRun", "VirtualRun", "Walk", "Hike"}
+_FILENAME_DATE_PREFIX_RE = re.compile(
+    r"^(?:(?:19|20)\d{2}(?:[-_. ]?\d{2}){2})(?=$|[A-Za-z _.-])"
+)
 
 
 class ActivityFileError(ValueError):
@@ -146,7 +148,9 @@ def _smoothed_grade(
     distance: list[float], altitude: list[float | None], *, radius: int = 5
 ) -> list[float] | None:
     """Derive a stable grade percentage stream from recorded elevation."""
-    if len(distance) != len(altitude) or not any(value is not None for value in altitude):
+    if len(distance) != len(altitude) or not any(
+        value is not None for value in altitude
+    ):
         return None
     result: list[float] = []
     last_altitude = next((float(value) for value in altitude if value is not None), 0.0)
@@ -180,6 +184,34 @@ def _default_activity_name(sport_type: str) -> str:
         "Swim": "Outdoor swim",
     }
     return labels.get(sport_type, f"Outdoor {sport_type.lower()}")
+
+
+def _sport_from_label(label: str) -> str | None:
+    lowered = label.lower()
+    keywords = (
+        (("trail",), "TrailRun"),
+        (("hike", "hiking"), "Hike"),
+        (("walk", "walking"), "Walk"),
+        (("ride", "bike", "biking", "cycle", "cycling"), "Ride"),
+        (("run", "running", "jog"), "Run"),
+        (("swim", "swimming"), "Swim"),
+    )
+    for words, sport in keywords:
+        if any(word in lowered for word in words):
+            return sport
+    return None
+
+
+def suggest_activity_from_filename(filename: str) -> dict[str, str | None]:
+    """Suggest a human title and Strava sport using only a selected filename."""
+    stem = Path(filename).stem.strip()
+    stem = _FILENAME_DATE_PREFIX_RE.sub("", stem).strip(" ._-")
+    title = re.sub(r"[._]+", " ", stem)
+    title = re.sub(r"\s+", " ", title).strip()
+    return {
+        "name": title or None,
+        "sport_type": _sport_from_label(title) or "auto",
+    }
 
 
 def _extension_value(element: ET.Element, names: set[str]) -> float | None:
@@ -230,17 +262,9 @@ def _infer_sport(
         if value:
             return value, "file_metadata", "high"
 
-    lowered = label.lower()
-    keywords = (
-        (("trail",), "TrailRun"),
-        (("hike", "hiking"), "Hike"),
-        (("walk", "walking"), "Walk"),
-        (("ride", "bike", "biking", "cycle", "cycling"), "Ride"),
-        (("run", "running", "jog"), "Run"),
-    )
-    for words, sport in keywords:
-        if any(word in lowered for word in words):
-            return sport, "name_keyword", "high"
+    inferred_from_label = _sport_from_label(label)
+    if inferred_from_label:
+        return inferred_from_label, "name_keyword", "high"
 
     moving = [speed for speed in speeds if speed > 0.3]
     if moving:
@@ -734,9 +758,7 @@ async def _enrich_matching_activity(
     for stream_type_name, values in normalized.streams.items():
         if stream_type_name not in existing_stream_types:
             session.add(
-                ActivityStream.from_strava_stream(
-                    activity.id, stream_type_name, values
-                )
+                ActivityStream.from_strava_stream(activity.id, stream_type_name, values)
             )
     activity.streams_fetched = bool(existing_stream_types or normalized.streams)
 
@@ -857,155 +879,126 @@ async def import_activity_bytes(
         return await _attach_import_weather(existing_result)
 
     extension = Path(filename).suffix.lower()
-    relative_path = Path("activity-files") / f"{digest}{extension}"
-    destination = settings.fitops_dir / relative_path
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    created_file = not destination.exists()
-    temp_path: Path | None = None
-    if created_file:
-        handle = tempfile.NamedTemporaryFile(
-            prefix=f".{digest[:12]}-",
-            suffix=".tmp",
-            dir=destination.parent,
-            delete=False,
-        )
-        temp_path = Path(handle.name)
-        try:
-            with handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            temp_path.replace(destination)
-            temp_path = None
-        finally:
-            if temp_path is not None:
-                temp_path.unlink(missing_ok=True)
-
-    try:
-        async with get_async_session() as session:
-            athlete_settings = AthleteSettings()
-            if matched_activity_id is not None:
-                activity = await session.get(Activity, matched_activity_id)
-                if activity is None:
-                    raise ActivityFileError(
-                        "The matching activity disappeared during import.",
-                        code="activity_not_found",
-                    )
-                await _enrich_matching_activity(
-                    session,
-                    activity,
-                    normalized,
-                    description=description,
+    async with get_async_session() as session:
+        athlete_settings = AthleteSettings()
+        if matched_activity_id is not None:
+            activity = await session.get(Activity, matched_activity_id)
+            if activity is None:
+                raise ActivityFileError(
+                    "The matching activity disappeared during import.",
+                    code="activity_not_found",
                 )
-            else:
-                activity = Activity(
-                    strava_id=None,
-                    athlete_id=local_athlete_id,
-                    origin=extension.lstrip("."),
-                    name=normalized.name,
-                    description=(description or "").strip() or None,
-                    sport_type=normalized.sport_type,
-                    start_date=normalized.start_date,
-                    start_date_local=normalized.start_date_local,
-                    distance_m=normalized.distance_m,
-                    moving_time_s=normalized.moving_time_s,
-                    elapsed_time_s=normalized.elapsed_time_s,
-                    total_elevation_gain_m=normalized.total_elevation_gain_m,
-                    average_speed_ms=normalized.average_speed_ms,
-                    max_speed_ms=normalized.max_speed_ms,
-                    average_heartrate=normalized.average_heartrate,
-                    max_heartrate=normalized.max_heartrate,
-                    average_cadence=normalized.average_cadence,
-                    average_watts=normalized.average_watts,
-                    max_watts=normalized.max_watts,
-                    calories=normalized.calories,
-                    device_name=normalized.device_name,
-                    start_latlng=json.dumps(normalized.start_latlng)
-                    if normalized.start_latlng
-                    else None,
-                    end_latlng=json.dumps(normalized.end_latlng)
-                    if normalized.end_latlng
-                    else None,
-                    detail_fetched=True,
-                    streams_fetched=True,
-                    laps_fetched=bool(normalized.laps),
-                )
-                session.add(activity)
-                await session.flush()
-
-                for stream_type_name, values in normalized.streams.items():
-                    session.add(
-                        ActivityStream.from_strava_stream(
-                            activity.id, stream_type_name, values
-                        )
-                    )
-                for lap in normalized.laps:
-                    session.add(
-                        ActivityLap(
-                            activity_id=activity.id,
-                            lap_index=lap.index,
-                            name=lap.name,
-                            elapsed_time_s=lap.elapsed_time_s,
-                            moving_time_s=lap.moving_time_s,
-                            distance_m=lap.distance_m,
-                            average_speed_ms=lap.average_speed_ms,
-                            average_heartrate=lap.average_heartrate,
-                            max_heartrate=lap.max_heartrate,
-                            average_watts=lap.average_watts,
-                        )
-                    )
-
-            activity.aerobic_score = compute_aerobic_score(activity, athlete_settings)
-            activity.anaerobic_score = compute_anaerobic_score(
-                activity, athlete_settings
+            await _enrich_matching_activity(
+                session,
+                activity,
+                normalized,
+                description=description,
             )
-            activity.training_stress_score = _estimate_tss(activity)
-            import_record = ActivityImport(
-                activity_id=activity.id,
+        else:
+            activity = Activity(
+                strava_id=None,
                 athlete_id=local_athlete_id,
-                file_format=extension.lstrip("."),
-                original_filename=filename,
-                relative_path=relative_path.as_posix(),
-                sha256=digest,
-                size_bytes=len(data),
+                origin=extension.lstrip("."),
+                name=normalized.name,
+                description=(description or "").strip() or None,
+                sport_type=normalized.sport_type,
+                start_date=normalized.start_date,
+                start_date_local=normalized.start_date_local,
+                distance_m=normalized.distance_m,
+                moving_time_s=normalized.moving_time_s,
+                elapsed_time_s=normalized.elapsed_time_s,
+                total_elevation_gain_m=normalized.total_elevation_gain_m,
+                average_speed_ms=normalized.average_speed_ms,
+                max_speed_ms=normalized.max_speed_ms,
+                average_heartrate=normalized.average_heartrate,
+                max_heartrate=normalized.max_heartrate,
+                average_cadence=normalized.average_cadence,
+                average_watts=normalized.average_watts,
+                max_watts=normalized.max_watts,
+                calories=normalized.calories,
+                device_name=normalized.device_name,
+                start_latlng=json.dumps(normalized.start_latlng)
+                if normalized.start_latlng
+                else None,
+                end_latlng=json.dumps(normalized.end_latlng)
+                if normalized.end_latlng
+                else None,
+                detail_fetched=True,
+                streams_fetched=True,
+                laps_fetched=bool(normalized.laps),
             )
-            session.add(import_record)
+            session.add(activity)
             await session.flush()
 
-            try:
-                from fitops.analytics.vo2max import estimate_vo2max_from_stream_dict
+            for stream_type_name, values in normalized.streams.items():
+                session.add(
+                    ActivityStream.from_strava_stream(
+                        activity.id, stream_type_name, values
+                    )
+                )
+            for lap in normalized.laps:
+                session.add(
+                    ActivityLap(
+                        activity_id=activity.id,
+                        lap_index=lap.index,
+                        name=lap.name,
+                        elapsed_time_s=lap.elapsed_time_s,
+                        moving_time_s=lap.moving_time_s,
+                        distance_m=lap.distance_m,
+                        average_speed_ms=lap.average_speed_ms,
+                        average_heartrate=lap.average_heartrate,
+                        max_heartrate=lap.max_heartrate,
+                        average_watts=lap.average_watts,
+                    )
+                )
 
-                estimate = estimate_vo2max_from_stream_dict(
+        activity.aerobic_score = compute_aerobic_score(activity, athlete_settings)
+        activity.anaerobic_score = compute_anaerobic_score(activity, athlete_settings)
+        activity.training_stress_score = _estimate_tss(activity)
+        import_record = ActivityImport(
+            activity_id=activity.id,
+            athlete_id=local_athlete_id,
+            file_format=extension.lstrip("."),
+            original_filename=filename,
+            # Kept for compatibility with databases created before source
+            # files became request-scoped. New imports retain provenance,
+            # not a second copy of the GPX/TCX payload.
+            relative_path="",
+            sha256=digest,
+            size_bytes=len(data),
+        )
+        session.add(import_record)
+        await session.flush()
+
+        try:
+            from fitops.analytics.vo2max import estimate_vo2max_from_stream_dict
+
+            estimate = estimate_vo2max_from_stream_dict(
+                activity,
+                normalized.streams,
+                athlete_settings.lthr,
+                athlete_settings.max_hr,
+            )
+            if estimate is not None:
+                activity.vo2max_estimate = estimate.estimate
+        except Exception:
+            pass
+
+        try:
+            if athlete_settings.weight_kg and activity.sport_type in RUN_TYPES:
+                from fitops.analytics.running_power import (
+                    persist_power_for_activity,
+                )
+
+                await persist_power_for_activity(
+                    session,
+                    activity.id,
                     activity,
                     normalized.streams,
-                    athlete_settings.lthr,
-                    athlete_settings.max_hr,
+                    athlete_settings.weight_kg,
                 )
-                if estimate is not None:
-                    activity.vo2max_estimate = estimate.estimate
-            except Exception:
-                pass
-
-            try:
-                if athlete_settings.weight_kg and activity.sport_type in RUN_TYPES:
-                    from fitops.analytics.running_power import (
-                        persist_power_for_activity,
-                    )
-
-                    await persist_power_for_activity(
-                        session,
-                        activity.id,
-                        activity,
-                        normalized.streams,
-                        athlete_settings.weight_kg,
-                    )
-            except Exception:
-                pass
-    except Exception:
-        if created_file:
-            destination.unlink(missing_ok=True)
-        raise
-
+        except Exception:
+            pass
     try:
         from fitops.analytics.training_load import persist_training_load_snapshot
 

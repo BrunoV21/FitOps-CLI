@@ -508,7 +508,7 @@ async def auto_stamp_new_activities(strava_ids: list[int]) -> None:
 
 
 async def stamp_activity(
-    strava_client: StravaClient,
+    strava_client: StravaClient | None,
     session: AsyncSession,
     activity: Activity,
     *,
@@ -517,8 +517,9 @@ async def stamp_activity(
     fetch_fresh_desc: bool = False,
     training_load_cache: dict[date, dict | None] | None = None,
     skip_existing: bool = False,
+    local_only: bool = False,
 ) -> bool:
-    """Compose stamp, push to Strava, update stamped_at in DB."""
+    """Compose and persist a stamp, optionally pushing it to Strava."""
     from sqlalchemy import select
 
     from fitops.db.models.activity import Activity as ActivityModel
@@ -529,7 +530,7 @@ async def stamp_activity(
     from fitops.db.models.workout_segment import WorkoutSegment
 
     base_desc = activity.description
-    if fetch_fresh_desc:
+    if fetch_fresh_desc and strava_client is not None and activity.strava_id is not None:
         try:
             fresh = await strava_client.get_activity(activity.strava_id)
             base_desc = fresh.get("description") or base_desc
@@ -753,7 +754,10 @@ async def stamp_activity(
     )
     new_desc = apply_stamp(base_desc, new_stamp)
 
-    await strava_client.update_activity(activity.strava_id, new_desc)
+    if not local_only:
+        if strava_client is None or activity.strava_id is None:
+            raise ValueError("A Strava activity and client are required for remote stamping.")
+        await strava_client.update_activity(activity.strava_id, new_desc)
 
     result = await session.execute(
         select(ActivityModel).where(ActivityModel.id == activity.id)

@@ -1,145 +1,59 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
 
-from fitops.analytics.stamp import apply_stamp, compose_stamp
-from fitops.browser.config import ensure_profile_available, resolve_browser_profile
-from fitops.config.settings import get_settings
+from fitops.analytics.stamp import stamp_activity
+from fitops.browser.description import append_activity_description
+from fitops.browser.upload import (
+    upload_activity_bytes as upload_activity_data,
+)
+from fitops.browser.upload import (
+    upload_activity_file,
+)
 from fitops.db.models.activity import Activity
-from fitops.db.models.activity_import import ActivityImport
 from fitops.db.models.activity_publication import ActivityPublication
 from fitops.db.session import get_async_session
 from fitops.utils.exceptions import BrowserPublicationError
 
-_ACTIVITY_URL_RE = re.compile(r"/activities/(\d+)")
+_STAMP_ANCHOR = "📊 FitOps Analytics"
 
 
-def _fill_first(page, selectors: list[str], value: str) -> None:
-    for selector in selectors:
-        locator = page.locator(selector).first
-        if locator.count():
-            locator.fill(value)
-            return
-    raise BrowserPublicationError(
-        "Strava's page no longer exposes an expected form field.",
-        code="strava_page_changed",
-    )
-
-
-def _click_first(page, labels: list[str]) -> None:
-    for label in labels:
-        button = page.get_by_role("button", name=re.compile(label, re.I)).first
-        if button.count():
-            button.click()
-            return
-    raise BrowserPublicationError(
-        "Strava's page no longer exposes an expected publish button.",
-        code="strava_page_changed",
-    )
-
-
-def _run_browser(
-    *,
-    source_path: Path | None,
-    title: str,
-    description: str,
-    existing_strava_id: int | None,
-) -> int:
-    profile = resolve_browser_profile()
-    ensure_profile_available(profile)
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as exc:
+def _stamp_from_description(description: str) -> str:
+    """Return only the FitOps footer for browser-based description sync."""
+    position = description.find(_STAMP_ANCHOR)
+    if position < 0:
         raise BrowserPublicationError(
-            "Browser publishing requires Playwright. Reinstall FitOps dependencies.",
-            code="playwright_missing",
+            "FitOps could not build the activity stamp.",
+            code="activity_stamp_missing",
             status_code=500,
-        ) from exc
-
-    with sync_playwright() as playwright:
-        context = playwright.chromium.launch_persistent_context(
-            str(profile.user_data_dir),
-            executable_path=str(profile.executable),
-            headless=False,
-            args=[f"--profile-directory={profile.profile}"],
         )
-        try:
-            page = context.pages[0] if context.pages else context.new_page()
-            if existing_strava_id is not None:
-                page.goto(
-                    f"https://www.strava.com/activities/{existing_strava_id}/edit",
-                    wait_until="domcontentloaded",
-                )
-            else:
-                if source_path is None:
-                    raise BrowserPublicationError(
-                        "The original GPX/TCX file is missing.",
-                        code="source_file_missing",
-                    )
-                page.goto(
-                    "https://www.strava.com/upload/select",
-                    wait_until="domcontentloaded",
-                )
-                upload = page.locator("input[type=file]").first
-                if not upload.count():
-                    raise BrowserPublicationError(
-                        "Strava's upload control was not found. Check that the selected profile is logged in.",
-                        code="strava_login_required",
-                        status_code=401,
-                    )
-                upload.set_input_files(str(source_path))
+    return description[position:].strip()
 
-            if "/login" in page.url or "/session" in page.url:
-                raise BrowserPublicationError(
-                    "The selected browser profile is not logged in to Strava.",
-                    code="strava_login_required",
-                    status_code=401,
-                )
-            page.locator(
-                "input[name=name], input[name=title], input[aria-label*=Title i]"
-            ).first.wait_for(state="visible", timeout=60_000)
 
-            _fill_first(
-                page,
-                ["input[name=name]", "input[name=title]", "input[aria-label*=Title i]"],
-                title,
-            )
-            _fill_first(
-                page,
-                [
-                    "textarea[name=description]",
-                    "textarea[aria-label*=Description i]",
-                    "textarea",
-                ],
-                description,
-            )
-            _click_first(page, ["save", "publish", "create"])
-            page.wait_for_load_state("domcontentloaded")
-            match = _ACTIVITY_URL_RE.search(page.url)
-            if existing_strava_id is not None:
-                return existing_strava_id
-            if not match:
-                page.wait_for_timeout(2000)
-                match = _ACTIVITY_URL_RE.search(page.url)
-            if not match:
-                raise BrowserPublicationError(
-                    "Strava did not confirm the uploaded activity.",
-                    code="publication_not_confirmed",
-                )
-            return int(match.group(1))
-        finally:
-            context.close()
+async def _mark_publication_failed(
+    publication_id: int, exc: BrowserPublicationError
+) -> None:
+    async with get_async_session() as session:
+        row = await session.get(ActivityPublication, publication_id)
+        if row is not None:
+            row.status = "failed"
+            row.error_code = exc.code
+            row.error_message = str(exc)
+            row.updated_at = datetime.now(UTC)
 
 
 async def publish_activity(
-    activity_id: int, *, strava_id: int | None = None
+    activity_id: int,
+    *,
+    strava_id: int | None = None,
+    source_path: str | Path | None = None,
+    source_bytes: tuple[bytes, str] | None = None,
 ) -> ActivityPublication:
-    """Upload a local file or edit an existing Strava activity using a real profile."""
+    """Upload during import or sync a local activity to an existing Strava ID."""
     async with get_async_session() as session:
         activity = await session.get(Activity, activity_id)
         if activity is None:
@@ -148,6 +62,7 @@ async def publish_activity(
                 code="activity_not_found",
                 status_code=404,
             )
+
         target_strava_id = strava_id or activity.strava_id
         if target_strava_id is not None and target_strava_id <= 0:
             raise BrowserPublicationError(
@@ -169,39 +84,56 @@ async def publish_activity(
                     code="strava_activity_already_linked",
                     status_code=409,
                 )
-        import_row = (
-            await session.execute(
-                select(ActivityImport).where(ActivityImport.activity_id == activity.id)
+        elif source_path is None and source_bytes is None:
+            raise BrowserPublicationError(
+                "FitOps does not retain imported files. Post during import, or provide an existing Strava activity ID to sync.",
+                code="source_file_not_retained",
+                status_code=409,
             )
-        ).scalar_one_or_none()
-        source_path = None
-        if target_strava_id is None:
-            if import_row is None:
-                raise BrowserPublicationError(
-                    "Only imported activities retain an original file for upload.",
-                    code="source_file_missing",
-                )
-            source_path = get_settings().fitops_dir / import_row.relative_path
-        description = apply_stamp(activity.description, compose_stamp(activity))
-        title = activity.name
+
+        await stamp_activity(None, session, activity, local_only=True)
+        description = activity.description or ""
+        stamp = _stamp_from_description(description)
         publication = ActivityPublication(
             activity_id=activity.id,
-            action="edit" if target_strava_id else "upload",
+            action="sync" if target_strava_id else "upload",
             status="running",
             strava_id=target_strava_id,
         )
         session.add(publication)
         await session.flush()
         publication_id = publication.id
+        title = activity.name
+        sport_type = activity.sport_type
 
     try:
-        published_id = await asyncio.to_thread(
-            _run_browser,
-            source_path=source_path,
-            title=title,
-            description=description,
-            existing_strava_id=target_strava_id,
-        )
+        if target_strava_id is not None:
+            await asyncio.to_thread(
+                append_activity_description,
+                target_strava_id,
+                stamp,
+            )
+            published_id = target_strava_id
+        else:
+            if source_bytes is not None:
+                data, filename = source_bytes
+                upload_result = await asyncio.to_thread(
+                    upload_activity_data,
+                    data,
+                    filename,
+                    title=title,
+                    description=description,
+                    sport_type=sport_type,
+                )
+            else:
+                upload_result = await asyncio.to_thread(
+                    upload_activity_file,
+                    Path(source_path),
+                    title=title,
+                    description=description,
+                    sport_type=sport_type,
+                )
+            published_id = upload_result.strava_activity_id
     except Exception as raw_exc:
         exc = (
             raw_exc
@@ -212,13 +144,7 @@ async def publish_activity(
                 status_code=502,
             )
         )
-        async with get_async_session() as session:
-            row = await session.get(ActivityPublication, publication_id)
-            if row:
-                row.status = "failed"
-                row.error_code = exc.code
-                row.error_message = str(exc)
-                row.updated_at = datetime.now(UTC)
+        await _mark_publication_failed(publication_id, exc)
         if exc is raw_exc:
             raise
         raise exc from raw_exc
@@ -237,3 +163,15 @@ async def publish_activity(
         activity.description = description
         activity.stamped_at = datetime.now(UTC)
         return row
+
+
+async def publish_activity_bytes(
+    activity_id: int,
+    data: bytes,
+    filename: str,
+) -> ActivityPublication:
+    """Upload request bytes without writing or retaining another source file."""
+    return await publish_activity(
+        activity_id,
+        source_bytes=(data, filename),
+    )

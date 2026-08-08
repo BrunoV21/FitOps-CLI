@@ -15,11 +15,15 @@ fitops activities import morning-run.tcx --json
   "_meta": {
     "tool": "fitops",
     "total_count": 1,
-    "filters_applied": {"sport": "auto", "name": null}
+    "filters_applied": {
+      "sport": "auto",
+      "name": null,
+      "post_to_strava": true
+    }
   },
   "activity": {
     "activity_id": 42,
-    "strava_activity_id": null,
+    "strava_activity_id": 1234567890,
     "origin": "tcx",
     "name": "Outdoor run",
     "sport_type": "Run",
@@ -48,11 +52,35 @@ fitops activities import morning-run.tcx --json
       "wap_factor": 1.008,
       "true_pace_s_per_km": 302.7
     }
+  },
+  "publication": {
+    "requested": true,
+    "status": "completed",
+    "strava_id": 1234567890,
+    "error": null
   }
 }
 ```
 
-Repeating the same import returns the existing local activity with `"created": false` and `"match_type": "file_hash"`. An equivalent GPX/TCX file or an activity already synced from Strava returns `"match_type": "activity_signature"`.
+Posting is enabled by default. Use `--local-only` for `"status": "not_requested"`. If posting fails, the command returns `"status": "failed"` and a structured error while preserving the imported local activity. Repeating the same import returns the existing local activity with `"created": false` and `"match_type": "file_hash"`. An equivalent GPX/TCX file or an activity already synced from Strava returns `"match_type": "activity_signature"`.
+
+---
+
+## `fitops activities stamp --local-id <ID>`
+
+```json
+{
+  "_meta": {
+    "tool": "fitops",
+    "total_count": 1,
+    "filters_applied": {"local_activity_id": 42}
+  },
+  "activity_id": 42,
+  "status": "stamped"
+}
+```
+
+The command stores the same analytics stamp used for Strava activities without contacting Strava. Repeating it without `--force` returns `"status": "already_stamped"`.
 
 ---
 

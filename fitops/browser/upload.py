@@ -46,6 +46,22 @@ class ActivityUploadResult:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class _BufferedActivityFile:
+    name: str
+    file_format: str
+    data: bytes
+
+    @property
+    def playwright_payload(self) -> dict[str, object]:
+        mime_type = (
+            "application/gpx+xml"
+            if self.file_format == "gpx"
+            else "application/vnd.garmin.tcx+xml"
+        )
+        return {"name": self.name, "mimeType": mime_type, "buffer": self.data}
+
+
 def _normalise_option_text(value: str) -> str:
     return " ".join(value.casefold().split())
 
@@ -154,7 +170,19 @@ def _upload_error_text(body_text: str) -> str | None:
     return None
 
 
-def _wait_for_upload_editor(page, source: Path, *, timeout_ms: int = 120_000) -> None:
+def _source_name(source: Path | _BufferedActivityFile) -> str:
+    return source.name
+
+
+def _source_format(source: Path | _BufferedActivityFile) -> str:
+    if isinstance(source, _BufferedActivityFile):
+        return source.file_format
+    return source.suffix.lower().lstrip(".")
+
+
+def _wait_for_upload_editor(
+    page, source: Path | _BufferedActivityFile, *, timeout_ms: int = 120_000
+) -> None:
     deadline = time.monotonic() + (timeout_ms / 1000)
     title_field = page.locator("input[name=name]").first
     sport_menu = page.locator(".drop-down-menu.sport-type").first
@@ -163,14 +191,14 @@ def _wait_for_upload_editor(page, source: Path, *, timeout_ms: int = 120_000) ->
         duplicate = duplicate_upload_message(body_text)
         if duplicate:
             raise BrowserPublicationError(
-                f"Strava reports that '{source.name}' already exists: {duplicate}",
+                f"Strava reports that '{_source_name(source)}' already exists: {duplicate}",
                 code="activity_already_exists",
                 status_code=409,
             )
         upload_error = _upload_error_text(body_text)
         if upload_error:
             raise BrowserPublicationError(
-                f"Strava rejected '{source.name}': {upload_error}",
+                f"Strava rejected '{_source_name(source)}': {upload_error}",
                 code="strava_upload_rejected",
             )
         if (
@@ -181,7 +209,7 @@ def _wait_for_upload_editor(page, source: Path, *, timeout_ms: int = 120_000) ->
             return
         page.wait_for_timeout(500)
     raise BrowserPublicationError(
-        f"Strava did not finish processing '{source.name}' within "
+        f"Strava did not finish processing '{_source_name(source)}' within "
         f"{timeout_ms // 1000} seconds.",
         code="upload_processing_timeout",
         status_code=504,
@@ -239,7 +267,7 @@ def _wait_for_activity_id(page, *, timeout_ms: int = 60_000) -> int:
 def _upload_on_page(
     page,
     *,
-    source: Path,
+    source: Path | _BufferedActivityFile,
     title: str,
     description: str,
     sport_type: str,
@@ -261,7 +289,11 @@ def _upload_on_page(
             code="strava_upload_control_not_found",
             status_code=502,
         ) from exc
-    upload.set_input_files(str(source))
+    upload.set_input_files(
+        source.playwright_payload
+        if isinstance(source, _BufferedActivityFile)
+        else str(source)
+    )
     _wait_for_upload_editor(page, source)
 
     page.locator("input[name=name]").first.fill(title.strip())
@@ -299,8 +331,8 @@ def _upload_on_page(
     return ActivityUploadResult(
         strava_activity_id=activity_id,
         activity_url=f"https://www.strava.com/activities/{activity_id}",
-        file_name=source.name,
-        file_format=source.suffix.lower().lstrip("."),
+        file_name=_source_name(source),
+        file_format=_source_format(source),
         title=title.strip(),
         sport_type=selected_sport.value,
         gear_value=selected_gear.value if selected_gear else None,
@@ -312,7 +344,7 @@ def _upload_on_page(
 def _run_native_headless_upload(
     profile,
     *,
-    source: Path,
+    source: Path | _BufferedActivityFile,
     title: str,
     description: str,
     sport_type: str,
@@ -351,8 +383,8 @@ def _run_native_headless_upload(
         _stop_native_brave(process)
 
 
-def upload_activity_file(
-    file_path: str | Path,
+def _upload_activity_source(
+    source: Path | _BufferedActivityFile,
     *,
     title: str,
     description: str = "",
@@ -361,8 +393,6 @@ def upload_activity_file(
     headless: bool = True,
     backend: str = "auto",
 ) -> ActivityUploadResult:
-    """Upload a GPX/TCX file through the configured logged-in browser profile."""
-    source = _validate_upload_inputs(file_path, title, sport_type)
     if backend not in {"auto", "brave-headless", "playwright"}:
         raise BrowserPublicationError(
             "Upload backend must be auto, brave-headless, or playwright.",
@@ -433,3 +463,76 @@ def upload_activity_file(
             code="browser_upload_failed",
             status_code=502,
         ) from exc
+
+
+def upload_activity_file(
+    file_path: str | Path,
+    *,
+    title: str,
+    description: str = "",
+    sport_type: str,
+    gear: str | None = None,
+    headless: bool = True,
+    backend: str = "auto",
+) -> ActivityUploadResult:
+    """Upload a GPX/TCX path through the configured logged-in browser profile."""
+    source = _validate_upload_inputs(file_path, title, sport_type)
+    return _upload_activity_source(
+        source,
+        title=title,
+        description=description,
+        sport_type=sport_type,
+        gear=gear,
+        headless=headless,
+        backend=backend,
+    )
+
+
+def upload_activity_bytes(
+    data: bytes,
+    filename: str,
+    *,
+    title: str,
+    description: str = "",
+    sport_type: str,
+    gear: str | None = None,
+    headless: bool = True,
+    backend: str = "auto",
+) -> ActivityUploadResult:
+    """Upload GPX/TCX bytes without writing a second source file."""
+    safe_name = Path(filename).name or "activity"
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in _SUPPORTED_SUFFIXES:
+        raise BrowserPublicationError(
+            "Activity upload requires a .gpx or .tcx file.",
+            code="upload_file_type_unsupported",
+        )
+    if len(data) > MAX_ACTIVITY_FILE_BYTES:
+        raise BrowserPublicationError(
+            f"Activity files must be no larger than "
+            f"{MAX_ACTIVITY_FILE_BYTES // (1024 * 1024)} MiB.",
+            code="upload_file_too_large",
+            status_code=413,
+        )
+    if not title.strip():
+        raise BrowserPublicationError(
+            "Activity title must not be empty.", code="upload_title_empty"
+        )
+    if not sport_type.strip():
+        raise BrowserPublicationError(
+            "Sport type must not be empty.", code="upload_sport_empty"
+        )
+    source = _BufferedActivityFile(
+        name=safe_name,
+        file_format=suffix.lstrip("."),
+        data=data,
+    )
+    return _upload_activity_source(
+        source,
+        title=title,
+        description=description,
+        sport_type=sport_type,
+        gear=gear,
+        headless=headless,
+        backend=backend,
+    )
