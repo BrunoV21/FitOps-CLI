@@ -228,6 +228,8 @@ def test_profile_page_shows_performance_card(client, monkeypatch):
     assert "Performance →" in resp.text
     assert ".profile-mobile-stack" in resp.text
     assert 'class="grid-2 profile-mobile-stack"' in resp.text
+    assert '<details class="panel profile-browser-tools"' in resp.text
+    assert '<details class="panel profile-browser-tools" open' not in resp.text
 
 
 def test_profile_page_no_load_data(client, monkeypatch):

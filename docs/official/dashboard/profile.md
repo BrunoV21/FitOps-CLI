@@ -1,5 +1,13 @@
 # Dashboard — Profile
 
+The **Browser publishing** panel is collapsed by default so publishing tools do not push your profile data down the page. Select the panel to expand it. Inside, you can choose a Brave, Chrome, or Edge user-data directory and profile. A dedicated logged-in profile powers default-on Strava posting during GPX/TCX import and ID-based stamp synchronization from local activity pages. FitOps uses the session in place and never copies cookies.
+
+The same panel can append text to any Strava activity you own. Enter the Strava activity ID and text, then select **Append Text**. Existing description text is preserved. Turn on **Dry run** to check that the activity is editable without saving anything. On macOS with Brave, first enable **View → Developer → Allow JavaScript from Apple Events** in Brave. The automation then uses the currently logged-in Brave session without copying its cookies.
+
+If Browser publishing is configured with a dedicated, non-default Brave user-data directory, the panel automatically switches to native headless Brave and attaches Playwright through a temporary local debugging connection. The automation profile must be closed while a request runs, but your everyday Brave instance can remain open. The panel identifies which mode will be used.
+
+The **Upload an activity to Strava** form accepts a GPX or TCX file, title, description, sport type, and optional gear. Gear may be the numeric value used by Strava or its exact displayed name; the changing distance suffix is optional. The page waits while Strava processes the file and links to the new activity when it succeeds. Duplicate files and unmatched sport or gear values are shown as errors without claiming that an activity was created.
+
 The Profile page (`/profile`) is where you configure your physiology. Set your threshold values once, and every analytics calculation across the dashboard and CLI will use them automatically.
 
 On mobile screens, the paired dashboard panels on this page collapse into single-column rows so Identity, Physiological Estimates, HR Zones, Pace Zones, Race Predictions, and Equipment each get their own full-width block.
@@ -53,7 +61,11 @@ Your current VO2max estimate is shown on the profile page. You can:
 
 ## Equipment
 
-If you've synced gear from Strava (bikes, shoes), it appears here with cumulative usage.
+Shoes and bikes appear here with cumulative usage from synced or locally imported activities.
+
+When the profile is offline, the Equipment panel includes an **Add gear** form. Enter a name, choose **Shoes** or **Bike**, and optionally make it primary for that category. The new item immediately becomes available when uploading an activity.
+
+When Strava is connected, the add form is not shown and the panel is labelled **Managed by Strava**. Gear from Strava sync is the source of truth in that state. The same restriction is enforced by the profile endpoint, so a connected profile cannot create local gear through a direct form request.
 
 ## Strava Activity Stamp
 
@@ -72,7 +84,7 @@ The stamp panel lets you embed FitOps analytics into your Strava activity descri
 
 Each stamp footer includes:
 
-- Aerobic and anaerobic scores
+- Aerobic and anaerobic scores when the activity has recorded average heart-rate data; both are omitted when heart rate is unavailable
 - Activity-day training load when cached: CTL, ATL, TSB, and form label
 - Power — real watts if available, otherwise estimated power with source label. When weather and streams are present, stamping upgrades estimated running power to the `true_pace` source.
 - VO2max estimate

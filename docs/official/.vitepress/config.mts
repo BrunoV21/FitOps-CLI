@@ -41,6 +41,7 @@ export default defineConfig({
           { text: 'auth', link: '/commands/auth' },
           { text: 'sync', link: '/commands/sync' },
           { text: 'activities', link: '/commands/activities' },
+          { text: 'browser', link: '/commands/browser' },
           { text: 'athlete', link: '/commands/athlete' },
           { text: 'analytics', link: '/commands/analytics' },
           { text: 'weather', link: '/commands/weather' },

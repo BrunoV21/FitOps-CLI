@@ -808,6 +808,90 @@ canvas { max-height: 400px; }
   border-left: 2px solid var(--border);
   padding-left: 10px;
 }
+.activity-stamp-text {
+  border-radius: 3px;
+  cursor: copy;
+  transition: background-color 0.12s, color 0.12s;
+}
+.activity-stamp-text:hover {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--text-primary);
+}
+.activity-stamp-text.is-copied {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  color: var(--accent-primary);
+}
+.activity-stamp-copy-msg {
+  display: block;
+  min-height: 1em;
+  margin: 3px 0 0 12px;
+  color: var(--accent-primary);
+  font-size: 10px;
+}
+.activity-strava-sync-control {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) auto;
+  align-items: end;
+  gap: 4px 6px;
+}
+.activity-strava-sync-control label {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.activity-strava-sync-control .input-ctrl { width: 100%; }
+.activity-strava-sync-control .btn { height: 100%; }
+
+.activity-import-post-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+.activity-import-post-option input { margin-top: 3px; }
+.activity-import-post-option span { display: grid; gap: 3px; }
+.activity-import-post-option strong { color: var(--text-primary); font-size: 12px; }
+.activity-import-post-option small { color: var(--text-dim); line-height: 1.45; }
+.activity-import-loading {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg-primary) 86%, transparent);
+  backdrop-filter: blur(8px);
+}
+.activity-import-loading.visible { display: grid; }
+.activity-import-loading[hidden] { display: none; }
+.activity-import-loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(440px, 100%);
+  padding: 28px;
+  border: 1px solid var(--border-hover);
+  background: var(--surface-raised);
+  text-align: center;
+}
+.activity-import-loading-card h2 { color: var(--text-primary); font-size: 16px; }
+.activity-import-loading-card p { color: var(--text-muted); line-height: 1.5; }
+.activity-import-loading-card small { color: var(--text-dim); }
+.activity-import-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: activity-import-spin 0.8s linear infinite;
+}
+@keyframes activity-import-spin { to { transform: rotate(360deg); } }
 
 /* ── Workout Detail Header ──────────────────────────────────── */
 .workout-detail-header {

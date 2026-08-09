@@ -205,7 +205,7 @@
     {% if recent_activities %}
     <div class="activity-list">
       {% for a in recent_activities %}
-      <a href="/activities/{{ a.strava_id }}" class="activity-row">
+      <a href="/activities/{{ a.activity_id }}" class="activity-row">
         <div class="activity-row-left">
           <span class="activity-row-icon">{{ sport_icon(a.sport_type) }}</span>
           <div>

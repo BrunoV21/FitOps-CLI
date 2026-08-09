@@ -17,10 +17,11 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    strava_id: Mapped[int] = mapped_column(
-        Integer, unique=True, nullable=False, index=True
+    strava_id: Mapped[int | None] = mapped_column(
+        Integer, unique=True, nullable=True, index=True
     )
     athlete_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    origin: Mapped[str] = mapped_column(Text, nullable=False, default="strava")
     name: Mapped[str] = mapped_column(Text, nullable=False)
     sport_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     workout_type: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -109,7 +110,7 @@ class Activity(Base):
     )
 
     @hybrid_property
-    def strava_activity_id(self) -> int:
+    def strava_activity_id(self) -> int | None:
         return self.strava_id
 
     @strava_activity_id.expression
@@ -154,6 +155,7 @@ class Activity(Base):
         return cls(
             strava_id=data["id"],
             athlete_id=athlete_id,
+            origin="strava",
             name=data.get("name", ""),
             sport_type=sport_type,
             workout_type=data.get("workout_type"),

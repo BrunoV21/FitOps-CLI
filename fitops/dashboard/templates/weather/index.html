@@ -73,7 +73,7 @@
         <tr>
           <td class="text-muted">{{ row.date }}</td>
           <td>
-            <a href="/activities/{{ row.strava_id }}" class="activity-link">
+            <a href="/activities/{{ row.activity_id or row.strava_id }}" class="activity-link">
               {{ row.name | truncate(32, True) }}
             </a>
           </td>

@@ -82,6 +82,14 @@ def test_compose_stamp_includes_scores_with_labels():
     assert "exceptional" in stamp
 
 
+def test_compose_stamp_omits_scores_without_recorded_heart_rate():
+    stamp = compose_stamp(_activity(average_heartrate=None, max_heartrate=None))
+
+    assert "Aer " not in stamp
+    assert "Ana " not in stamp
+    assert "VO2 52.3" in stamp
+
+
 def test_compose_stamp_includes_vo2max():
     stamp = compose_stamp(_activity())
     assert "52.3" in stamp

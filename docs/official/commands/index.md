@@ -10,7 +10,8 @@ FitOps commands are grouped by function. Each group covers a distinct part of yo
 |-------|-------------|
 | [`auth`](./auth.md) | Connect and manage your Strava account via OAuth |
 | [`sync`](./sync.md) | Pull activities and time-series streams from Strava to your local DB |
-| [`activities`](./activities.md) | Browse, filter, and inspect synced activities |
+| [`activities`](./activities.md) | Import GPX/TCX files and browse, publish, filter, or inspect activities |
+| [`browser`](./browser.md) | Configure the logged-in Brave, Chrome, or Edge profile used for Strava publishing |
 | [`athlete`](./athlete.md) | Athlete profile, cumulative stats, equipment, and Strava zones |
 | [`analytics`](./analytics.md) | Training load (CTL/ATL/TSB), VO2max, HR zones, pace zones, trends, performance, power curves |
 | [`weather`](./weather.md) | Fetch historical weather per activity, compute WAP factors, get race-day forecasts |

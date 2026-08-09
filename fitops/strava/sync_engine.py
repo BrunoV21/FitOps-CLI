@@ -75,7 +75,7 @@ class SyncEngine:
         return after_epoch, None, "incremental"
 
     async def _upsert_athlete(self) -> int:
-        """Sync athlete profile and return their strava_id."""
+        """Sync/merge the athlete profile and return the local athlete ID."""
         athlete_data = await self._client.get_authenticated_athlete()
         strava_id = athlete_data["id"]
 
@@ -85,12 +85,25 @@ class SyncEngine:
             )
             existing = result.scalar_one_or_none()
             if existing is None:
-                athlete = Athlete.from_strava_data(athlete_data)
-                session.add(athlete)
+                active = None
+                if self._settings.active_athlete_id is not None:
+                    active = await session.get(
+                        Athlete, self._settings.active_athlete_id
+                    )
+                if active is not None and active.strava_id is None:
+                    active.update_from_strava_data(athlete_data)
+                    athlete = active
+                else:
+                    athlete = Athlete.from_strava_data(athlete_data)
+                    session.add(athlete)
             else:
                 existing.update_from_strava_data(athlete_data)
+                athlete = existing
+            await session.flush()
+            local_id = athlete.id
 
-        return strava_id
+        self._settings.save_active_athlete_id(local_id)
+        return local_id
 
     async def _sync_activities_paginated(
         self,
@@ -160,7 +173,7 @@ class SyncEngine:
 
         async with get_async_session() as session:
             athlete_result = await session.execute(
-                select(Athlete).where(Athlete.strava_id == athlete_id)
+                select(Athlete).where(Athlete.id == athlete_id)
             )
             athlete = athlete_result.scalar_one_or_none()
             if athlete is None or not athlete.stamp_on_sync:

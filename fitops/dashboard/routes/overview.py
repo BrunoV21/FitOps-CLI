@@ -62,6 +62,7 @@ def _pace_per_km(speed_ms: float | None, sport_type: str) -> str:
 
 def _format_activity(a) -> dict:
     return {
+        "activity_id": a.id,
         "strava_id": a.strava_id,
         "name": a.name,
         "sport_type": a.sport_type,
@@ -214,7 +215,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/", response_class=HTMLResponse)
     async def overview(request: Request, period: str = "week", view: str = "total"):
         settings = get_settings()
-        if not settings.is_authenticated:
+        if not settings.is_authenticated and not settings.athlete_id:
             return RedirectResponse("/setup")
 
         if period not in _PERIOD_LABELS:
@@ -243,9 +244,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 load_tasks["trends"] = get_trends_data(
                     athlete_id, days=90, sport_types=sport_types or None
                 )
-                load_tasks["today_weather"] = _get_today_weather_with_budget(
-                    athlete_id
-                )
+                load_tasks["today_weather"] = _get_today_weather_with_budget(athlete_id)
 
         loaded = {}
         if load_tasks:

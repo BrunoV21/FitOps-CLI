@@ -1515,7 +1515,7 @@ function renderActivityHeatmap(containerId, data, period, tooltipId, detailId) {
       const rows = allActivities.map(a => {
         const dist = a.distance_km > 0 ? `${a.distance_km} km` : "—";
         const nameCell = a.strava_id
-          ? `<a href="/activities/${a.strava_id}" style="color:inherit;text-decoration:none;border-bottom:1px solid #333" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='inherit'">${a.name}</a>`
+          ? `<a href="/activities/${a.activity_id || a.strava_id}" style="color:inherit;text-decoration:none;border-bottom:1px solid #333" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='inherit'">${a.name}</a>`
           : a.name;
         return `<tr>
           <td style="padding:3px 12px 3px 0;color:var(--text-dim);white-space:nowrap">${a.date}</td>

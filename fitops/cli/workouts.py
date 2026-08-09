@@ -735,8 +735,8 @@ def compliance(
                 from fitops.analytics.weather_pace import compute_true_pace_stream
                 from fitops.dashboard.queries.weather import get_weather_for_activities
 
-                _weather_map = await get_weather_for_activities([activity.strava_id])
-                _weather_obj = _weather_map.get(activity.strava_id)
+                _weather_map = await get_weather_for_activities([activity.id])
+                _weather_obj = _weather_map.get(activity.id)
                 if _weather_obj:
                     tp_s = compute_true_pace_stream(streams_dict, _weather_obj)
                     if tp_s:

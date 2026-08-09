@@ -232,13 +232,13 @@ def test_backup_page_controls_expose_saved_state_buttons():
     template = Path("fitops/dashboard/templates/backup.html").read_text()
 
     for marker in [
-        "id=\"gh-save-btn\"",
-        "id=\"webhook-enable-btn\"",
-        "id=\"webhook-mode-btn\"",
-        "id=\"webhook-delete-btn\"",
-        "id=\"sched-save-btn\"",
-        "id=\"create-push-btn\"",
-        "id=\"backups-refresh-btn\"",
+        'id="gh-save-btn"',
+        'id="webhook-enable-btn"',
+        'id="webhook-mode-btn"',
+        'id="webhook-delete-btn"',
+        'id="sched-save-btn"',
+        'id="create-push-btn"',
+        'id="backups-refresh-btn"',
         "let _githubState =",
         "let _webhookState =",
         "let _scheduleState =",
@@ -307,6 +307,71 @@ def test_deep_analysis_chart_supports_click_range_preview_and_double_click_clear
     assert "canvas.addEventListener('dblclick'" in deep_analysis_js
     assert "daClearRange();" in deep_analysis_js
     assert "/static/js/deep-analysis.js?v=" in activity_analysis
+
+
+def test_imported_activity_stamp_is_styled_and_double_click_copyable():
+    activity_detail = Path(
+        "fitops/dashboard/templates/activities/detail.html"
+    ).read_text()
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+
+    assert 'id="local-stamp-btn" onclick="stampLocalActivity' in activity_detail
+    assert 'class="btn btn-primary" style="font-size:11px;padding:3px 10px;"' in (
+        activity_detail
+    )
+    assert "stamp.addEventListener('dblclick'" in activity_detail
+    assert "await writeStampToClipboard(stampText);" in activity_detail
+    assert "document.execCommand('copy')" in activity_detail
+    assert 'aria-live="polite"' in activity_detail
+    assert ".activity-stamp-text" in css
+    assert "cursor: copy;" in css
+
+
+def test_imported_activity_uses_direct_strava_sync_control():
+    activity_detail = Path(
+        "fitops/dashboard/templates/activities/detail.html"
+    ).read_text()
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+
+    assert 'class="activity-strava-sync-control"' in activity_detail
+    assert 'id="publish-btn"' not in activity_detail
+    assert 'id="activity-publish-options"' not in activity_detail
+    assert 'for="existing-strava-id">Strava activity ID</label>' in activity_detail
+    assert 'id="sync-btn" onclick="syncActivity' in activity_detail
+    assert "async function syncActivity(activityId)" in activity_detail
+    assert "if (!/^[1-9]\\d*$/.test(existing))" in activity_detail
+    assert ".activity-strava-sync-control" in css
+    assert "grid-template-columns: minmax(150px, 190px) auto;" in css
+
+
+def test_activity_import_has_default_post_option_and_loading_overlay():
+    activity_import = Path(
+        "fitops/dashboard/templates/activities/import.html"
+    ).read_text()
+    css = Path("fitops/dashboard/static/css/main.css").read_text()
+
+    assert 'id="post-to-strava"' in activity_import
+    assert 'id="activity-file"' in activity_import
+    assert 'id="activity-name"' in activity_import
+    assert 'id="activity-sport"' in activity_import
+    assert 'name="post_to_strava" value="true" checked' in activity_import
+    assert (
+        'id="activity-import-loading" class="activity-import-loading" aria-hidden="true" hidden'
+        in activity_import
+    )
+    assert "/api/activities/import/suggestion?filename=" in activity_import
+    assert "if (!activityNameEdited && suggestion.name)" in activity_import
+    assert "if (!activitySportEdited && suggestion.sport_type)" in activity_import
+    assert "result.publication.status === 'failed'" in activity_import
+    assert ".activity-import-loading.visible" in css
+    assert ".activity-import-loading[hidden]" in css
+    assert "@keyframes activity-import-spin" in css
+
+
+def test_main_stylesheet_is_cache_busted():
+    base_template = Path("fitops/dashboard/templates/base.html").read_text()
+
+    assert 'href="/static/css/main.css?v=' in base_template
 
 
 def test_deep_analysis_sidebar_uses_summary_stat_pairs():

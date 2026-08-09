@@ -28,7 +28,7 @@ def print_activities_table(activities: list[dict]) -> None:
     table.add_column("HR", justify="right", no_wrap=True)
 
     for a in activities:
-        activity_id = str(a.get("strava_activity_id") or "")
+        activity_id = str(a.get("activity_id") or a.get("strava_activity_id") or "")
         date_str = (a.get("start_date_local") or "")[:10]
         name = a.get("name") or ""
         sport = a.get("sport_type") or ""
@@ -201,7 +201,7 @@ def print_activity_detail(activity: dict) -> None:
     if activity.get("analytics") or activity.get("km_splits"):
         tips.append("--chart")
     if tips:
-        aid = activity.get("strava_activity_id") or ""
+        aid = activity.get("activity_id") or activity.get("strava_activity_id") or ""
         tip_flags = "  ·  ".join(f"fitops activities get {aid} {f}" for f in tips)
         console.print(f"[dim]  tip: {tip_flags}[/dim]")
         console.print()
@@ -352,7 +352,10 @@ def print_workout_splits(activity: dict) -> None:
 
     if not workout:
         console.print("[dim]No linked workout — showing standard km splits.[/dim]")
-        print_splits_table(km_splits, activity.get("strava_activity_id", 0))
+        print_splits_table(
+            km_splits,
+            activity.get("activity_id") or activity.get("strava_activity_id", 0),
+        )
         return
 
     if not km_splits:
@@ -361,7 +364,10 @@ def print_workout_splits(activity: dict) -> None:
 
     segs = workout.get("segments") or []
     if not segs:
-        print_splits_table(km_splits, activity.get("strava_activity_id", 0))
+        print_splits_table(
+            km_splits,
+            activity.get("activity_id") or activity.get("strava_activity_id", 0),
+        )
         return
 
     has_true_pace = any(s.get("avg_true_pace") for s in km_splits)

@@ -4,9 +4,10 @@ import asyncio
 import json
 import shutil
 from datetime import UTC, datetime
+from pathlib import Path
 
 import typer
-from sqlalchemy import delete, desc, select
+from sqlalchemy import case, delete, desc, or_, select
 
 from fitops.analytics.race_results import (
     delete_calibrated_snapshot,
@@ -36,6 +37,207 @@ from fitops.utils.exceptions import NotAuthenticatedError
 app = typer.Typer(no_args_is_help=True)
 
 
+@app.command("import")
+def import_activity(
+    path: str = typer.Argument(..., help="Path to a GPX or TCX activity file."),
+    sport: str = typer.Option("auto", "--sport", help="Sport override or 'auto'."),
+    name: str | None = typer.Option(None, "--name", help="Activity name override."),
+    description: str | None = typer.Option(
+        None, "--description", help="Personal text placed above the FitOps stamp."
+    ),
+    gear: str | None = typer.Option(
+        None, "--gear", help="Gear ID or exact gear name to attach."
+    ),
+    post_to_strava: bool = typer.Option(
+        True,
+        "--post-to-strava/--local-only",
+        help="Post through the configured browser after processing and stamping.",
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Import, process, stamp, and optionally post a GPX or TCX activity."""
+    from fitops.browser.publisher import publish_activity
+    from fitops.importers.activity_files import ActivityFileError, import_activity_file
+    from fitops.utils.exceptions import BrowserPublicationError
+
+    init_db()
+
+    async def _run_import():
+        result = await import_activity_file(
+            Path(path),
+            sport_type=sport,
+            name=name,
+            description=description,
+            gear=gear,
+        )
+        publication = None
+        publication_error = None
+        if post_to_strava and result.activity.strava_id is None:
+            try:
+                publication = await publish_activity(
+                    result.activity.id,
+                    source_path=Path(path),
+                )
+            except BrowserPublicationError as exc:
+                publication_error = exc
+            else:
+                result.activity.strava_id = publication.strava_id
+        return result, publication, publication_error
+
+    try:
+        result, publication, publication_error = asyncio.run(_run_import())
+    except (ActivityFileError, OSError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2)
+
+    activity = result.activity
+    payload = {
+        "_meta": make_meta(
+            total_count=1,
+            filters_applied={
+                "sport": sport,
+                "name": name,
+                "gear": gear,
+                "post_to_strava": post_to_strava,
+            },
+        ),
+        "activity": format_activity_row(
+            {
+                column.name: getattr(activity, column.name)
+                for column in activity.__table__.columns
+            },
+            asyncio.run(_get_gear_lookup()),
+        ),
+        "import": {
+            "created": result.created,
+            "match_type": result.match_type,
+            "file_format": result.import_record.file_format,
+            "original_filename": result.import_record.original_filename,
+            "sha256": result.import_record.sha256,
+            "sport_inference_source": result.sport_inference_source,
+            "sport_inference_confidence": result.sport_inference_confidence,
+        },
+        "weather": {
+            "status": result.weather_status,
+            "data": result.weather,
+        },
+        "publication": {
+            "requested": post_to_strava,
+            "status": (
+                "failed"
+                if publication_error
+                else publication.status
+                if publication
+                else "already_linked"
+                if post_to_strava and activity.strava_id is not None
+                else "not_requested"
+            ),
+            "strava_id": publication.strava_id if publication else activity.strava_id,
+            "error": (
+                {
+                    "code": publication_error.code,
+                    "message": str(publication_error),
+                }
+                if publication_error
+                else None
+            ),
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, default=str))
+    else:
+        if result.created:
+            action = "Imported"
+        elif result.match_type == "file_hash":
+            action = "Already imported"
+        else:
+            action = "Matched existing activity"
+        typer.echo(
+            f"{action}: {activity.name} ({activity.sport_type}, ID {activity.id}); "
+            f"weather: {result.weather_status}"
+        )
+        if publication:
+            typer.echo(f"Posted to Strava activity {publication.strava_id}.")
+        elif post_to_strava and activity.strava_id is not None:
+            typer.echo(f"Already linked to Strava activity {activity.strava_id}.")
+        elif publication_error:
+            typer.echo(
+                f"Strava post failed; activity remains local: {publication_error}",
+                err=True,
+            )
+    if publication_error:
+        raise typer.Exit(1)
+
+
+def _sync_activity_with_strava(
+    activity_id: int = typer.Argument(..., help="Local FitOps activity ID."),
+    strava_id: int = typer.Option(
+        ...,
+        "--strava-id",
+        help="Existing Strava activity ID to link and stamp.",
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Link a local import to Strava and append its FitOps stamp."""
+    from fitops.browser.publisher import publish_activity
+    from fitops.utils.exceptions import BrowserPublicationError
+
+    init_db()
+    try:
+        publication = asyncio.run(publish_activity(activity_id, strava_id=strava_id))
+    except BrowserPublicationError as exc:
+        payload = {
+            "_meta": make_meta(total_count=0),
+            "error": {"code": exc.code, "message": str(exc)},
+        }
+        if json_output:
+            typer.echo(json.dumps(payload, indent=2), err=True)
+        else:
+            typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+    payload = {
+        "_meta": make_meta(
+            total_count=1,
+            filters_applied={"activity_id": activity_id, "strava_id": strava_id},
+        ),
+        "publication": {
+            "id": publication.id,
+            "activity_id": publication.activity_id,
+            "action": publication.action,
+            "status": publication.status,
+            "strava_id": publication.strava_id,
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, default=str))
+    else:
+        typer.echo(f"Synced with Strava activity {publication.strava_id}.")
+
+
+@app.command("sync-strava")
+def sync_activity_with_strava(
+    activity_id: int = typer.Argument(..., help="Local FitOps activity ID."),
+    strava_id: int = typer.Option(
+        ..., "--strava-id", help="Existing Strava activity ID to link and stamp."
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Link a local import to Strava and append its FitOps stamp."""
+    _sync_activity_with_strava(activity_id, strava_id, json_output)
+
+
+@app.command("publish", hidden=True)
+def publish_activity_command(
+    activity_id: int = typer.Argument(..., help="Local FitOps activity ID."),
+    strava_id: int = typer.Option(
+        ..., "--strava-id", help="Existing Strava activity ID to link and stamp."
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Backward-compatible alias for ``sync-strava``."""
+    _sync_activity_with_strava(activity_id, strava_id, json_output)
+
+
 async def _replace_activity_streams(
     session,
     activity_db_id: int,
@@ -57,17 +259,27 @@ async def _replace_activity_streams(
 async def _refresh_activity_weather_cache(
     activity,
     *,
-    strava_activity_id: int,
+    activity_db_id: int | None = None,
+    strava_activity_id: int | None = None,
     streams: dict | None,
 ):
     """Recompute persisted weather-derived values for an activity, if weather exists."""
     from fitops.analytics.weather_pace import persist_derived_weather
     from fitops.db.models.activity_weather import ActivityWeather
 
+    # ``strava_activity_id`` is retained for callers from databases created before
+    # weather rows were migrated to local activity IDs. New call sites always pass
+    # ``activity_db_id`` so imported activities work without a Strava identity.
+    weather_activity_id = (
+        activity_db_id if activity_db_id is not None else strava_activity_id
+    )
+    if weather_activity_id is None:
+        return None
+
     async with get_async_session() as session:
         result = await session.execute(
             select(ActivityWeather).where(
-                ActivityWeather.activity_id == strava_activity_id
+                ActivityWeather.activity_id == weather_activity_id
             )
         )
         weather_row = result.scalar_one_or_none()
@@ -83,9 +295,7 @@ async def _get_gear_lookup() -> dict:
     if not athlete_id:
         return {}
     async with get_async_session() as session:
-        result = await session.execute(
-            select(Athlete).where(Athlete.strava_id == athlete_id)
-        )
+        result = await session.execute(select(Athlete).where(Athlete.id == athlete_id))
         athlete = result.scalar_one_or_none()
         if not athlete:
             return {}
@@ -137,10 +347,10 @@ def list_activities(
 ) -> None:
     """List synced activities."""
     settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
+    if not settings.athlete_id:
+        typer.echo(
+            "No athlete profile. Run `fitops athlete init --name NAME` first.", err=True
+        )
         raise typer.Exit(1)
 
     if tag and tag not in _TAG_FILTERS:
@@ -156,7 +366,9 @@ def list_activities(
 
         gear_lookup = await _get_gear_lookup()
         async with get_async_session() as session:
-            base_stmt = select(Activity)
+            base_stmt = select(Activity).where(
+                Activity.athlete_id == settings.athlete_id
+            )
             if sport:
                 base_stmt = base_stmt.where(Activity.sport_type == sport)
             if after:
@@ -233,7 +445,9 @@ def list_activities(
 
 @app.command("get")
 def get_activity(
-    activity_id: int = typer.Argument(..., help="Strava activity ID."),
+    activity_id: int = typer.Argument(
+        ..., help="Local FitOps ID or Strava activity ID."
+    ),
     fetch_fresh: bool = typer.Option(
         False, "--fresh", help="Re-fetch detail from Strava API."
     ),
@@ -294,10 +508,10 @@ def get_activity(
     or --chart to render a stream as an ASCII chart.
     """
     settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
+    if not settings.athlete_id:
+        typer.echo(
+            "No athlete profile. Run `fitops athlete init --name NAME` first.", err=True
+        )
         raise typer.Exit(1)
 
     init_db()
@@ -306,9 +520,14 @@ def get_activity(
         gear_lookup = await _get_gear_lookup()
         async with get_async_session() as session:
             result = await session.execute(
-                select(Activity).where(Activity.strava_id == activity_id)
+                select(Activity)
+                .where(
+                    Activity.athlete_id == settings.athlete_id,
+                    or_(Activity.id == activity_id, Activity.strava_id == activity_id),
+                )
+                .order_by(case((Activity.id == activity_id, 0), else_=1))
             )
-            row = result.scalar_one_or_none()
+            row = result.scalars().first()
 
         if row is None:
             typer.echo(
@@ -318,12 +537,17 @@ def get_activity(
             raise typer.Exit(1)
 
         client = StravaClient()
+        strava_activity_id = row.strava_id
 
-        if fetch_fresh or not row.detail_fetched:
-            data = await client.get_activity(activity_id)
+        if (
+            strava_activity_id is not None
+            and settings.is_authenticated
+            and (fetch_fresh or not row.detail_fetched)
+        ):
+            data = await client.get_activity(strava_activity_id)
             async with get_async_session() as session:
                 result2 = await session.execute(
-                    select(Activity).where(Activity.strava_id == activity_id)
+                    select(Activity).where(Activity.id == row.id)
                 )
                 row2 = result2.scalar_one_or_none()
                 if row2:
@@ -331,12 +555,16 @@ def get_activity(
                     row2.detail_fetched = True
                     row = row2
 
-        if fetch_fresh or not row.streams_fetched:
+        if (
+            strava_activity_id is not None
+            and settings.is_authenticated
+            and (fetch_fresh or not row.streams_fetched)
+        ):
             try:
-                stream_data = await client.get_activity_streams(activity_id)
+                stream_data = await client.get_activity_streams(strava_activity_id)
                 async with get_async_session() as session:
                     result3 = await session.execute(
-                        select(Activity).where(Activity.strava_id == activity_id)
+                        select(Activity).where(Activity.id == row.id)
                     )
                     row3 = result3.scalar_one_or_none()
                     if row3:
@@ -399,12 +627,12 @@ def get_activity(
             streams = calibration.streams
 
         # Load weather early — needed for true_pace stream injection
-        _weather_map = await get_weather_for_activities([activity_id])
-        _weather_obj = _weather_map.get(activity_id)
+        _weather_map = await get_weather_for_activities([row.id])
+        _weather_obj = _weather_map.get(row.id)
         if fetch_fresh and row is not None:
             fresh_weather = await _refresh_activity_weather_cache(
                 row,
-                strava_activity_id=activity_id,
+                activity_db_id=row.id,
                 streams=streams or None,
             )
             if fresh_weather is not None:
@@ -444,7 +672,7 @@ def get_activity(
             if weight_kg:
                 async with get_async_session() as _pw_session:
                     _pw_result = await _pw_session.execute(
-                        select(Activity).where(Activity.strava_id == activity_id)
+                        select(Activity).where(Activity.id == row.id)
                     )
                     _pw_row = _pw_result.scalar_one_or_none()
                     if _pw_row:
@@ -575,7 +803,7 @@ def get_activity(
                 try:
                     _wp_row = await _refresh_activity_weather_cache(
                         row,
-                        strava_activity_id=activity_id,
+                        activity_db_id=row.id,
                         streams=streams or None,
                     )
                     if _wp_row is not None:
@@ -927,6 +1155,9 @@ def stamp(
     activity_id: int | None = typer.Option(
         None, "--id", help="Strava activity ID to stamp."
     ),
+    local_activity_id: int | None = typer.Option(
+        None, "--local-id", help="Local FitOps activity ID to stamp without Strava."
+    ),
     all_activities: bool = typer.Option(
         False, "--all", help="Stamp all activities that have not been stamped yet."
     ),
@@ -935,8 +1166,52 @@ def stamp(
     ),
     json_output: bool = typer.Option(False, "--json", help="Output result as JSON."),
 ) -> None:
-    """Embed FitOps analytics into Strava activity descriptions."""
+    """Embed FitOps analytics into local or Strava activity descriptions."""
     settings = get_settings()
+    if local_activity_id is not None:
+        if activity_id is not None or all_activities:
+            typer.echo("Use --local-id by itself (optionally with --force).", err=True)
+            raise typer.Exit(2)
+        init_db()
+
+        async def _run_local():
+            from fitops.analytics.stamp import stamp_activity
+
+            async with get_async_session() as session:
+                stmt = select(Activity).where(Activity.id == local_activity_id)
+                if settings.athlete_id:
+                    stmt = stmt.where(Activity.athlete_id == settings.athlete_id)
+                act = (await session.execute(stmt)).scalar_one_or_none()
+                if act is None:
+                    return None
+                updated = await stamp_activity(
+                    None,
+                    session,
+                    act,
+                    skip_existing=not force,
+                    local_only=True,
+                )
+                return {
+                    "_meta": make_meta(
+                        total_count=1,
+                        filters_applied={"local_activity_id": local_activity_id},
+                    ),
+                    "activity_id": act.id,
+                    "status": "stamped" if updated else "already_stamped",
+                }
+
+        local_result = asyncio.run(_run_local())
+        if local_result is None:
+            typer.echo(f"Activity {local_activity_id} not found.", err=True)
+            raise typer.Exit(1)
+        if json_output:
+            typer.echo(json.dumps(local_result, default=str))
+        else:
+            typer.echo(
+                f"Activity {local_activity_id}: {local_result['status'].replace('_', ' ')}."
+            )
+        return
+
     try:
         settings.require_auth()
     except NotAuthenticatedError as e:
@@ -951,7 +1226,7 @@ def stamp(
         raise typer.Exit(1)
 
     if activity_id is None and not all_activities:
-        typer.echo("Provide --id <strava_id> or --all.", err=True)
+        typer.echo("Provide --id <strava_id>, --local-id <id>, or --all.", err=True)
         raise typer.Exit(1)
 
     init_db()
@@ -974,7 +1249,7 @@ def stamp(
                 activities = [result.scalar_one_or_none()]
                 activities = [a for a in activities if a is not None]
             else:
-                q = select(Activity)
+                q = select(Activity).where(Activity.strava_id.is_not(None))
                 if not force:
                     q = q.where(Activity.stamped_at.is_(None))
                 result = await session.execute(q)

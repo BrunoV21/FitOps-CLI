@@ -236,6 +236,12 @@
     </svg>
     Connect to Strava
   </button>
+  <div style="display:flex;align-items:center;gap:12px;margin:24px 0;color:var(--text-muted,#888);font-size:11px;"><span style="height:1px;background:var(--border-subtle,#2a2a2a);flex:1;"></span>OR WORK OFFLINE<span style="height:1px;background:var(--border-subtle,#2a2a2a);flex:1;"></span></div>
+  <div class="form-group">
+    <label for="offline-name">Athlete name</label>
+    <input type="text" id="offline-name" placeholder="Your name" autocomplete="name" />
+  </div>
+  <button class="btn-connect" id="offline-btn" style="background:var(--bg-primary,#0f0f0f);border:1px solid var(--border-subtle,#2a2a2a);" onclick="createOfflineProfile()">Create Offline Profile</button>
   {% endif %}
 </div>
 
@@ -276,8 +282,37 @@ async function connectStrava() {
   }
 }
 
+async function createOfflineProfile() {
+  const name = document.getElementById('offline-name').value.trim();
+  const errorBox = document.getElementById('error-box');
+  const button = document.getElementById('offline-btn');
+  if (!name) {
+    errorBox.textContent = 'An athlete name is required.';
+    errorBox.style.display = 'block';
+    return;
+  }
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/setup/offline', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not create profile');
+    window.location.href = result.redirect_url;
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.style.display = 'block';
+    button.disabled = false;
+  }
+}
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') connectStrava();
+  if (e.key === 'Enter') {
+    if (document.activeElement && document.activeElement.id === 'offline-name') createOfflineProfile();
+    else connectStrava();
+  }
 });
 </script>
 {% endif %}

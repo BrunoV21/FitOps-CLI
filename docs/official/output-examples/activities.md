@@ -4,6 +4,92 @@ All examples show default output. Add `--json` to any command for raw JSON.
 
 ---
 
+## `fitops activities import <PATH>`
+
+```bash
+fitops activities import morning-run.tcx --gear "Daily Trainer" --json
+```
+
+```json
+{
+  "_meta": {
+    "tool": "fitops",
+    "total_count": 1,
+    "filters_applied": {
+      "sport": "auto",
+      "name": null,
+      "gear": "Daily Trainer",
+      "post_to_strava": true
+    }
+  },
+  "activity": {
+    "activity_id": 42,
+    "strava_activity_id": 1234567890,
+    "origin": "tcx",
+    "name": "Outdoor run",
+    "sport_type": "Run",
+    "equipment": {
+      "gear_id": "local-a1b2c3",
+      "gear_name": "Daily Trainer",
+      "gear_type": "shoes"
+    },
+    "data_availability": {
+      "has_gps": true,
+      "streams_fetched": true,
+      "laps_fetched": true,
+      "detail_fetched": true
+    }
+  },
+  "import": {
+    "created": true,
+    "match_type": "new",
+    "file_format": "tcx",
+    "original_filename": "morning-run.tcx",
+    "sha256": "…",
+    "sport_inference_source": "file_metadata",
+    "sport_inference_confidence": "high"
+  },
+  "weather": {
+    "status": "fetched",
+    "data": {
+      "temperature_c": 18.4,
+      "humidity_pct": 68,
+      "wbgt_c": 15.2,
+      "wap_factor": 1.008,
+      "true_pace_s_per_km": 302.7
+    }
+  },
+  "publication": {
+    "requested": true,
+    "status": "completed",
+    "strava_id": 1234567890,
+    "error": null
+  }
+}
+```
+
+Posting is enabled by default. Use `--local-only` for `"status": "not_requested"`. If posting fails, the command returns `"status": "failed"` and a structured error while preserving the imported local activity. Repeating the same import returns the existing local activity with `"created": false` and `"match_type": "file_hash"`. An equivalent GPX/TCX file or an activity already synced from Strava returns `"match_type": "activity_signature"`.
+
+---
+
+## `fitops activities stamp --local-id <ID>`
+
+```json
+{
+  "_meta": {
+    "tool": "fitops",
+    "total_count": 1,
+    "filters_applied": {"local_activity_id": 42}
+  },
+  "activity_id": 42,
+  "status": "stamped"
+}
+```
+
+The command stores the same analytics stamp used for Strava activities without contacting Strava. Repeating it without `--force` returns `"status": "already_stamped"`.
+
+---
+
 ## `fitops activities list`
 
 ```bash

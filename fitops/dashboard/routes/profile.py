@@ -253,6 +253,27 @@ def register(templates: Jinja2Templates) -> APIRouter:
         s.reload()
         settings_data = s.to_dict()
 
+        browser_type = getattr(cfg, "browser_type", None) or ""
+        browser_executable = getattr(cfg, "browser_executable", None) or ""
+        browser_user_data_dir = getattr(cfg, "browser_user_data_dir", None) or ""
+        browser_profile = getattr(cfg, "browser_profile", None) or "Default"
+        browser_append_backend = None
+        try:
+            from fitops.browser.config import resolve_browser_profile
+            from fitops.browser.description import choose_description_backend
+
+            detected_browser = resolve_browser_profile(cfg)
+            browser_append_backend = choose_description_backend(
+                detected_browser, "auto"
+            )
+            if not browser_user_data_dir:
+                browser_type = detected_browser.browser_type
+                browser_executable = str(detected_browser.executable)
+                browser_user_data_dir = str(detected_browser.user_data_dir)
+                browser_profile = detected_browser.profile
+        except Exception:
+            pass
+
         ctx = _build_profile_context(athlete, settings_data, vo2max_result, equipment)
         ctx.update(
             {
@@ -266,6 +287,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "current_load": current_load,
                 "stamp_on_sync": bool(athlete.stamp_on_sync) if athlete else False,
                 "has_write_scope": cfg.has_write_scope,
+                "strava_connected": cfg.is_authenticated,
+                "browser_type": browser_type,
+                "browser_executable": browser_executable,
+                "browser_user_data_dir": browser_user_data_dir,
+                "browser_profile": browser_profile,
+                "browser_append_backend": browser_append_backend,
             }
         )
         return templates.TemplateResponse(request, "profile.html", ctx)
@@ -343,7 +370,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             async with get_async_session() as session:
                 result = await session.execute(
-                    select(Athlete).where(Athlete.strava_id == cfg.athlete_id)
+                    select(Athlete).where(Athlete.id == cfg.athlete_id)
                 )
                 db_athlete = result.scalar_one_or_none()
                 if db_athlete:
@@ -353,6 +380,49 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         db_athlete.birthday = updates["birthday"]
 
         await trigger_async()
+        return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/gear")
+    async def add_profile_gear(
+        name: str = Form(...),
+        gear_type: str = Form(...),
+        primary: str | None = Form(default=None),
+    ):
+        from fitops.gear_service import GearError, add_local_gear
+
+        cfg = get_settings()
+        if not cfg.athlete_id:
+            return RedirectResponse("/profile?error=no_athlete", status_code=303)
+        try:
+            await add_local_gear(
+                cfg.athlete_id,
+                name=name,
+                gear_type=gear_type,
+                primary=primary == "1",
+                strava_connected=cfg.is_authenticated,
+            )
+        except GearError as exc:
+            return RedirectResponse(f"/profile?error={exc.code}", status_code=303)
+        await trigger_async()
+        return RedirectResponse("/profile?saved=gear", status_code=303)
+
+    @router.post("/profile/browser")
+    async def save_browser(
+        browser_type: str = Form(...),
+        user_data_dir: str = Form(...),
+        profile_name: str = Form("Default"),
+        executable: str = Form(""),
+    ):
+        if browser_type not in {"brave", "chrome", "edge"}:
+            return RedirectResponse("/profile?error=browser_invalid", status_code=303)
+        if not user_data_dir.strip():
+            return RedirectResponse("/profile?error=browser_invalid", status_code=303)
+        get_settings().save_browser_preferences(
+            browser_type=browser_type,
+            user_data_dir=user_data_dir.strip(),
+            profile=profile_name.strip() or "Default",
+            executable=executable.strip() or None,
+        )
         return RedirectResponse("/profile?saved=1", status_code=303)
 
     @router.post("/profile/hr-zones")
@@ -476,7 +546,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         enabled = stamp_on_sync == "1"
         async with get_async_session() as session:
             result = await session.execute(
-                select(Athlete).where(Athlete.strava_id == cfg.athlete_id)
+                select(Athlete).where(Athlete.id == cfg.athlete_id)
             )
             athlete = result.scalar_one_or_none()
             if athlete:

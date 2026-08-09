@@ -2,6 +2,8 @@
 
 The Overview is the first thing you see when you open the dashboard. It answers the question: *"Where am I right now in my training?"*
 
+The page works with either a connected Strava account or a local/offline athlete profile. An offline profile can browse all data already stored in FitOps without being redirected to Strava setup. Setup is shown only when neither authentication nor a local athlete profile exists.
+
 ![Dashboard Overview](../assets/dashboard-overview-hero.png)
 
 ## Period & Sport Filter

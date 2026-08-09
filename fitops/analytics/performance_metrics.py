@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, or_, select
 
 from fitops.db.models.activity import Activity
 from fitops.db.models.athlete import Athlete
@@ -149,9 +149,11 @@ async def compute_performance_metrics(
 
     async with get_async_session() as session:
         ath_res = await session.execute(
-            select(Athlete).where(Athlete.strava_id == athlete_id)
+            select(Athlete)
+            .where(or_(Athlete.id == athlete_id, Athlete.strava_id == athlete_id))
+            .order_by(case((Athlete.id == athlete_id, 0), else_=1))
         )
-        athlete = ath_res.scalar_one_or_none()
+        athlete = ath_res.scalars().first()
         weight_kg = athlete.weight_kg if athlete else None
 
         stmt = (

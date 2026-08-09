@@ -6,7 +6,7 @@ import httpx
 
 from fitops.config.settings import get_settings
 from fitops.strava.oauth import StravaOAuth
-from fitops.utils.exceptions import StravaAuthError, SyncError
+from fitops.utils.exceptions import StravaAPIError
 from fitops.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -54,16 +54,25 @@ class StravaClient:
                 method, url, headers=headers, params=params, data=data
             )
         if response.status_code == 401:
-            raise StravaAuthError(
-                "Unauthorized — token may be invalid. Try `fitops auth refresh`."
+            raise StravaAPIError(
+                "Unauthorized — token may be invalid. Try `fitops auth refresh`.",
+                status_code=401,
+                endpoint=endpoint,
+                response_body=response.text[:200],
             )
         if response.status_code == 429:
-            raise SyncError(
-                "Strava API rate limit exceeded. Please wait and try again."
+            raise StravaAPIError(
+                "Strava API rate limit exceeded. Please wait and try again.",
+                status_code=429,
+                endpoint=endpoint,
+                response_body=response.text[:200],
             )
         if response.status_code >= 400:
-            raise SyncError(
-                f"Strava API error {response.status_code} for {endpoint}: {response.text[:200]}"
+            raise StravaAPIError(
+                f"Strava API error {response.status_code} for {endpoint}: {response.text[:200]}",
+                status_code=response.status_code,
+                endpoint=endpoint,
+                response_body=response.text[:200],
             )
         return response.json()
 

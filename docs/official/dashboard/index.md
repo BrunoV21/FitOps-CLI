@@ -32,7 +32,7 @@ After that, `fitops dashboard serve` will work.
 
 ## First Use
 
-If you haven't connected Strava yet, the dashboard opens a **Setup** screen where you can paste your Strava API credentials and authorise access. Once connected, a sync kicks off automatically and you land on your Overview.
+If you haven't connected Strava yet, the dashboard opens a **Setup** screen. You can paste Strava API credentials and authorise access, or create an offline athlete profile and immediately import a GPX/TCX file. Connecting Strava later links it to the active offline profile.
 
 If you've already authenticated via the CLI, the dashboard picks up your credentials and opens directly on your training summary.
 
@@ -41,7 +41,7 @@ If you've already authenticated via the CLI, the dashboard picks up your credent
 | Page | What you do there |
 |------|------------------|
 | [Overview](./overview.md) | See your week/month/year at a glance — stats, recent activities, fitness state, and today's weather |
-| [Activities](./activities.md) | Browse, filter, and search your full activity history |
+| [Activities](./activities.md) | Import GPX/TCX files and browse, publish, filter, or search your history |
 | [Analytics](./analytics.md) | Explore your training load over time and detailed performance metrics |
 | [Workouts](./workouts.md) | Build structured workouts, simulate them on a course, and review past sessions |
 | [Race](./race.md) | Import a GPX course, generate a pacing plan, and run a race simulation |

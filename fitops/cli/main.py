@@ -22,6 +22,7 @@ def _register_subapps() -> None:
     from fitops.cli.athlete import app as athlete_app
     from fitops.cli.auth import app as auth_app
     from fitops.cli.backup import app as backup_app
+    from fitops.cli.browser import app as browser_app
     from fitops.cli.dashboard import app as dashboard_app
     from fitops.cli.deploy import app as deploy_app
     from fitops.cli.notes import app as notes_app
@@ -85,6 +86,11 @@ def _register_subapps() -> None:
         backup_app,
         name="backup",
         help=f"Backup and restore FitOps data.\n\nDocs: {CLI_DOCS['backup']}",
+    )
+    app.add_typer(
+        browser_app,
+        name="browser",
+        help="Configure the browser profile used to publish to Strava.",
     )
     app.add_typer(
         admin_app,

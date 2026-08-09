@@ -35,6 +35,7 @@
         {% endif %}
         {% if activity.trainer %}<span class="badge badge-dim">Trainer</span>{% endif %}
         {% if activity.commute %}<span class="badge badge-dim">Commute</span>{% endif %}
+        {% if activity.origin != 'strava' %}<span class="badge badge-blue">Imported {{ activity.origin | upper }}</span>{% endif %}
       </div>
       <div class="activity-title-meta" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -46,7 +47,32 @@
           <span>{{ activity.device_name }}</span>
           {% endif %}
         </div>
-        {% if has_write_scope %}
+        {% if activity.strava_id is none %}
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+          {% if activity_raw and activity_raw.stamped_at %}
+          <button id="local-stamp-btn" onclick="stampLocalActivity({{ activity_raw.id }}, true)"
+                  style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid var(--border-color);background:transparent;color:var(--text-dim);cursor:pointer;">
+            Re-stamp
+          </button>
+          {% else %}
+          <button id="local-stamp-btn" onclick="stampLocalActivity({{ activity_raw.id }}, false)"
+                  class="btn btn-primary" style="font-size:11px;padding:3px 10px;">
+            <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:3px;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Stamp
+          </button>
+          {% endif %}
+          <span id="local-stamp-msg" style="font-size:11px;color:var(--text-dim);"></span>
+          <div class="activity-strava-sync-control">
+            <label for="existing-strava-id">Strava activity ID</label>
+            <input id="existing-strava-id" class="input-ctrl" type="number" min="1" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789">
+            <button id="sync-btn" onclick="syncActivity({{ activity_raw.id }})" class="btn btn-primary">Sync</button>
+          </div>
+          <span id="publish-msg" style="font-size:11px;color:var(--text-dim);"></span>
+        </div>
+        {% elif has_write_scope %}
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           {% if activity_raw and activity_raw.stamped_at %}
           <button id="restamp-btn" onclick="restampActivity({{ activity.strava_id }})"
@@ -69,20 +95,97 @@
       </div>
       {% if activity.description %}
       <p id="activity-desc-text" class="activity-description" style="margin-top:6px;white-space:pre-line;"></p>
+      {% if '📊 FitOps Analytics' in activity.description %}
+      <span id="activity-stamp-copy-msg" class="activity-stamp-copy-msg" role="status" aria-live="polite"></span>
+      {% endif %}
       <script>
       (function(){
         var full = {{ activity.description | tojson }};
+        var stampAnchor = '📊 FitOps Analytics';
+        var stampStart = full.indexOf(stampAnchor);
+        var userText = stampStart >= 0 ? full.slice(0, stampStart).trimEnd() : full;
+        var stampText = stampStart >= 0 ? full.slice(stampStart).trim() : '';
         var lines = full.split('\n');
         var first = lines[0];
         var rest = lines.slice(1).join('\n').trim();
         var el = document.getElementById('activity-desc-text');
-        el.textContent = first;
-        if (!rest) return;
+        var copyMsg = document.getElementById('activity-stamp-copy-msg');
         var expanded = false;
+        var stampClickTimer = null;
+
+        async function writeStampToClipboard(text) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+              await navigator.clipboard.writeText(text);
+              return;
+            } catch (error) {
+              // Fall back for browsers that deny the async clipboard permission.
+            }
+          }
+          var textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          var copied = document.execCommand('copy');
+          textarea.remove();
+          if (!copied) throw new Error('Copy failed');
+        }
+
+        function makeStampNode(visibleText) {
+          var stamp = document.createElement('span');
+          stamp.className = 'activity-stamp-text';
+          stamp.textContent = visibleText;
+          stamp.title = 'Double-click to copy the FitOps stamp';
+          stamp.addEventListener('dblclick', async function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (stampClickTimer) clearTimeout(stampClickTimer);
+            try {
+              await writeStampToClipboard(stampText);
+              stamp.classList.add('is-copied');
+              copyMsg.textContent = 'Stamp copied.';
+              setTimeout(function() {
+                stamp.classList.remove('is-copied');
+                copyMsg.textContent = '';
+              }, 1800);
+            } catch (error) {
+              copyMsg.textContent = 'Could not copy the stamp.';
+            }
+          });
+          return stamp;
+        }
+
+        function renderDescription() {
+          el.replaceChildren();
+          if (!expanded) {
+            el.appendChild(stampStart === 0 ? makeStampNode(first) : document.createTextNode(first));
+            return;
+          }
+          if (!stampText) {
+            el.textContent = full;
+            return;
+          }
+          if (userText) el.appendChild(document.createTextNode(userText + '\n\n'));
+          el.appendChild(makeStampNode(stampText));
+        }
+
+        renderDescription();
+        if (!rest) return;
         el.style.cursor = 'pointer';
-        el.addEventListener('click', function() {
+        el.addEventListener('click', function(event) {
+          if (event.target.closest('.activity-stamp-text')) {
+            if (stampClickTimer) clearTimeout(stampClickTimer);
+            stampClickTimer = setTimeout(function() {
+              expanded = !expanded;
+              renderDescription();
+            }, 220);
+            return;
+          }
           expanded = !expanded;
-          el.textContent = expanded ? full : first;
+          renderDescription();
         });
       })();
       </script>
@@ -263,7 +366,7 @@
   <p style="font-size:12px;color:var(--text-dim);margin:0;">
     No conditions data for this activity yet.
   </p>
-  <button id="fetch-weather-btn" class="btn btn-primary" style="flex-shrink:0;" onclick="fetchActivityWeather({{ activity.strava_id }})">
+  <button id="fetch-weather-btn" class="btn btn-primary" style="flex-shrink:0;" onclick="fetchActivityWeather({{ activity_raw.id }})">
     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:4px;">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -279,7 +382,7 @@
   <div class="analysis-header">
     <p class="panel-label" style="margin:0;">Activity Analysis</p>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <a href="/activities/{{ activity.strava_id }}/analysis"
+      <a href="/activities/{{ activity_raw.id }}/analysis"
          style="font-size:10px;padding:4px 11px;border:1px solid var(--border-hover);border-radius:4px;
                 color:var(--text-muted);text-decoration:none;letter-spacing:0.07em;
                 text-transform:uppercase;font-weight:700;white-space:nowrap;
@@ -592,7 +695,7 @@
         </p>
       </div>
     </div>
-    <form method="post" action="/activities/{{ activity.strava_id }}/race-result" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+    <form method="post" action="/activities/{{ activity_raw.id }}/race-result" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
       <label style="display:flex;flex-direction:column;gap:6px;">
         <span class="effort-label">Chip Time</span>
         <input type="text" name="chip_time" value="{{ race_result.chip_time_formatted or '' }}" placeholder="0:45:00 or 45:00">
@@ -907,7 +1010,7 @@ async function assignWorkout() {
 
   msg.textContent = 'Assigning…'; msg.style.display = 'block';
   try {
-    const res = await fetch(`/api/activities/{{ activity.strava_id }}/assign-workout`, {
+    const res = await fetch(`/api/activities/{{ activity_raw.id if activity_raw else 0 }}/assign-workout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workout_id }),
@@ -926,7 +1029,7 @@ async function unassignWorkout() {
   const btn = document.getElementById('unassign-btn');
   btn.disabled = true; btn.textContent = '…';
   try {
-    const res = await fetch(`/api/activities/{{ activity.strava_id }}/unassign-workout`, { method: 'POST' });
+    const res = await fetch(`/api/activities/{{ activity_raw.id if activity_raw else 0 }}/unassign-workout`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
     setTimeout(() => location.reload(), 400);
@@ -1007,6 +1110,62 @@ async function stampActivity(stravaId) {
     msg.textContent = 'Error: ' + err.message;
     msg.style.color = 'var(--accent-red)';
     msg.style.display = 'inline';
+  }
+}
+
+async function stampLocalActivity(activityId, force) {
+  const btn = document.getElementById('local-stamp-btn');
+  const msg = document.getElementById('local-stamp-msg');
+  btn.disabled = true;
+  btn.textContent = force ? 'Re-stamping…' : 'Stamping…';
+  msg.textContent = '';
+  try {
+    const res = await fetch(`/api/activities/local/${activityId}/stamp`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({force}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    msg.textContent = data.status === 'already_stamped' ? 'Already stamped.' : 'Stamp saved locally.';
+    setTimeout(() => window.location.reload(), 500);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = force ? 'Re-stamp' : 'Stamp';
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--accent-red)';
+  }
+}
+
+async function syncActivity(activityId) {
+  const input = document.getElementById('existing-strava-id');
+  const button = document.getElementById('sync-btn');
+  const message = document.getElementById('publish-msg');
+  const existing = input.value.trim();
+  if (!/^[1-9]\d*$/.test(existing)) {
+    message.style.color = 'var(--accent-red)';
+    message.textContent = 'Enter a valid Strava activity ID.';
+    input.focus();
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Syncing…';
+  message.style.color = 'var(--text-dim)';
+  message.textContent = 'Applying the FitOps stamp through your configured browser session.';
+  try {
+    const suffix = `?strava_id=${encodeURIComponent(existing)}`;
+    const response = await fetch(`/api/activities/${activityId}/sync-strava${suffix}`, {method: 'POST'});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Sync failed');
+    message.style.color = 'var(--accent-primary)';
+    message.textContent = `Synced with Strava activity ${result.publication.strava_id}.`;
+    setTimeout(() => window.location.reload(), 1200);
+  } catch (error) {
+    message.textContent = error.message;
+    message.style.color = 'var(--accent-red)';
+    button.textContent = 'Sync';
+    button.disabled = false;
   }
 }
 

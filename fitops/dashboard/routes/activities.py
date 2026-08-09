@@ -127,7 +127,11 @@ def _queue_stamp_all_task(*, force: bool = False) -> bool:
         training_load_cache = {}
 
         async with get_async_session() as session:
-            stmt = select(_Activity.strava_id).order_by(_Activity.start_date.desc())
+            stmt = (
+                select(_Activity.strava_id)
+                .where(_Activity.strava_id.is_not(None))
+                .order_by(_Activity.start_date.desc())
+            )
             if not force:
                 stmt = stmt.where(_Activity.stamped_at.is_(None))
             result = await session.execute(stmt)
@@ -222,9 +226,7 @@ def _set_true_velocity_stream(streams: dict) -> None:
     true_pace = streams.get("true_pace", [])
     if not true_pace:
         return
-    streams["true_velocity"] = [
-        1000.0 / p if p and p > 0 else 0.0 for p in true_pace
-    ]
+    streams["true_velocity"] = [1000.0 / p if p and p > 0 else 0.0 for p in true_pace]
 
 
 def _ensure_true_pace_streams(streams: dict, weather_obj) -> None:
@@ -480,7 +482,9 @@ def _activity_row(a) -> dict:
     )
 
     return {
+        "activity_id": getattr(a, "id", a.strava_id),
         "strava_id": a.strava_id,
+        "origin": getattr(a, "origin", "strava"),
         "name": a.name,
         "sport_type": sport,
         "is_run": is_run,
@@ -671,8 +675,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
         total_pages = max(1, math.ceil(total / limit)) if total else 1
 
         # Batch-load weather for all listed activities
-        strava_ids = [a.strava_id for a in activities]
-        weather_map = await get_weather_for_activities(strava_ids)
+        activity_ids = [a.id for a in activities]
+        weather_map = await get_weather_for_activities(activity_ids)
 
         # Batch-load linked workout names
         db_ids = [a.id for a in activities]
@@ -680,7 +684,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         rows = []
         for a in activities:
             row = _activity_row(a)
-            w = weather_map.get(a.strava_id)
+            w = weather_map.get(a.id)
             if w:
                 row["weather"] = _weather_summary(w)
             wname = workout_name_map.get(a.id)
@@ -736,8 +740,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
         is_run = activity_view.sport_type in run_sports if activity_view else False
 
         # Load weather early — True Pace stream must be injected before analytics
-        _weather_map = await get_weather_for_activities([strava_id])
-        _weather_obj = _weather_map.get(strava_id)
+        _weather_map = await get_weather_for_activities(
+            [activity.id] if activity else []
+        )
+        _weather_obj = _weather_map.get(activity.id) if activity else None
 
         # Empty persisted true_pace streams are treated as missing so charts,
         # splits, and workout actuals can still use the current stream data.
@@ -887,11 +893,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                                 else None,
                                 "score_class": (
                                     "green"
-                                    if s.compliance_score
-                                    and s.compliance_score >= 0.8
+                                    if s.compliance_score and s.compliance_score >= 0.8
                                     else "amber"
-                                    if s.compliance_score
-                                    and s.compliance_score >= 0.6
+                                    if s.compliance_score and s.compliance_score >= 0.6
                                     else "red"
                                     if s.compliance_score is not None
                                     else "dim"
@@ -930,7 +934,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
                     _wp_result = await _wp_session.execute(
                         _sel(ActivityWeather).where(
-                            ActivityWeather.activity_id == strava_id
+                            ActivityWeather.activity_id == activity.id
                         )
                     )
                     _wp_row = _wp_result.scalar_one_or_none()
@@ -940,7 +944,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                         )
                         # Refresh the weather object
                         w = _wp_row
-                        _weather_map[strava_id] = w
+                        _weather_map[activity.id] = w
             except Exception:
                 pass
 
@@ -1043,10 +1047,12 @@ def register(templates: Jinja2Templates) -> APIRouter:
             parsed_race_distance_m = distance_km * 1000.0
 
         async with get_async_session() as session:
-            result = await session.execute(
-                select(Activity).where(Activity.strava_id == strava_id)
-            )
-            activity = result.scalar_one_or_none()
+            activity = await session.get(Activity, strava_id)
+            if activity is None or activity.athlete_id != get_settings().athlete_id:
+                result = await session.execute(
+                    select(Activity).where(Activity.strava_id == strava_id)
+                )
+                activity = result.scalar_one_or_none()
             if activity is None:
                 return RedirectResponse(
                     url="/activities?race_result_error=Activity not found.",
@@ -1104,8 +1110,10 @@ def register(templates: Jinja2Templates) -> APIRouter:
         run_sports = {"Run", "TrailRun", "Walk", "Hike", "VirtualRun"}
         is_run = activity_view.sport_type in run_sports if activity_view else False
 
-        _weather_map = await get_weather_for_activities([strava_id])
-        _weather_obj = _weather_map.get(strava_id)
+        _weather_map = await get_weather_for_activities(
+            [activity.id] if activity else []
+        )
+        _weather_obj = _weather_map.get(activity.id) if activity else None
 
         _ensure_true_pace_streams(streams, _weather_obj)
 
@@ -1432,6 +1440,52 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 else None,
                 "active_page": "activities",
             },
+        )
+
+    @router.post("/api/activities/local/{activity_id}/stamp")
+    async def stamp_local_activity_api(request: Request, activity_id: int):
+        from fastapi.responses import JSONResponse
+
+        from fitops.analytics.stamp import stamp_activity
+        from fitops.config.settings import get_settings as _get_settings
+        from fitops.db.models.activity import Activity as _Activity
+        from fitops.db.session import get_async_session
+
+        cfg = _get_settings()
+        if not cfg.athlete_id:
+            return JSONResponse({"error": "athlete profile required"}, status_code=401)
+
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        force = bool(body.get("force", False)) if isinstance(body, dict) else False
+
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(_Activity).where(
+                    _Activity.id == activity_id,
+                    _Activity.athlete_id == cfg.athlete_id,
+                )
+            )
+            activity = result.scalar_one_or_none()
+            if activity is None:
+                return JSONResponse({"error": "activity not found"}, status_code=404)
+            updated = await stamp_activity(
+                None,
+                session,
+                activity,
+                skip_existing=not force,
+                local_only=True,
+            )
+
+        return JSONResponse(
+            {
+                "ok": True,
+                "activity_id": activity_id,
+                "status": "stamped" if updated else "already_stamped",
+            }
         )
 
     @router.post("/api/activities/{strava_id}/stamp")

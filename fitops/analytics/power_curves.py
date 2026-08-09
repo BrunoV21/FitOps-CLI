@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, or_, select
 
 from fitops.db.models.activity import Activity
 from fitops.db.models.activity_stream import ActivityStream
@@ -116,10 +116,18 @@ async def compute_power_curve(
         from fitops.db.models.athlete import Athlete
 
         ath = (
-            await session.execute(
-                select(Athlete).where(Athlete.strava_id == athlete_id)
+            (
+                await session.execute(
+                    select(Athlete)
+                    .where(
+                        or_(Athlete.id == athlete_id, Athlete.strava_id == athlete_id)
+                    )
+                    .order_by(case((Athlete.id == athlete_id, 0), else_=1))
+                )
             )
-        ).scalar_one_or_none()
+            .scalars()
+            .first()
+        )
         weight_kg = ath.weight_kg if ath else None
 
         stmt = (

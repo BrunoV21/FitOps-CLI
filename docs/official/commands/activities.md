@@ -1,12 +1,59 @@
 # fitops activities
 
-Browse and query synced activities.
+Import, post, synchronize, browse, and query activities from Strava or local GPX/TCX files.
 
 Output is a formatted table by default. Add `--json` to any command for raw JSON output (useful for scripting or AI agents).
 
 For running race activities, FitOps can store an official **chip time** and **race distance** when the watch GPS distance is wrong. Those overrides are local to FitOps; the original Strava values remain unchanged.
 
 ## Commands
+
+### `fitops activities import <PATH>`
+
+Import an original GPX or TCX recording, normalize its summary, streams, and laps, and compute the same cached analytics used for synced activities. Every import receives a local analytics stamp after weather and derived metrics are stored, including imports made with `--local-only`. Posting to Strava is enabled by default: FitOps uploads the selected source file and its generated stamp through the configured headless browser session. The returned Strava activity ID is linked to the local activity before the command finishes.
+
+FitOps keeps the original filename, format, size, and SHA-256 hash for provenance and deduplication, but it does not copy the GPX/TCX payload into the FitOps data directory. Exact re-imports, equivalent GPX/TCX exports, and matching activities already synced from Strava reuse the existing activity instead of creating a duplicate.
+
+Without `--name`, running activities use **Outdoor run** and cycling activities use **Outdoor cycle**. After persistence, FitOps automatically fetches Open-Meteo weather from the recording's start coordinates and time, then stores WBGT, weather-adjusted pace, terrain-and-weather-adjusted true pace, course bearing, and applicable heart-rate heat impact. The import still succeeds when weather is unavailable and reports that status in its output.
+
+```bash
+fitops athlete init --name "Jane Runner"
+fitops activities import ~/Downloads/morning-run.gpx
+fitops activities import race.tcx --sport Run --name "City 10K" --json
+fitops activities import morning-run.tcx --gear "Daily Trainer"
+fitops activities import offline-run.gpx --local-only
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--sport TYPE` | `auto` | Override the inferred sport (`Run`, `Ride`, `Walk`, and so on) |
+| `--name TEXT` | `Outdoor run` or `Outdoor cycle` | Override the activity title |
+| `--description TEXT` | — | Add personal description text above the generated FitOps stamp |
+| `--gear TEXT` | — | Attach gear by its stable ID or exact name |
+| `--post-to-strava / --local-only` | post | Post after import, or keep the processed activity local only |
+| `--json` | false | Return the activity, provenance hash, and inference details as JSON |
+
+Automatic detection prefers sport metadata embedded in TCX, then file/title keywords, then median moving speed. Use `--sport` whenever the heuristic is wrong. Gear is resolved from the active athlete profile and stored on the local activity. During browser publication, FitOps also selects the matching gear in Strava's upload editor.
+
+The JSON activity object includes a provider-neutral `activity_id`, a nullable `strava_activity_id`, and `origin` (`gpx`, `tcx`, or `strava`). The `weather.status` field is `fetched`, `already_available`, `unavailable`, or a specific skipped reason such as `skipped_no_gps`; `weather.data` contains the stored raw and derived values when available. The `publication` object reports `completed`, `failed`, `already_linked`, or `not_requested`. A failed browser post exits non-zero but leaves the processed activity in the local database and includes the reason in `publication.error`.
+
+---
+
+### `fitops activities sync-strava <ACTIVITY_ID>`
+
+Connect a local-only imported activity to an activity that is already on Strava. FitOps generates the current stamp, appends it through the configured headless browser session, and stores the supplied Strava ID on the local activity. No GPX/TCX file is required or uploaded.
+
+```bash
+fitops browser configure --type brave \
+  --user-data-dir "$HOME/Library/Application Support/BraveSoftware/Brave-Browser" \
+  --profile Default
+fitops activities sync-strava 42 --strava-id 1234567890
+fitops activities sync-strava 42 --strava-id 1234567890 --json
+```
+
+The command reports `Synced with Strava activity …`; JSON output uses `"action": "sync"`. The older hidden `activities publish --strava-id …` spelling remains as a compatibility alias. Browser authentication uses the configured profile and never copies cookies.
+
+---
 
 ### `fitops activities list`
 
@@ -91,7 +138,7 @@ fitops activities get 12345678901 [OPTIONS]
 
 | Argument | Description |
 |----------|-------------|
-| `ID` | Strava activity ID (required) |
+| `ID` | Local FitOps activity ID or legacy Strava activity ID (required) |
 
 **Options:**
 
@@ -161,7 +208,9 @@ When `--json` is used, the output is a single activity object enriched with all 
 
 | Key | Type | Description |
 |-----|------|-------------|
+| `activity_id` | int | Stable local FitOps activity ID |
 | `strava_activity_id` | int | Strava activity ID |
+| `origin` | string | `strava`, `gpx`, or `tcx` |
 | `name` | string | Activity title |
 | `sport_type` | string | e.g. `"Run"`, `"Ride"` |
 | `start_date_local` | string | Local datetime of start |
@@ -356,7 +405,7 @@ Present only when a workout plan was linked to this activity via `fitops workout
 
 ### `fitops activities stamp`
 
-Embed FitOps analytics into Strava activity descriptions as a formatted footer.
+Embed FitOps analytics into an activity description as a formatted footer. Imported activities are stamped locally; Strava activities are updated through the API.
 
 ```bash
 fitops activities stamp [OPTIONS]
@@ -367,11 +416,12 @@ fitops activities stamp [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--id STRAVA_ID` | — | Stamp a single activity by Strava ID |
+| `--local-id ACTIVITY_ID` | — | Stamp an imported activity locally by FitOps ID |
 | `--all` | false | Stamp all activities that haven't been stamped yet |
 | `--force` | false | Re-stamp even if already stamped (fetches fresh description from Strava) |
 | `--json` | false | Output result as JSON |
 
-**Requirements:** `activity:write` OAuth scope. If missing, run `fitops auth login --force` or use the **Grant Write Access** button on the Profile page in the dashboard.
+**Requirements:** `--id` and `--all` require the `activity:write` OAuth scope. `--local-id` works offline and does not require Strava authentication.
 
 **JSON output shape:**
 
@@ -393,6 +443,9 @@ fitops activities stamp [OPTIONS]
 # Stamp a single activity
 fitops activities stamp --id 12345678
 
+# Stamp an imported activity without contacting Strava
+fitops activities stamp --local-id 42
+
 # Backfill all unstamped activities
 fitops activities stamp --all
 
@@ -403,7 +456,7 @@ fitops activities stamp --all --force
 fitops activities stamp --all --json
 ```
 
-The stamp footer contains FitOps-only analytics such as aerobic/anaerobic scores, VO2max estimate, power (real or estimated), weather-adjusted pace or speed, race calibration, linked workout segment details, and the activity-day training load snapshot (CTL, ATL, TSB, and form label) when a cached snapshot exists for that date. Cycling activities label the weather-adjusted value as speed while running activities label it as pace. For runs, stamping refreshes estimated power from `true_pace` when weather and stream data are available, even if an earlier sync computed power from `gap_pace`. Linked workout segments show true pace whenever that segment has true pace data, even when the displayed true pace matches the raw segment pace. Basic activity details already shown by Strava, such as distance, elapsed time, pace, speed, and heart rate, are not repeated unless they are part of a richer FitOps-derived section.
+The stamp footer contains FitOps-only analytics such as aerobic/anaerobic scores, VO2max estimate, power (real or estimated), weather-adjusted pace or speed, race calibration, linked workout segment details, and the activity-day training load snapshot (CTL, ATL, TSB, and form label) when a cached snapshot exists for that date. Aerobic and anaerobic scores appear only when the activity has recorded average heart-rate data; they are omitted instead of showing pace-based fallback estimates when heart rate is unavailable. Cycling activities label the weather-adjusted value as speed while running activities label it as pace. For runs, stamping refreshes estimated power from `true_pace` when weather and stream data are available, even if an earlier sync computed power from `gap_pace`. Linked workout segments show true pace whenever that segment has true pace data, even when the displayed true pace matches the raw segment pace. Basic activity details already shown by Strava, such as distance, elapsed time, pace, speed, and heart rate, are not repeated unless they are part of a richer FitOps-derived section.
 
 Training load values are read from `analytics_snapshots` for the activity date. Stamping does not recompute CTL/ATL/TSB; if no cached snapshot exists for that activity day, the form section is omitted.
 
