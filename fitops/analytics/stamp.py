@@ -103,14 +103,20 @@ def compose_stamp(
 
     # ── Scores (compact single line) ─────────────────────
     score_parts: list[str] = []
-    if activity.aerobic_score is not None:
-        score_parts.append(
-            f"Aer {activity.aerobic_score:.1f} ({aerobic_short_label(activity.aerobic_score)})"
-        )
-    if activity.anaerobic_score is not None and activity.anaerobic_score > 0:
-        score_parts.append(
-            f"Ana {activity.anaerobic_score:.1f} ({anaerobic_short_label(activity.anaerobic_score)})"
-        )
+    has_recorded_hr = bool(
+        activity.average_heartrate and activity.average_heartrate > 0
+    )
+    if has_recorded_hr:
+        if activity.aerobic_score is not None:
+            score_parts.append(
+                f"Aer {activity.aerobic_score:.1f} "
+                f"({aerobic_short_label(activity.aerobic_score)})"
+            )
+        if activity.anaerobic_score is not None and activity.anaerobic_score > 0:
+            score_parts.append(
+                f"Ana {activity.anaerobic_score:.1f} "
+                f"({anaerobic_short_label(activity.anaerobic_score)})"
+            )
     if activity.vo2max_estimate is not None:
         score_parts.append(f"VO2 {activity.vo2max_estimate:.1f}")
     if score_parts:

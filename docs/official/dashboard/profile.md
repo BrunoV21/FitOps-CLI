@@ -84,7 +84,7 @@ The stamp panel lets you embed FitOps analytics into your Strava activity descri
 
 Each stamp footer includes:
 
-- Aerobic and anaerobic scores
+- Aerobic and anaerobic scores when the activity has recorded average heart-rate data; both are omitted when heart rate is unavailable
 - Activity-day training load when cached: CTL, ATL, TSB, and form label
 - Power — real watts if available, otherwise estimated power with source label. When weather and streams are present, stamping upgrades estimated running power to the `true_pace` source.
 - VO2max estimate

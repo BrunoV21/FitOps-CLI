@@ -164,6 +164,8 @@ async def test_import_persists_processed_activity_and_deduplicates(isolated_fito
     assert first.activity.strava_id is None
     assert first.activity.origin == "tcx"
     assert first.activity.name == "Outdoor run"
+    assert "FitOps Analytics" in first.activity.description
+    assert first.activity.stamped_at is not None
     assert first.weather_status == "fetched"
     assert second.weather_status == "already_available"
     assert first.import_record.relative_path == ""
@@ -485,6 +487,7 @@ def test_cli_init_import_and_list_json(tmp_path, monkeypatch):
     assert payload["import"]["created"] is True
     assert payload["weather"]["status"] == "fetched"
     assert payload["publication"]["status"] == "not_requested"
+    assert payload["activity"]["description"].startswith("📊 FitOps Analytics")
     assert payload["activity"]["equipment"] == {
         "gear_id": gear_id,
         "gear_name": "Daily Trainer",
@@ -503,7 +506,7 @@ def test_cli_init_import_and_list_json(tmp_path, monkeypatch):
     stamp_payload = json.loads(stamped.output)
     assert stamp_payload["_meta"]["tool"] == "fitops"
     assert stamp_payload["activity_id"] == 1
-    assert stamp_payload["status"] == "stamped"
+    assert stamp_payload["status"] == "already_stamped"
 
     listed = runner.invoke(app, ["activities", "list", "--json"])
     assert listed.exit_code == 0, listed.output
@@ -560,6 +563,9 @@ def test_dashboard_import_route_and_local_detail(isolated_fitops):
             )
         assert response.status_code == 201
         assert response.json()["publication"]["status"] == "not_requested"
+        assert response.json()["activity"]["description"].startswith(
+            "📊 FitOps Analytics"
+        )
         assert response.json()["activity"]["equipment"]["gear_name"] == "Web Shoes"
         activity_id = response.json()["activity"]["activity_id"]
         detail = client.get(f"/activities/{activity_id}")
@@ -573,6 +579,7 @@ def test_dashboard_import_route_and_local_detail(isolated_fitops):
         assert ">Sync</button>" in detail.text
         assert 'id="local-stamp-btn"' in detail.text
         assert 'class="btn btn-primary"' in detail.text
+        assert "Re-stamp" in detail.text
 
         activity_list = client.get("/activities")
         assert activity_list.status_code == 200
@@ -583,7 +590,7 @@ def test_dashboard_import_route_and_local_detail(isolated_fitops):
             json={"force": False},
         )
         assert stamped.status_code == 200
-        assert stamped.json()["status"] == "stamped"
+        assert stamped.json()["status"] == "already_stamped"
 
         stamped_detail = client.get(f"/activities/{activity_id}")
         assert stamped_detail.status_code == 200

@@ -800,6 +800,24 @@ async def _attach_import_weather(
     return result
 
 
+async def _finalize_import(result: ActivityImportResult) -> ActivityImportResult:
+    """Attach weather and persist the local stamp for every import path."""
+    result = await _attach_import_weather(result)
+
+    from fitops.analytics.stamp import stamp_activity
+
+    async with get_async_session() as session:
+        activity = await session.get(Activity, result.activity.id)
+        if activity is None:
+            raise ActivityFileError(
+                "The imported activity disappeared before it could be stamped.",
+                code="activity_not_found",
+            )
+        await stamp_activity(None, session, activity, local_only=True)
+        result.activity = activity
+    return result
+
+
 async def import_activity_bytes(
     data: bytes,
     filename: str,
@@ -891,7 +909,7 @@ async def import_activity_bytes(
                 matched_activity_id = matched_activity.id
 
     if existing_result is not None:
-        return await _attach_import_weather(existing_result)
+        return await _finalize_import(existing_result)
 
     extension = Path(filename).suffix.lower()
     async with get_async_session() as session:
@@ -1037,7 +1055,7 @@ async def import_activity_bytes(
         sport_inference_source=normalized.sport_inference_source,
         sport_inference_confidence=normalized.sport_inference_confidence,
     )
-    return await _attach_import_weather(result)
+    return await _finalize_import(result)
 
 
 async def import_activity_file(

@@ -4,7 +4,7 @@ The Activities page (`/activities`) is your full training history in one place, 
 
 ## Uploading GPX or TCX
 
-Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. You can also choose shoes or a bike from the active profile's **Gear** list. **Post to Strava after import** is selected by default. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching, builds the stamp, and then uploads the selected file through the configured headless browser session.
+Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. You can also choose shoes or a bike from the active profile's **Gear** list. **Post to Strava after import** is selected by default. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching, then builds and stores the local stamp. When posting is enabled, it uploads the selected file and generated stamp through the configured headless browser session. Local-only imports keep the same generated stamp without contacting Strava.
 
 The selected gear is stored on the local activity. When posting is enabled, FitOps selects the same named item in Strava's upload editor. If the list is empty, add gear from Profile while offline or sync the profile's equipment from Strava.
 
