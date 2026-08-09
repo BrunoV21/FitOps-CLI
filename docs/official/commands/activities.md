@@ -20,6 +20,7 @@ Without `--name`, running activities use **Outdoor run** and cycling activities 
 fitops athlete init --name "Jane Runner"
 fitops activities import ~/Downloads/morning-run.gpx
 fitops activities import race.tcx --sport Run --name "City 10K" --json
+fitops activities import morning-run.tcx --gear "Daily Trainer"
 fitops activities import offline-run.gpx --local-only
 ```
 
@@ -28,10 +29,11 @@ fitops activities import offline-run.gpx --local-only
 | `--sport TYPE` | `auto` | Override the inferred sport (`Run`, `Ride`, `Walk`, and so on) |
 | `--name TEXT` | `Outdoor run` or `Outdoor cycle` | Override the activity title |
 | `--description TEXT` | — | Add personal description text above the generated FitOps stamp |
+| `--gear TEXT` | — | Attach gear by its stable ID or exact name |
 | `--post-to-strava / --local-only` | post | Post after import, or keep the processed activity local only |
 | `--json` | false | Return the activity, provenance hash, and inference details as JSON |
 
-Automatic detection prefers sport metadata embedded in TCX, then file/title keywords, then median moving speed. Use `--sport` whenever the heuristic is wrong.
+Automatic detection prefers sport metadata embedded in TCX, then file/title keywords, then median moving speed. Use `--sport` whenever the heuristic is wrong. Gear is resolved from the active athlete profile and stored on the local activity. During browser publication, FitOps also selects the matching gear in Strava's upload editor.
 
 The JSON activity object includes a provider-neutral `activity_id`, a nullable `strava_activity_id`, and `origin` (`gpx`, `tcx`, or `strava`). The `weather.status` field is `fetched`, `already_available`, `unavailable`, or a specific skipped reason such as `skipped_no_gps`; `weather.data` contains the stored raw and derived values when available. The `publication` object reports `completed`, `failed`, `already_linked`, or `not_requested`. A failed browser post exits non-zero but leaves the processed activity in the local database and includes the reason in `publication.error`.
 

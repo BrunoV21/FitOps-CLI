@@ -7,7 +7,7 @@ All examples show default output. Add `--json` to any command for raw JSON.
 ## `fitops activities import <PATH>`
 
 ```bash
-fitops activities import morning-run.tcx --json
+fitops activities import morning-run.tcx --gear "Daily Trainer" --json
 ```
 
 ```json
@@ -18,6 +18,7 @@ fitops activities import morning-run.tcx --json
     "filters_applied": {
       "sport": "auto",
       "name": null,
+      "gear": "Daily Trainer",
       "post_to_strava": true
     }
   },
@@ -27,6 +28,11 @@ fitops activities import morning-run.tcx --json
     "origin": "tcx",
     "name": "Outdoor run",
     "sport_type": "Run",
+    "equipment": {
+      "gear_id": "local-a1b2c3",
+      "gear_name": "Daily Trainer",
+      "gear_type": "shoes"
+    },
     "data_availability": {
       "has_gps": true,
       "streams_fetched": true,

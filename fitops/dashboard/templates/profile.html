@@ -4,9 +4,41 @@
 
 {% block head_extra %}
 <style>
+  .profile-browser-tools > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .profile-browser-tools > summary::-webkit-details-marker {
+    display: none;
+  }
+  .profile-browser-tools > summary::after {
+    content: '+';
+    color: var(--accent-primary);
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .profile-browser-tools[open] > summary::after {
+    content: '−';
+  }
+  .profile-browser-tools[open] > summary {
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .profile-browser-tools__content {
+    padding-top: 16px;
+  }
   @media (max-width: 767px) {
     .profile-mobile-stack {
       grid-template-columns: 1fr;
+    }
+    .profile-gear-add {
+      grid-template-columns: 1fr !important;
     }
   }
 </style>
@@ -16,16 +48,28 @@
 <div class="page-header">
   <p class="page-title">Profile</p>
   {% if saved %}
-  <span class="flash flash-success">Settings saved</span>
+  <span class="flash flash-success">{{ 'Gear added' if saved == 'gear' else 'Settings saved' }}</span>
   {% elif error == 'no_changes' %}
   <span class="flash flash-warn">No changes provided</span>
   {% elif error == 'invalid_zones' %}
   <span class="flash flash-warn">Invalid zone boundaries — values must be in order</span>
+  {% elif error == 'strava_connected' %}
+  <span class="flash flash-warn">Gear is managed by Strava while connected</span>
+  {% elif error in ['gear_name_required', 'invalid_gear_type'] %}
+  <span class="flash flash-warn">Enter a gear name and choose shoes or bike</span>
+  {% elif error == 'no_athlete' %}
+  <span class="flash flash-warn">Create an athlete profile first</span>
   {% endif %}
 </div>
 
-<div class="panel" style="margin-top:1px;">
-  <p class="panel-label">Browser publishing</p>
+<details class="panel profile-browser-tools" style="margin-top:1px;">
+  <summary>
+    <span>
+      <span class="panel-label" style="display:block;margin-bottom:4px;">Browser publishing</span>
+      <span class="panel-sub">Browser profile, Strava description, and direct upload settings</span>
+    </span>
+  </summary>
+  <div class="profile-browser-tools__content">
   <p class="panel-sub" style="margin-bottom:14px;">Choose the everyday browser profile where you are already signed in to Strava. Close that profile before publishing; FitOps never copies its cookies.</p>
   <form method="POST" action="/profile/browser" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
     <label class="form-group"><span class="form-label">Browser</span>
@@ -66,7 +110,8 @@
     </form>
     <p id="upload-activity-message" class="panel-sub" style="margin-top:10px;display:none;"></p>
   </div>
-</div>
+  </div>
+</details>
 
 <!-- Performance summary card -->
 {% if current_load %}
@@ -585,10 +630,38 @@
   </div>
 
   <!-- Equipment Mileage -->
-  {% if shoes or bikes %}
   <div class="panel" style="--delay:200ms">
-  <p class="panel-label">Equipment Mileage</p>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;">
+    <p class="panel-label" style="margin-bottom:0;">Equipment Mileage</p>
+    {% if strava_connected %}
+    <span style="font-size:10px;color:var(--text-dim);">Managed by Strava</span>
+    {% endif %}
+  </div>
   <div>
+
+    {% if not strava_connected and athlete %}
+    <form method="POST" action="/profile/gear" class="profile-gear-add" style="display:grid;grid-template-columns:minmax(140px,1fr) 110px auto;gap:8px;align-items:end;margin-bottom:20px;">
+      <label class="form-group">
+        <span class="form-label">Gear name</span>
+        <input name="name" class="input-ctrl" placeholder="Daily trainers" required>
+      </label>
+      <label class="form-group">
+        <span class="form-label">Type</span>
+        <select name="gear_type" class="select-ctrl">
+          <option value="shoes">Shoes</option>
+          <option value="bike">Bike</option>
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary" style="font-size:12px;">Add gear</button>
+      <label style="grid-column:1/-1;font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:7px;">
+        <input type="checkbox" name="primary" value="1"> Set as primary for this gear type
+      </label>
+    </form>
+    {% endif %}
+
+    {% if not shoes and not bikes %}
+    <p style="font-size:12px;color:var(--text-dim);">No gear available yet.</p>
+    {% endif %}
 
     {% if shoes %}
     <div style="background:var(--bg);padding:0 16px 16px 0;">
@@ -600,10 +673,10 @@
             {{ shoe.name }}
             {% if shoe.primary %}<span class="c-green" style="font-size:10px;margin-left:6px;font-weight:700;">PRIMARY</span>{% endif %}
           </span>
-          <span style="font-size:11px;color:var(--text-muted);">{{ shoe.strava_distance_km }} km</span>
+          <span style="font-size:11px;color:var(--text-muted);">{{ shoe.display_distance_km }} km</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
-          {% set pct = [(shoe.strava_distance_km / 700 * 100), 100] | min %}
+          {% set pct = [(shoe.display_distance_km / 700 * 100), 100] | min %}
           <div class="mileage-bar-track" style="flex:1;">
             <div class="mileage-bar-fill"
                  style="width:{{ pct }}%;background:{% if pct > 85 %}var(--accent-red){% elif pct > 60 %}var(--accent-amber){% else %}var(--accent-primary){% endif %};">
@@ -611,7 +684,7 @@
           </div>
           <span style="font-size:11px;color:var(--text-dim);flex-shrink:0;">{{ shoe.local_activity_count }} runs</span>
         </div>
-        <p style="font-size:10px;color:var(--text-dim);margin-top:3px;">{{ shoe.strava_distance_km }} / 700 km</p>
+        <p style="font-size:10px;color:var(--text-dim);margin-top:3px;">{{ shoe.display_distance_km }} / 700 km</p>
       </div>
       {% endfor %}
     </div>
@@ -627,7 +700,7 @@
             {{ bike.name }}
             {% if bike.primary %}<span class="c-green" style="font-size:10px;margin-left:6px;font-weight:700;">PRIMARY</span>{% endif %}
           </span>
-          <span style="font-size:11px;color:var(--text-muted);">{{ bike.strava_distance_km }} km</span>
+          <span style="font-size:11px;color:var(--text-muted);">{{ bike.display_distance_km }} km</span>
         </div>
         <p style="font-size:11px;color:var(--text-dim);">{{ bike.local_activity_count }} activities in local DB</p>
       </div>
@@ -637,7 +710,6 @@
 
   </div>
   </div>
-  {% endif %}
 
 </div>
 

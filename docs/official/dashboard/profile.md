@@ -1,6 +1,6 @@
 # Dashboard — Profile
 
-The **Browser publishing** panel selects a Brave, Chrome, or Edge user-data directory and profile. A dedicated logged-in profile powers default-on Strava posting during GPX/TCX import and ID-based stamp synchronization from local activity pages. FitOps uses the session in place and never copies cookies.
+The **Browser publishing** panel is collapsed by default so publishing tools do not push your profile data down the page. Select the panel to expand it. Inside, you can choose a Brave, Chrome, or Edge user-data directory and profile. A dedicated logged-in profile powers default-on Strava posting during GPX/TCX import and ID-based stamp synchronization from local activity pages. FitOps uses the session in place and never copies cookies.
 
 The same panel can append text to any Strava activity you own. Enter the Strava activity ID and text, then select **Append Text**. Existing description text is preserved. Turn on **Dry run** to check that the activity is editable without saving anything. On macOS with Brave, first enable **View → Developer → Allow JavaScript from Apple Events** in Brave. The automation then uses the currently logged-in Brave session without copying its cookies.
 
@@ -61,7 +61,11 @@ Your current VO2max estimate is shown on the profile page. You can:
 
 ## Equipment
 
-If you've synced gear from Strava (bikes, shoes), it appears here with cumulative usage.
+Shoes and bikes appear here with cumulative usage from synced or locally imported activities.
+
+When the profile is offline, the Equipment panel includes an **Add gear** form. Enter a name, choose **Shoes** or **Bike**, and optionally make it primary for that category. The new item immediately becomes available when uploading an activity.
+
+When Strava is connected, the add form is not shown and the panel is labelled **Managed by Strava**. Gear from Strava sync is the source of truth in that state. The same restriction is enforced by the profile endpoint, so a connected profile cannot create local gear through a direct form request.
 
 ## Strava Activity Stamp
 

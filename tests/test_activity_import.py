@@ -306,6 +306,82 @@ async def test_first_strava_sync_links_active_offline_profile(isolated_fitops):
     assert athlete.source == "strava"
 
 
+async def test_local_gear_creation_and_resolution_require_offline_profile(
+    isolated_fitops,
+):
+    from fitops.athlete_service import create_local_athlete
+    from fitops.gear_service import GearError, add_local_gear, list_gear, resolve_gear
+
+    athlete, _ = await create_local_athlete("Gear Athlete")
+    first = await add_local_gear(
+        athlete.id,
+        name="Daily Shoes",
+        gear_type="shoe",
+        primary=True,
+        strava_connected=False,
+    )
+    second = await add_local_gear(
+        athlete.id,
+        name="Race Shoes",
+        gear_type="shoes",
+        primary=True,
+        strava_connected=False,
+    )
+
+    items = await list_gear(athlete.id)
+    assert [item["name"] for item in items] == ["Daily Shoes", "Race Shoes"]
+    assert [item["primary"] for item in items] == [False, True]
+    assert (await resolve_gear(athlete.id, first["id"]))["name"] == "Daily Shoes"
+    assert (await resolve_gear(athlete.id, "race shoes"))["id"] == second["id"]
+
+    with pytest.raises(GearError) as raised:
+        await add_local_gear(
+            athlete.id,
+            name="Connected Shoes",
+            gear_type="shoes",
+            strava_connected=True,
+        )
+    assert raised.value.code == "strava_connected"
+
+
+def test_strava_profile_refresh_preserves_offline_gear():
+    from fitops.db.models.athlete import Athlete
+
+    athlete = Athlete(
+        strava_id=None,
+        source="local",
+        firstname="Local",
+        shoes_json=json.dumps(
+            [
+                {
+                    "id": "local-shoes",
+                    "name": "Offline Shoes",
+                    "distance_m": 0,
+                    "primary": True,
+                    "source": "local",
+                }
+            ]
+        ),
+    )
+
+    athlete.update_from_strava_data(
+        {
+            "id": 123,
+            "shoes": [
+                {
+                    "id": "g123",
+                    "name": "Strava Shoes",
+                    "distance": 1000,
+                    "primary": True,
+                }
+            ],
+            "bikes": [],
+        }
+    )
+
+    assert [item["id"] for item in athlete.shoes] == ["g123", "local-shoes"]
+
+
 async def test_startup_migrates_legacy_provider_ids_to_local_ids(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'legacy.db'}")
     async with engine.begin() as connection:
@@ -370,12 +446,33 @@ def test_cli_init_import_and_list_json(tmp_path, monkeypatch):
     )
     assert initialized.exit_code == 0, initialized.output
 
+    added_gear = runner.invoke(
+        app,
+        [
+            "athlete",
+            "gear-add",
+            "--name",
+            "Daily Trainer",
+            "--type",
+            "shoes",
+            "--primary",
+            "--json",
+        ],
+    )
+    assert added_gear.exit_code == 0, added_gear.output
+    gear_payload = json.loads(added_gear.output)
+    assert gear_payload["_meta"]["tool"] == "fitops"
+    assert gear_payload["gear"]["name"] == "Daily Trainer"
+    gear_id = gear_payload["gear"]["gear_id"]
+
     imported = runner.invoke(
         app,
         [
             "activities",
             "import",
             str(FIXTURES / "sample.tcx"),
+            "--gear",
+            gear_id,
             "--local-only",
             "--json",
         ],
@@ -388,6 +485,15 @@ def test_cli_init_import_and_list_json(tmp_path, monkeypatch):
     assert payload["import"]["created"] is True
     assert payload["weather"]["status"] == "fetched"
     assert payload["publication"]["status"] == "not_requested"
+    assert payload["activity"]["equipment"] == {
+        "gear_id": gear_id,
+        "gear_name": "Daily Trainer",
+        "gear_type": "shoes",
+    }
+
+    equipment = runner.invoke(app, ["athlete", "equipment", "--json"])
+    assert equipment.exit_code == 0, equipment.output
+    assert json.loads(equipment.output)["equipment"][0]["gear_id"] == gear_id
 
     stamped = runner.invoke(
         app,
@@ -415,9 +521,21 @@ def test_dashboard_import_route_and_local_detail(isolated_fitops):
         assert "Create an offline profile" in empty_page.text
         offline = client.post("/api/setup/offline", json={"name": "Web Athlete"})
         assert offline.status_code == 201
+        profile = client.get("/profile")
+        assert profile.status_code == 200
+        assert 'action="/profile/gear"' in profile.text
+        added = client.post(
+            "/profile/gear",
+            data={"name": "Web Shoes", "gear_type": "shoes", "primary": "1"},
+        )
+        assert added.status_code == 200
+        assert "Gear added" in added.text
+        assert "Web Shoes" in added.text
         ready_page = client.get("/activities/import")
         assert ready_page.status_code == 200
         assert 'id="post-to-strava"' in ready_page.text
+        assert 'id="activity-gear"' in ready_page.text
+        assert "Web Shoes (shoes)" in ready_page.text
         assert 'name="post_to_strava" value="true" checked' in ready_page.text
         assert 'id="activity-import-loading"' in ready_page.text
         assert (
@@ -434,14 +552,20 @@ def test_dashboard_import_route_and_local_detail(isolated_fitops):
             response = client.post(
                 "/api/activities/import",
                 files={"file": ("sample.tcx", source, "application/xml")},
-                data={"sport": "auto", "post_to_strava": "false"},
+                data={
+                    "sport": "auto",
+                    "gear": "Web Shoes",
+                    "post_to_strava": "false",
+                },
             )
         assert response.status_code == 201
         assert response.json()["publication"]["status"] == "not_requested"
+        assert response.json()["activity"]["equipment"]["gear_name"] == "Web Shoes"
         activity_id = response.json()["activity"]["activity_id"]
         detail = client.get(f"/activities/{activity_id}")
         assert detail.status_code == 200
         assert "Imported TCX" in detail.text
+        assert "Web Shoes" in detail.text
         assert 'id="publish-btn"' not in detail.text
         assert ">Publish</button>" not in detail.text
         assert 'for="existing-strava-id">Strava activity ID</label>' in detail.text
@@ -510,6 +634,38 @@ def test_dashboard_import_posts_by_default_and_links_returned_id(
     assert payload["activity"]["strava_activity_id"] == 987654321
     assert publish.await_args.args[1] == (FIXTURES / "sample.tcx").read_bytes()
     assert publish.await_args.args[2] == "sample.tcx"
+
+
+def test_profile_hides_and_rejects_local_gear_when_strava_connected(
+    isolated_fitops,
+):
+    from fastapi.testclient import TestClient
+
+    from fitops.config.settings import get_settings
+    from fitops.dashboard.server import create_app
+
+    with TestClient(create_app()) as client:
+        client.post("/api/setup/offline", json={"name": "Connected Athlete"})
+        get_settings().save_tokens(
+            {
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "athlete_id": 987,
+            }
+        )
+
+        page = client.get("/profile")
+        assert page.status_code == 200
+        assert 'action="/profile/gear"' not in page.text
+        assert "Managed by Strava" in page.text
+
+        response = client.post(
+            "/profile/gear",
+            data={"name": "Forbidden Shoes", "gear_type": "shoes"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/profile?error=strava_connected"
 
 
 def test_dashboard_import_keeps_local_activity_when_post_fails(
@@ -661,8 +817,18 @@ async def test_browser_publish_uploads_selected_file_and_links_returned_id(
     from fitops.athlete_service import create_local_athlete
     from fitops.browser.publisher import publish_activity
 
-    await create_local_athlete("Publisher")
-    imported = await import_activity_file(FIXTURES / "sample.tcx")
+    athlete, _ = await create_local_athlete("Publisher")
+    from fitops.gear_service import add_local_gear
+
+    gear = await add_local_gear(
+        athlete.id,
+        name="Publisher Shoes",
+        gear_type="shoes",
+        strava_connected=False,
+    )
+    imported = await import_activity_file(
+        FIXTURES / "sample.tcx", gear=gear["id"]
+    )
     upload = MagicMock(return_value=SimpleNamespace(strava_activity_id=987654321))
     monkeypatch.setattr("fitops.browser.publisher.upload_activity_file", upload)
 
@@ -675,6 +841,7 @@ async def test_browser_publish_uploads_selected_file_and_links_returned_id(
     assert result.strava_id == 987654321
     assert upload.call_args.args[0] == FIXTURES / "sample.tcx"
     assert "FitOps Analytics" in upload.call_args.kwargs["description"]
+    assert upload.call_args.kwargs["gear"] == "Publisher Shoes"
     async with get_async_session() as session:
         activity = await session.get(Activity, imported.activity.id)
     assert activity.strava_id == 987654321

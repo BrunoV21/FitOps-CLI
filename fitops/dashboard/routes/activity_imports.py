@@ -21,13 +21,20 @@ router = APIRouter()
 def register(templates: Jinja2Templates) -> APIRouter:
     @router.get("/activities/import", response_class=HTMLResponse)
     async def activity_import_page(request: Request):
+        settings = get_settings()
+        equipment = []
+        if settings.athlete_id:
+            from fitops.dashboard.queries.profile import get_equipment_with_stats
+
+            equipment = await get_equipment_with_stats(settings.athlete_id)
         return templates.TemplateResponse(
             request,
             "activities/import.html",
             {
                 "request": request,
                 "active_page": "activities",
-                "has_athlete": bool(get_settings().athlete_id),
+                "has_athlete": bool(settings.athlete_id),
+                "equipment": equipment,
             },
         )
 
@@ -41,6 +48,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
         sport: str = Form("auto"),
         name: str = Form(""),
         description: str = Form(""),
+        gear: str = Form(""),
         post_to_strava: bool = Form(True),
     ):
         if not get_settings().athlete_id:
@@ -59,6 +67,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 sport_type=sport,
                 name=name or None,
                 description=description or None,
+                gear=gear or None,
             )
         except ActivityFileError as exc:
             status_code = 413 if exc.code == "file_too_large" else 422
@@ -107,6 +116,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     }
                 )
 
+        from fitops.gear_service import get_gear_lookup
+
+        gear_lookup = await get_gear_lookup(result.activity.athlete_id)
         await trigger_async()
         return JSONResponse(
             {
@@ -114,7 +126,8 @@ def register(templates: Jinja2Templates) -> APIRouter:
                     {
                         column.name: getattr(activity, column.name)
                         for column in activity.__table__.columns
-                    }
+                    },
+                    gear_lookup,
                 ),
                 "import": {
                     "created": result.created,

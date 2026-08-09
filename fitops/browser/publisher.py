@@ -105,6 +105,14 @@ async def publish_activity(
         publication_id = publication.id
         title = activity.name
         sport_type = activity.sport_type
+        gear = None
+        if activity.gear_id:
+            from fitops.db.models.athlete import Athlete
+
+            athlete = await session.get(Athlete, activity.athlete_id)
+            gear = (
+                athlete.get_gear_name(activity.gear_id) if athlete is not None else None
+            ) or activity.gear_id
 
     try:
         if target_strava_id is not None:
@@ -124,6 +132,7 @@ async def publish_activity(
                     title=title,
                     description=description,
                     sport_type=sport_type,
+                    gear=gear,
                 )
             else:
                 upload_result = await asyncio.to_thread(
@@ -132,6 +141,7 @@ async def publish_activity(
                     title=title,
                     description=description,
                     sport_type=sport_type,
+                    gear=gear,
                 )
             published_id = upload_result.strava_activity_id
     except Exception as raw_exc:

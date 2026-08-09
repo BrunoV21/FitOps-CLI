@@ -59,7 +59,17 @@ async def get_equipment_with_stats(athlete_id: int) -> list[dict]:
                 "strava_distance_km": round(shoe.get("distance_m", 0) / 1000, 1),
                 "local_distance_km": round(stats.get("distance_m", 0) / 1000, 1),
                 "activity_count": stats.get("activity_count", 0),
+                "local_activity_count": stats.get("activity_count", 0),
                 "primary": shoe.get("primary", False),
+                "display_distance_km": round(
+                    (
+                        shoe.get("distance_m", 0)
+                        if shoe.get("distance_m", 0) > 0
+                        else stats.get("distance_m", 0)
+                    )
+                    / 1000,
+                    1,
+                ),
             }
         )
     for bike in athlete.bikes:
@@ -73,7 +83,17 @@ async def get_equipment_with_stats(athlete_id: int) -> list[dict]:
                 "strava_distance_km": round(bike.get("distance_m", 0) / 1000, 1),
                 "local_distance_km": round(stats.get("distance_m", 0) / 1000, 1),
                 "activity_count": stats.get("activity_count", 0),
+                "local_activity_count": stats.get("activity_count", 0),
                 "primary": bike.get("primary", False),
+                "display_distance_km": round(
+                    (
+                        bike.get("distance_m", 0)
+                        if bike.get("distance_m", 0) > 0
+                        else stats.get("distance_m", 0)
+                    )
+                    / 1000,
+                    1,
+                ),
             }
         )
     return items

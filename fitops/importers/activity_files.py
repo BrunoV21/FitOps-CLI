@@ -718,6 +718,7 @@ async def _enrich_matching_activity(
     normalized: NormalizedActivity,
     *,
     description: str | None,
+    gear_id: str | None,
 ) -> None:
     """Add file-only detail without overwriting richer data already in FitOps."""
     summary_values = {
@@ -745,6 +746,8 @@ async def _enrich_matching_activity(
             setattr(activity, field_name, value)
     if not activity.description and description and description.strip():
         activity.description = description.strip()
+    if gear_id is not None:
+        activity.gear_id = gear_id
 
     existing_stream_types = set(
         (
@@ -805,6 +808,7 @@ async def import_activity_bytes(
     description: str | None = None,
     sport_type: str | None = "auto",
     athlete_id: int | None = None,
+    gear: str | None = None,
 ) -> ActivityImportResult:
     settings = get_settings()
     local_athlete_id = athlete_id or settings.active_athlete_id
@@ -813,6 +817,14 @@ async def import_activity_bytes(
             "Create an offline athlete profile before importing activities.",
             code="offline_profile_required",
         )
+
+    from fitops.gear_service import GearError, resolve_gear
+
+    try:
+        resolved_gear = await resolve_gear(local_athlete_id, gear)
+    except GearError as exc:
+        raise ActivityFileError(str(exc), code=exc.code) from exc
+    gear_id = resolved_gear.get("id") if resolved_gear else None
 
     filename = _safe_original_name(filename)
     normalized = parse_activity_bytes(data, filename, name=name, sport_type=sport_type)
@@ -835,6 +847,8 @@ async def import_activity_bytes(
                     select(Activity).where(Activity.id == duplicate.activity_id)
                 )
             ).scalar_one()
+            if gear_id is not None:
+                activity.gear_id = gear_id
             existing_result = ActivityImportResult(
                 activity=activity,
                 import_record=duplicate,
@@ -863,6 +877,7 @@ async def import_activity_bytes(
                     matched_activity,
                     normalized,
                     description=description,
+                    gear_id=gear_id,
                 )
                 existing_result = ActivityImportResult(
                     activity=matched_activity,
@@ -893,6 +908,7 @@ async def import_activity_bytes(
                 activity,
                 normalized,
                 description=description,
+                gear_id=gear_id,
             )
         else:
             activity = Activity(
@@ -902,6 +918,7 @@ async def import_activity_bytes(
                 name=normalized.name,
                 description=(description or "").strip() or None,
                 sport_type=normalized.sport_type,
+                gear_id=gear_id,
                 start_date=normalized.start_date,
                 start_date_local=normalized.start_date_local,
                 distance_m=normalized.distance_m,
@@ -1030,6 +1047,7 @@ async def import_activity_file(
     description: str | None = None,
     sport_type: str | None = "auto",
     athlete_id: int | None = None,
+    gear: str | None = None,
 ) -> ActivityImportResult:
     source = Path(path).expanduser()
     if not source.is_file():
@@ -1048,4 +1066,5 @@ async def import_activity_file(
         description=description,
         sport_type=sport_type,
         athlete_id=athlete_id,
+        gear=gear,
     )

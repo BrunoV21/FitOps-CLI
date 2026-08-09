@@ -147,6 +147,10 @@ def profile(
                     "bikes": athlete.bikes,
                     "shoes": athlete.shoes,
                 },
+                "gear_management": {
+                    "can_add_local_gear": not settings.is_authenticated,
+                    "managed_by": "strava" if settings.is_authenticated else "fitops",
+                },
                 "physiology": physiology,
             },
         }
@@ -312,12 +316,6 @@ def equipment(
 ) -> None:
     """Show equipment (shoes/bikes) with distance and activity counts."""
     settings = get_settings()
-    try:
-        settings.require_auth()
-    except NotAuthenticatedError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1)
-
     init_db()
 
     async def _fetch():
@@ -404,3 +402,67 @@ def equipment(
         )
     else:
         print_equipment_table(items)
+
+
+@app.command("gear-add")
+def gear_add(
+    name: str = typer.Option(..., "--name", help="Gear name."),
+    gear_type: str = typer.Option(
+        ..., "--type", help="Gear type: shoes or bike."
+    ),
+    primary: bool = typer.Option(False, "--primary", help="Mark as primary gear."),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Add gear to a profile that is not connected to Strava."""
+    from fitops.gear_service import GearError, add_local_gear
+
+    settings = get_settings()
+    if not settings.athlete_id:
+        typer.echo(
+            "No athlete profile. Run `fitops athlete init --name NAME` first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    init_db()
+    try:
+        item = asyncio.run(
+            add_local_gear(
+                settings.athlete_id,
+                name=name,
+                gear_type=gear_type,
+                primary=primary,
+            )
+        )
+    except GearError as exc:
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "_meta": make_meta(total_count=0),
+                        "error": {"code": exc.code, "message": str(exc)},
+                    },
+                    indent=2,
+                ),
+                err=True,
+            )
+        else:
+            typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+
+    payload = {
+        "_meta": make_meta(
+            total_count=1,
+            filters_applied={"type": item["type"], "primary": primary},
+        ),
+        "gear": {
+            "gear_id": item["id"],
+            "name": item["name"],
+            "type": item["type"],
+            "primary": item["primary"],
+        },
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2))
+    else:
+        typer.echo(f"Added {item['name']} ({item['type']}, ID {item['id']}).")
+    trigger_cli()

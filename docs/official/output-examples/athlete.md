@@ -54,6 +54,32 @@ fitops athlete equipment --type shoes
 
 ---
 
+## `fitops athlete gear-add`
+
+```bash
+fitops athlete gear-add --name "Daily Trainer" --type shoes --primary --json
+```
+
+```json
+{
+  "_meta": {
+    "tool": "fitops",
+    "total_count": 1,
+    "filters_applied": {"type": "shoes", "primary": true}
+  },
+  "gear": {
+    "gear_id": "local-a1b2c3",
+    "name": "Daily Trainer",
+    "type": "shoes",
+    "primary": true
+  }
+}
+```
+
+Local gear creation is available only while the active profile is not connected to Strava.
+
+---
+
 ## `fitops athlete zones`
 
 ```bash

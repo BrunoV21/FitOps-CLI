@@ -45,6 +45,9 @@ def import_activity(
     description: str | None = typer.Option(
         None, "--description", help="Personal text placed above the FitOps stamp."
     ),
+    gear: str | None = typer.Option(
+        None, "--gear", help="Gear ID or exact gear name to attach."
+    ),
     post_to_strava: bool = typer.Option(
         True,
         "--post-to-strava/--local-only",
@@ -65,6 +68,7 @@ def import_activity(
             sport_type=sport,
             name=name,
             description=description,
+            gear=gear,
         )
         publication = None
         publication_error = None
@@ -93,6 +97,7 @@ def import_activity(
             filters_applied={
                 "sport": sport,
                 "name": name,
+                "gear": gear,
                 "post_to_strava": post_to_strava,
             },
         ),
@@ -100,7 +105,8 @@ def import_activity(
             {
                 column.name: getattr(activity, column.name)
                 for column in activity.__table__.columns
-            }
+            },
+            asyncio.run(_get_gear_lookup()),
         ),
         "import": {
             "created": result.created,

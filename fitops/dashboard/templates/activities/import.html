@@ -36,6 +36,17 @@
   <label>Description (optional)
     <textarea class="input-ctrl" name="description" rows="4" style="display:block;width:100%;margin-top:6px;"></textarea>
   </label>
+  <label>Gear (optional)
+    <select id="activity-gear" class="select-ctrl" name="gear" style="display:block;width:100%;margin-top:6px;">
+      <option value="">No gear</option>
+      {% for item in equipment %}
+      <option value="{{ item.gear_id }}">{{ item.name }} ({{ 'shoes' if item.type == 'shoes' else 'bike' }})</option>
+      {% endfor %}
+    </select>
+    {% if not equipment %}
+    <small class="text-dim">Add gear from Profile when using an offline account, or sync gear from Strava.</small>
+    {% endif %}
+  </label>
   <label class="activity-import-post-option">
     <input id="post-to-strava" type="checkbox" name="post_to_strava" value="true" checked>
     <span>

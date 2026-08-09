@@ -51,6 +51,10 @@ fitops athlete profile --json
         { "id": "g987654", "name": "Nike Vaporfly 3", "distance": 520000 }
       ]
     },
+    "gear_management": {
+      "can_add_local_gear": false,
+      "managed_by": "strava"
+    },
     "physiology": {
       "max_hr": 190,
       "resting_hr": 45,
@@ -91,7 +95,7 @@ fitops athlete profile --json
 
 `vo2max` is estimated from recent activities when available. Fields: `estimate` (ml/kg/min), `vdot`, `confidence` (0–1), `confidence_label` (`"low"` / `"medium"` / `"high"`), and `based_on_activity` (the activity the estimate was derived from).
 
-Requires a prior `fitops sync run` to populate locally. Physiology values are configured via `fitops athlete set` and `fitops analytics zones`.
+For an offline profile, `gear_management.can_add_local_gear` is `true` and `managed_by` is `"fitops"`. While Strava is connected, gear remains managed by Strava and local gear creation is disabled. Physiology values are configured via `fitops athlete set` and `fitops analytics zones`.
 
 ---
 
@@ -213,7 +217,27 @@ Equipment is read from the local athlete record (synced from Strava). For each i
 - `local_activity_distance_km` — distance computed from locally-synced activities using this gear
 - `local_activity_count` — number of locally-synced activities tagged to this gear
 
-Requires a prior `fitops sync run`.
+This command also works for offline profiles and includes gear created with `fitops athlete gear-add`.
+
+---
+
+### `fitops athlete gear-add`
+
+Add shoes or a bike to an offline profile. This command is available only while the profile is not connected to Strava; connected profiles receive their gear from Strava sync.
+
+```bash
+fitops athlete gear-add --name "Daily Trainer" --type shoes
+fitops athlete gear-add --name "Gravel Bike" --type bike --primary --json
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name TEXT` | yes | Display name used in the dashboard and activity picker |
+| `--type shoes\|bike` | yes | Gear category |
+| `--primary` | no | Make this the primary item for its category |
+| `--json` | no | Return the created gear and `_meta` envelope as JSON |
+
+The generated `gear_id` is stable and can be passed to `fitops activities import --gear`. If an offline profile is connected to Strava later, its existing local gear is retained so earlier activity assignments still resolve.
 
 ## See Also
 

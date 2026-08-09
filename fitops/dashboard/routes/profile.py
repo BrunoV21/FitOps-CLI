@@ -287,6 +287,7 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 "current_load": current_load,
                 "stamp_on_sync": bool(athlete.stamp_on_sync) if athlete else False,
                 "has_write_scope": cfg.has_write_scope,
+                "strava_connected": cfg.is_authenticated,
                 "browser_type": browser_type,
                 "browser_executable": browser_executable,
                 "browser_user_data_dir": browser_user_data_dir,
@@ -380,6 +381,30 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
         await trigger_async()
         return RedirectResponse("/profile?saved=1", status_code=303)
+
+    @router.post("/profile/gear")
+    async def add_profile_gear(
+        name: str = Form(...),
+        gear_type: str = Form(...),
+        primary: str | None = Form(default=None),
+    ):
+        from fitops.gear_service import GearError, add_local_gear
+
+        cfg = get_settings()
+        if not cfg.athlete_id:
+            return RedirectResponse("/profile?error=no_athlete", status_code=303)
+        try:
+            await add_local_gear(
+                cfg.athlete_id,
+                name=name,
+                gear_type=gear_type,
+                primary=primary == "1",
+                strava_connected=cfg.is_authenticated,
+            )
+        except GearError as exc:
+            return RedirectResponse(f"/profile?error={exc.code}", status_code=303)
+        await trigger_async()
+        return RedirectResponse("/profile?saved=gear", status_code=303)
 
     @router.post("/profile/browser")
     async def save_browser(

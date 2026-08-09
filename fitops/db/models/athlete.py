@@ -141,6 +141,11 @@ class Athlete(Base):
             }
             for s in data.get("shoes", [])
         ]
+        # Keep equipment created while this profile was offline. Once connected,
+        # new gear is provider-managed, but existing local activity references
+        # must continue to resolve after every Strava profile sync.
+        bikes.extend(item for item in self.bikes if item.get("source") == "local")
+        shoes.extend(item for item in self.shoes if item.get("source") == "local")
         self.username = data.get("username", self.username)
         self.firstname = data.get("firstname", self.firstname)
         self.lastname = data.get("lastname", self.lastname)
