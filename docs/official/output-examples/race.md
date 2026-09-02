@@ -14,7 +14,7 @@ fitops race courses
   ID   Name                    Source   Distance    Elevation   Imported
  ──────────────────────────────────────────────────────────────────────────
    1   Berlin Marathon 2026    gpx      42.20 km    +218 m      2026-03-01
-   2   Local 10K               gpx      10.02 km    +48 m       2026-03-10
+   2   Local 10K               kmz      10.02 km    +48 m       2026-03-10
    3   Thursday Loop           strava   8.54 km     +62 m       2026-03-22
 ```
 

@@ -62,10 +62,9 @@ from fitops.dashboard.queries.race_session import (
 from fitops.race.course_parser import (
     build_km_segments,
     compute_total_elevation_gain,
-    parse_gpx,
+    parse_course_file,
     parse_mapmyrun_url,
     parse_strava_url,
-    parse_tcx,
 )
 from fitops.race.simulation import simulate_pacer_mode, simulate_splits
 
@@ -262,21 +261,18 @@ def register(templates: Jinja2Templates) -> APIRouter:
 
             elif source_type == "file":
                 if file is None or not file.filename:
-                    raise ValueError("Please select a GPX or TCX file.")
+                    raise ValueError("Please select a GPX, TCX, or KMZ file.")
                 content = await file.read()
                 suffix = os.path.splitext(file.filename)[1].lower()
-                if suffix not in (".gpx", ".tcx"):
+                if suffix not in (".gpx", ".tcx", ".kmz"):
                     raise ValueError(
-                        f"Unsupported file type '{suffix}'. Use .gpx or .tcx."
+                        f"Unsupported file type '{suffix}'. Use .gpx, .tcx, or .kmz."
                     )
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(content)
                     tmp_path = tmp.name
                 try:
-                    if suffix == ".gpx":
-                        points = parse_gpx(tmp_path)
-                    else:
-                        points = parse_tcx(tmp_path)
+                    file_fmt, points = parse_course_file(tmp_path)
                 finally:
                     os.unlink(tmp_path)
             else:
@@ -288,13 +284,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
             segments = build_km_segments(points)
             total_dist = points[-1]["distance_from_start_m"]
             elev_gain = compute_total_elevation_gain(points)
-            file_fmt = (
-                "gpx"
-                if source_type == "file" and file and file.filename.endswith(".gpx")
-                else ("tcx" if source_type == "file" else None)
-            )
+            file_fmt = file_fmt if source_type == "file" else None
             src_ref = url.strip() if source_type in ("mapmyrun", "strava") else None
-            src_label = source_type  # "file" | "mapmyrun" | "strava"
+            src_label = file_fmt if source_type == "file" else source_type
 
             result = await save_course(
                 name=name.strip(),

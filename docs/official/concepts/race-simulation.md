@@ -13,7 +13,9 @@ A race course is a sequence of GPS points. FitOps segments it into 1km bins and 
 ```bash
 fitops race import berlin-marathon.gpx --name "Berlin Marathon 2026"
 fitops race import course.tcx --name "Local 10K"
-fitops race import --activity 12345678901 --name "My Race Course"  # from Strava activity
+fitops race import course.kmz --name "Berlin Marathon 2026"
+fitops race import 12345678901 --name "My Race Course"  # from Strava activity
+fitops race import "https://www.strava.com/activities/12345678901" --name "My Race Course"
 ```
 
 Courses are stored locally. Each gets an ID you use with the simulation commands.
@@ -33,6 +35,7 @@ This is the same GAP model used in activity analysis. On a hilly course, the sim
 For each kilometre, FitOps applies a **weather factor** accounting for:
 
 - **Heat and humidity** — via WBGT (Wet Bulb Globe Temperature). A hot humid segment gets a penalty on top of the elevation adjustment.
+- **Wind by segment direction** — headwind slows a segment down, tailwind speeds it up, and crosswind has little effect. On an out-and-back course, this means flat kilometres can still get different target paces.
 
 Weather can be provided manually (`--temp`, `--humidity`) or auto-fetched from Open-Meteo using a date and race start hour.
 

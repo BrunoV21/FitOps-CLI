@@ -9,7 +9,11 @@ Pure math — no DB access, no I/O.
 
 from __future__ import annotations
 
-from fitops.analytics.weather_pace import compute_wap_factor
+from fitops.analytics.weather_pace import (
+    compute_wap_factor,
+    headwind_ms,
+    pace_wind_factor,
+)
 from fitops.race.course_parser import _fmt_duration, _fmt_pace
 
 
@@ -67,10 +71,28 @@ def simulate_splits(
     enriched = []
     for seg in segments:
         gf = gap_factor(seg["grade"])
-        wf = compute_wap_factor(temp_c, rh_pct, wind_ms, wind_dir, seg.get("bearing"))
-        combined = gf * wf
+        heat_f = compute_wap_factor(
+            temp_c, rh_pct, wind_ms, wind_dir, seg.get("bearing")
+        )
+        bearing = seg.get("bearing")
+        if bearing is None:
+            hw = 0.0
+            wind_f = 1.0
+        else:
+            hw = headwind_ms(wind_ms, wind_dir, bearing)
+            wind_f = pace_wind_factor(hw)
+        weather_f = heat_f * wind_f
+        combined = gf * weather_f
         enriched.append(
-            {**seg, "gap_factor": gf, "wap_factor": wf, "combined_factor": combined}
+            {
+                **seg,
+                "gap_factor": gf,
+                "wap_factor": heat_f,
+                "wind_factor": wind_f,
+                "headwind_ms": hw,
+                "weather_factor": weather_f,
+                "combined_factor": combined,
+            }
         )
 
     # Step 2: total difficulty-weighted distance
@@ -120,6 +142,9 @@ def simulate_splits(
                 "bearing_deg": round(seg.get("bearing", 0.0), 1),
                 "gap_factor": round(seg["gap_factor"], 4),
                 "wap_factor": round(seg["wap_factor"], 4),
+                "wind_factor": round(seg["wind_factor"], 4),
+                "headwind_ms": round(seg["headwind_ms"], 3),
+                "weather_factor": round(seg["weather_factor"], 4),
                 "combined_factor": round(seg["combined_factor"], 4),
                 "target_pace_s": round(pace_s, 1),
                 "target_pace_fmt": _fmt_pace(pace_s),

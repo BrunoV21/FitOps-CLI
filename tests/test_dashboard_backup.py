@@ -34,7 +34,7 @@ def test_backup_page_renders_saved_ui_state(tmp_path, monkeypatch):
                             resp = client.get("/backup")
 
     assert resp.status_code == 200
-    assert "repo: \"owner/backups\"" in resp.text
+    assert 'repo: "owner/backups"' in resp.text
     assert "interval_hours: 12" in resp.text
-    assert "id=\"webhook-enable-btn\"" in resp.text
-    assert "id=\"sched-save-btn\"" in resp.text
+    assert 'id="webhook-enable-btn"' in resp.text
+    assert 'id="sched-save-btn"' in resp.text

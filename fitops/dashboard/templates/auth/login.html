@@ -121,6 +121,21 @@
     }
     button:hover { opacity: 0.85; }
     button:active { opacity: 0.7; }
+    .legal-links {
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px 20px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .legal-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+    }
+    .legal-links a:hover { color: var(--accent-primary); }
   </style>
 </head>
 <body>
@@ -155,6 +170,10 @@
         <button type="submit">Sign in →</button>
       </form>
     </div>
+    <nav class="legal-links" aria-label="Legal">
+      <a href="{{ legal_docs.privacy }}" target="_blank" rel="noopener noreferrer">Privacy</a>
+      <a href="{{ legal_docs.user_agreement }}" target="_blank" rel="noopener noreferrer">User Agreement</a>
+    </nav>
   </div>
 </body>
 </html>

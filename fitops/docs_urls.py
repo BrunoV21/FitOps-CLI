@@ -46,3 +46,8 @@ DASHBOARD_DOCS: dict[str, str] = {
     "setup": f"{DOC_BASE}/getting-started/authentication",
     "deploy": f"{DOC_BASE}/deploy/huggingface",
 }
+
+LEGAL_DOCS: dict[str, str] = {
+    "privacy": f"{DOC_BASE}/legal/privacy",
+    "user_agreement": f"{DOC_BASE}/legal/user-agreement",
+}

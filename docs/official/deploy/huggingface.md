@@ -31,6 +31,8 @@ Deploy the FitOps dashboard to a private HuggingFace Space so you can access you
 5. The Space does not restore local-machine backups and does not restore from GitHub on push, release publication, or a timer.
 6. All dashboard routes are protected by password + TOTP (Google Authenticator, Authy, etc.).
 
+Open dashboard tabs poll a lightweight local update stamp every few seconds. When a webhook commits an activity row, the page reloads without waiting for slower follow-up work such as stream fetches, weather, Strava stamping, training-load snapshot writes, or GitHub backup upload.
+
 ---
 
 ## Deploy
@@ -122,11 +124,14 @@ Navigate to your Space URL (`https://myuser-fitops-dashboard.hf.space`):
 | `FITOPS_TOTP_SECRET` | `fitops deploy hf` | TOTP seed for your authenticator app |
 | `FITOPS_SESSION_SECRET` | `fitops deploy hf` | Signs session cookies (random 32-byte hex) |
 | `FITOPS_SYNC_TOKEN` | `fitops deploy hf` | Token for the manual internal restore endpoint; the generated workflow does not call it |
+| `FITOPS_PUBLIC_BASE_URL` | `fitops deploy hf` | Public dashboard base URL used for deployed Strava OAuth callbacks |
 | `FITOPS_WEBHOOK_CALLBACK_URL` | `fitops deploy hf` | Public Strava webhook callback URL for this Space |
 | `FITOPS_DEFAULT_SYNC_MODE` | `fitops deploy hf` | Defaults deployed dashboard sync to `webhook` |
 | `FITOPS_INSTANCE_KIND` | `fitops deploy hf` | Marks backups from this runtime as `hf-space` |
 | `FITOPS_INSTANCE_LABEL` | `fitops deploy hf` | Labels backups with the Space host |
 | `FITOPS_INSTANCE_ROLE` | `fitops deploy hf` | Marks the HF Space as the primary backup origin |
+| `FITOPS_STRAVA_CLIENT_ID` | `fitops deploy hf` | Optional Strava Client ID used to prefill deployed setup |
+| `FITOPS_STRAVA_CLIENT_SECRET` | `fitops deploy hf` | Optional Strava Client Secret used to prefill deployed setup |
 | `GITHUB_BACKUP_TOKEN` | `fitops deploy hf` | GitHub PAT for reading backup releases |
 | `GITHUB_BACKUP_REPO` | `fitops deploy hf` | Backup repo (`owner/repo`) |
 

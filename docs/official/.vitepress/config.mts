@@ -31,6 +31,7 @@ export default defineConfig({
           { text: 'Overview', link: '/getting-started/' },
           { text: 'Installation', link: '/getting-started/installation' },
           { text: 'Authentication', link: '/getting-started/authentication' },
+          { text: 'Huawei Health Kit Access', link: '/getting-started/huawei-health-kit' },
           { text: 'First Sync', link: '/getting-started/first-sync' },
         ]
       },
@@ -102,7 +103,15 @@ export default defineConfig({
       {
         text: '// DEPLOY',
         items: [
-          { text: 'HuggingFace Spaces', link: '/deploy/huggingface' },
+          { text: 'Browser Deploy', link: '/deploy/browser' },
+          { text: 'HuggingFace Spaces (CLI)', link: '/deploy/huggingface' },
+        ]
+      },
+      {
+        text: '// LEGAL',
+        items: [
+          { text: 'Privacy Policy', link: '/legal/privacy' },
+          { text: 'User Agreement', link: '/legal/user-agreement' },
         ]
       },
       {

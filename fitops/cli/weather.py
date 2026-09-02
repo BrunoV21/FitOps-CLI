@@ -190,7 +190,9 @@ def fetch_weather(
 
 @app.command("show")
 def show_weather(
-    activity_id: int = typer.Argument(..., help="Local FitOps ID or Strava activity ID."),
+    activity_id: int = typer.Argument(
+        ..., help="Local FitOps ID or Strava activity ID."
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Output raw JSON instead of formatted text."
     ),
@@ -205,16 +207,16 @@ def show_weather(
         async with get_async_session() as session:
             stmt = (
                 select(Activity)
-                .where(or_(Activity.id == activity_id, Activity.strava_id == activity_id))
+                .where(
+                    or_(Activity.id == activity_id, Activity.strava_id == activity_id)
+                )
                 .order_by(case((Activity.id == activity_id, 0), else_=1))
             )
             act = (await session.execute(stmt)).scalars().first()
             if act is None:
                 return None
             res = await session.execute(
-                select(ActivityWeather).where(
-                    ActivityWeather.activity_id == act.id
-                )
+                select(ActivityWeather).where(ActivityWeather.activity_id == act.id)
             )
             weather = res.scalar_one_or_none()
             if weather is None:
@@ -382,7 +384,9 @@ def forecast_weather(
 
 @app.command("set")
 def set_weather(
-    activity_id: int = typer.Argument(..., help="Local FitOps ID or Strava activity ID."),
+    activity_id: int = typer.Argument(
+        ..., help="Local FitOps ID or Strava activity ID."
+    ),
     temp: float | None = typer.Option(None, "--temp", help="Temperature (°C)."),
     humidity: float | None = typer.Option(
         None, "--humidity", help="Relative humidity (%)."
@@ -419,7 +423,9 @@ def set_weather(
         async with get_async_session() as session:
             stmt = (
                 select(Activity)
-                .where(or_(Activity.id == activity_id, Activity.strava_id == activity_id))
+                .where(
+                    or_(Activity.id == activity_id, Activity.strava_id == activity_id)
+                )
                 .order_by(case((Activity.id == activity_id, 0), else_=1))
             )
             activity = (await session.execute(stmt)).scalars().first()

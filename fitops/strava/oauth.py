@@ -182,13 +182,14 @@ class StravaOAuth:
         scopes: list[str] | None = None,
         state: str | None = None,
         port: int = 8080,
+        redirect_uri: str | None = None,
         force_approval: bool = False,
     ) -> str:
         if scopes is None:
             scopes = DEFAULT_SCOPES
         if state is None:
             state = secrets.token_urlsafe(32)
-        redirect_uri = f"http://localhost:{port}/callback"
+        redirect_uri = redirect_uri or f"http://localhost:{port}/callback"
         params = {
             "client_id": self.settings.client_id,
             "redirect_uri": redirect_uri,
@@ -199,8 +200,10 @@ class StravaOAuth:
         }
         return f"{STRAVA_AUTH_URL}?{urlencode(params)}"
 
-    async def exchange_code_for_token(self, code: str, port: int = 8080) -> dict:
-        redirect_uri = f"http://localhost:{port}/callback"
+    async def exchange_code_for_token(
+        self, code: str, port: int = 8080, redirect_uri: str | None = None
+    ) -> dict:
+        redirect_uri = redirect_uri or f"http://localhost:{port}/callback"
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 STRAVA_TOKEN_URL,

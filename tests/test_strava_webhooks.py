@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -275,6 +275,89 @@ async def test_delete_activity_by_strava_id_removes_dependent_rows(
 
 
 @pytest.mark.asyncio
+async def test_webhook_activity_upsert_marks_ui_stamp_before_slow_followups(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("FITOPS_DIR", str(tmp_path))
+    _write_tmp_config(
+        tmp_path,
+        strava={
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            "athlete_id": 99,
+        },
+    )
+    _reset_settings_and_db()
+    await _init_db()
+
+    class FakeStravaClient:
+        async def get_activity(self, strava_id: int) -> dict:
+            return {
+                "id": strava_id,
+                "name": "Webhook Run",
+                "sport_type": "Run",
+                "start_date": "2026-05-30T08:00:00Z",
+                "start_date_local": "2026-05-30T09:00:00Z",
+                "distance": 5000.0,
+                "moving_time": 1500,
+                "elapsed_time": 1500,
+                "average_speed": 3.33,
+            }
+
+    seen_data_stamp_before_streams = []
+
+    async def fake_fetch_streams(*_args, **_kwargs):
+        from fitops.config.state import get_sync_state
+
+        seen_data_stamp_before_streams.append(
+            get_sync_state().last_data_update_at is not None
+        )
+        return {"streams_fetched": 0, "errors": 0, "strava_ids": []}
+
+    monkeypatch.setattr("fitops.strava.webhooks.StravaClient", FakeStravaClient)
+    monkeypatch.setattr(
+        "fitops.strava.webhooks.fetch_streams_for_activities", fake_fetch_streams
+    )
+    monkeypatch.setattr(
+        "fitops.strava.webhooks.fetch_weather_for_strava_ids",
+        AsyncMock(return_value={"weather_fetched": 0, "weather_errors": 0}),
+    )
+    monkeypatch.setattr("fitops.analytics.stamp.auto_stamp_new_activities", AsyncMock())
+    monkeypatch.setattr(
+        "fitops.analytics.race_plan.sweep_unlinked_plans",
+        AsyncMock(return_value=0),
+    )
+    monkeypatch.setattr(
+        "fitops.analytics.training_load.persist_training_load_snapshot", AsyncMock()
+    )
+    monkeypatch.setattr("fitops.strava.webhooks.trigger_async", AsyncMock())
+
+    from sqlalchemy import select
+
+    from fitops.config.state import get_sync_state
+    from fitops.db.models.activity import Activity
+    from fitops.db.session import get_async_session
+    from fitops.strava.webhooks import sync_activity_from_strava
+
+    result = await sync_activity_from_strava(123, sync_type="webhook_create")
+    state = get_sync_state()
+
+    assert result["activities_created"] == 1
+    assert seen_data_stamp_before_streams == [True]
+    assert state.last_data_update_at is not None
+    assert state.last_sync_at is not None
+    assert state.last_data_update_at < state.last_sync_at
+
+    async with get_async_session() as session:
+        activity = (
+            await session.execute(select(Activity).where(Activity.strava_id == 123))
+        ).scalar_one_or_none()
+    assert activity is not None
+    assert activity.name == "Webhook Run"
+
+
+@pytest.mark.asyncio
 async def test_auto_sync_skips_when_not_polling(monkeypatch):
     monkeypatch.setattr("fitops.strava.webhook_config.get_sync_mode", lambda: "webhook")
     monkeypatch.setattr(
@@ -346,11 +429,12 @@ def _reset_settings_and_db() -> None:
     session_module._session_factory = None
 
 
-def _write_tmp_config(tmp_path) -> None:
+def _write_tmp_config(tmp_path, strava: dict | None = None) -> None:
     config_path = tmp_path / "config.json"
-    config_path.write_text(
-        json.dumps({"preferences": {"db_path": str(tmp_path / "fitops.db")}})
-    )
+    data = {"preferences": {"db_path": str(tmp_path / "fitops.db")}}
+    if strava is not None:
+        data["strava"] = strava
+    config_path.write_text(json.dumps(data))
 
 
 async def _init_db() -> None:

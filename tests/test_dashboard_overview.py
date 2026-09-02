@@ -168,9 +168,7 @@ def test_overview_omits_weather_when_forecast_is_slow(client, monkeypatch):
     monkeypatch.setattr(
         "fitops.dashboard.routes.overview.get_current_training_load", load_mock
     )
-    monkeypatch.setattr(
-        "fitops.dashboard.routes.overview.get_trends_data", trends_mock
-    )
+    monkeypatch.setattr("fitops.dashboard.routes.overview.get_trends_data", trends_mock)
     monkeypatch.setattr(
         "fitops.dashboard.routes.overview.get_activity_heatmap_data", heatmap_mock
     )

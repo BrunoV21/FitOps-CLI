@@ -330,7 +330,7 @@ def test_workout_dashboard_edit_and_delete_routes(monkeypatch, tmp_path):
         assert "True pace min/km" in detail_response.text
         assert "True pace:" in detail_response.text
         assert "true_pace_s_per_km" in detail_response.text
-        assert "<th class=\"r\">True Pace</th>" in detail_response.text
+        assert '<th class="r">True Pace</th>' in detail_response.text
         assert "4:56/km" in detail_response.text
 
         edit_response = client.get(f"/workouts/{workout_id}/edit")

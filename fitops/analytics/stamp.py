@@ -536,7 +536,11 @@ async def stamp_activity(
     from fitops.db.models.workout_segment import WorkoutSegment
 
     base_desc = activity.description
-    if fetch_fresh_desc and strava_client is not None and activity.strava_id is not None:
+    if (
+        fetch_fresh_desc
+        and strava_client is not None
+        and activity.strava_id is not None
+    ):
         try:
             fresh = await strava_client.get_activity(activity.strava_id)
             base_desc = fresh.get("description") or base_desc
@@ -762,7 +766,9 @@ async def stamp_activity(
 
     if not local_only:
         if strava_client is None or activity.strava_id is None:
-            raise ValueError("A Strava activity and client are required for remote stamping.")
+            raise ValueError(
+                "A Strava activity and client are required for remote stamping."
+            )
         await strava_client.update_activity(activity.strava_id, new_desc)
 
     result = await session.execute(

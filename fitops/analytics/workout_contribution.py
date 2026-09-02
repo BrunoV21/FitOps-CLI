@@ -255,11 +255,7 @@ async def get_workout_contribution(
         (p["true_pace_s_per_km"] for p in trend if p["true_pace_s_per_km"]), None
     )
     latest_true_pace = next(
-        (
-            p["true_pace_s_per_km"]
-            for p in reversed(trend)
-            if p["true_pace_s_per_km"]
-        ),
+        (p["true_pace_s_per_km"] for p in reversed(trend) if p["true_pace_s_per_km"]),
         None,
     )
     true_pace_change_pct = None

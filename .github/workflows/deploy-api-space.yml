@@ -1,0 +1,88 @@
+---
+name: Deploy FitOps Deploy API Space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "fitops/cloud/deploy_api.py"
+      - "fitops/cloud/deploy_hf.py"
+      - "fitops/cloud/deploy_api_space/**"
+      - ".github/workflows/deploy-api-space.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api-space
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Push Docker Space
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_SPACE_REPO: ${{ vars.FITOPS_DEPLOY_API_HF_SPACE_REPO }}
+      FITOPS_DEPLOY_ALLOWED_ORIGINS: ${{ vars.FITOPS_DEPLOY_ALLOWED_ORIGINS }}
+      FITOPS_DEPLOY_RATE_LIMIT_PER_HOUR: ${{ vars.FITOPS_DEPLOY_RATE_LIMIT_PER_HOUR }}
+      FITOPS_DEPLOY_MAX_CONCURRENT_JOBS: ${{ vars.FITOPS_DEPLOY_MAX_CONCURRENT_JOBS }}
+      FITOPS_DEPLOY_JOB_TIMEOUT_SECONDS: ${{ vars.FITOPS_DEPLOY_JOB_TIMEOUT_SECONDS }}
+      FITOPS_DEPLOY_JOB_TTL_SECONDS: ${{ vars.FITOPS_DEPLOY_JOB_TTL_SECONDS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate configuration
+        run: |
+          test -n "$HF_TOKEN" || (echo "Missing HF_TOKEN secret" && exit 1)
+          test -n "$HF_SPACE_REPO" || (echo "Missing FITOPS_DEPLOY_API_HF_SPACE_REPO variable" && exit 1)
+          test -n "$FITOPS_DEPLOY_ALLOWED_ORIGINS" || (echo "Missing FITOPS_DEPLOY_ALLOWED_ORIGINS variable" && exit 1)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install HuggingFace Hub client
+        run: python -m pip install --upgrade huggingface_hub
+
+      - name: Push deploy API Docker context
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from huggingface_hub import HfApi
+
+          token = os.environ["HF_TOKEN"]
+          repo_id = os.environ["HF_SPACE_REPO"]
+          context_dir = Path("fitops/cloud/deploy_api_space")
+
+          api = HfApi(token=token)
+          api.create_repo(
+              repo_id=repo_id,
+              repo_type="space",
+              space_sdk="docker",
+              private=True,
+              exist_ok=True,
+          )
+          api.upload_folder(
+              folder_path=str(context_dir),
+              repo_id=repo_id,
+              repo_type="space",
+              path_in_repo=".",
+          )
+
+          variables = {
+              "FITOPS_DEPLOY_ALLOWED_ORIGINS": os.environ["FITOPS_DEPLOY_ALLOWED_ORIGINS"],
+              "FITOPS_DEPLOY_RATE_LIMIT_PER_HOUR": os.getenv("FITOPS_DEPLOY_RATE_LIMIT_PER_HOUR") or "5",
+              "FITOPS_DEPLOY_MAX_CONCURRENT_JOBS": os.getenv("FITOPS_DEPLOY_MAX_CONCURRENT_JOBS") or "2",
+              "FITOPS_DEPLOY_JOB_TIMEOUT_SECONDS": os.getenv("FITOPS_DEPLOY_JOB_TIMEOUT_SECONDS") or "900",
+              "FITOPS_DEPLOY_JOB_TTL_SECONDS": os.getenv("FITOPS_DEPLOY_JOB_TTL_SECONDS") or "3600",
+          }
+          for key, value in variables.items():
+              api.add_space_secret(repo_id=repo_id, key=key, value=value)
+
+          print(f"Deploy API Space updated: https://huggingface.co/spaces/{repo_id}")
+          PY

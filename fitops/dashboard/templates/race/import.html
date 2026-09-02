@@ -6,7 +6,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Import Race Course</h1>
-    <p class="page-subtitle">Upload a GPX / TCX file or paste a MapMyRun URL.</p>
+    <p class="page-subtitle">Upload a GPX, TCX, or KMZ file, or paste a Strava or MapMyRun URL.</p>
   </div>
   <a href="/race" class="btn">← Back to Courses</a>
 </div>
@@ -35,7 +35,7 @@
       <div style="display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap;">
         <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
           <input type="radio" name="source_type" value="file" id="src_file" checked onchange="toggleSource(this.value)">
-          GPX / TCX File
+          GPX / TCX / KMZ File
         </label>
         <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; font-size:0.85rem;">
           <input type="radio" name="source_type" value="strava" id="src_strava" onchange="toggleSource(this.value)">
@@ -48,10 +48,10 @@
       </div>
 
       <div id="panel_file">
-        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">GPX or TCX File</label>
-        <input type="file" name="file" accept=".gpx,.tcx"
+        <label style="display:block; font-size:0.78rem; color:#888; margin-bottom:0.3rem;">GPX, TCX, or KMZ File</label>
+        <input type="file" name="file" accept=".gpx,.tcx,.kmz"
                style="width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:0.4rem 0.6rem; border-radius:4px; font-size:0.85rem;" />
-        <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Accepts .gpx and .tcx files. Elevation and coordinates are extracted automatically.</p>
+        <p style="font-size:0.75rem; color:#666; margin-top:0.3rem;">Accepts .gpx, .tcx, and .kmz files. Elevation and coordinates are extracted automatically.</p>
       </div>
 
       <!-- Single URL field shared by strava + mapmyrun — label/hint swaps via JS -->

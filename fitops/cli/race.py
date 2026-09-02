@@ -73,10 +73,9 @@ from fitops.race.course_parser import (
     build_km_segments,
     compute_total_elevation_gain,
     detect_source,
-    parse_gpx,
+    parse_course_file,
     parse_mapmyrun_url,
     parse_strava_activity,
-    parse_tcx,
 )
 from fitops.race.simulation import simulate_pacer_mode, simulate_splits
 
@@ -101,7 +100,8 @@ _NEUTRAL_WEATHER = {
 @app.command("import")
 def import_course(
     source: str = typer.Argument(
-        ..., help="GPX/TCX file path, MapMyRun URL, or Strava activity ID."
+        ...,
+        help="GPX/TCX/KMZ file path, MapMyRun URL, Strava URL, or Strava activity ID.",
     ),
     name: str = typer.Option(..., "--name", help="Course name (required)."),
     json_output: bool = typer.Option(
@@ -117,10 +117,8 @@ def import_course(
         typer.echo(json.dumps({"error": str(e)}, indent=2))
         raise typer.Exit(1)
 
-    if source_type == "gpx":
-        points = parse_gpx(source_value)
-    elif source_type == "tcx":
-        points = parse_tcx(source_value)
+    if source_type in {"gpx", "tcx", "kmz"}:
+        _, points = parse_course_file(source_value)
     elif source_type == "mapmyrun":
         points = asyncio.run(parse_mapmyrun_url(source_value))
     elif source_type == "strava_url":
@@ -147,7 +145,7 @@ def import_course(
     segments = build_km_segments(points)
     total_dist = points[-1]["distance_from_start_m"]
     elev_gain = compute_total_elevation_gain(points)
-    file_format = source_type if source_type in ("gpx", "tcx") else None
+    file_format = source_type if source_type in ("gpx", "tcx", "kmz") else None
     source_ref = (
         source_value if source_type in ("mapmyrun", "strava", "strava_url") else None
     )

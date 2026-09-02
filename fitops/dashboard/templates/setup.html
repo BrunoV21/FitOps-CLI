@@ -214,13 +214,26 @@
   <p class="setup-subtitle">
     Beta users must use their own Strava API credentials.
     Create an app at <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a>
-    using these settings: <strong>Application Name</strong> <code>Surge</code> · <strong>Category</strong> <code>Performance Analysis</code> · <strong>Website</strong> <code>https://brunov21.github.io/Surge/</code> · <strong>Authorization Callback Domain</strong> <code>mclovinittt-kinetic-run-api.hf.space</code>.
+    using these settings: <strong>Application Name</strong> <code>FitOps</code> · <strong>Category</strong> <code>Performance Analysis</code> · <strong>Website</strong> <code>https://github.com/BrunoV21/FitOps-CLI</code> · <strong>Authorization Callback Domain</strong> <code>{{ callback_domain }}</code>.
+    {% if has_credentials %}
+    Your Strava app credentials are already saved for this deployment. Continue to Strava to authorize activity access.
+    {% else %}
     Then copy your Client ID and Client Secret below.
+    {% endif %}
     <a href="https://brunov21.github.io/FitOps-CLI/getting-started/authentication" target="_blank">Full guide →</a>
+    <a href="/static/favicon.ico" target="_blank">Logo →</a>
   </p>
 
   <div id="error-box" class="error-msg" style="display:none;"></div>
 
+  {% if has_credentials %}
+  <button class="btn-connect" id="connect-btn" onclick="connectStrava()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13 2L4 14h8l-1 8 9-12h-8l1-8z"/>
+    </svg>
+    Continue to Strava
+  </button>
+  {% else %}
   <div class="form-group">
     <label for="client-id">Client ID</label>
     <input type="text" id="client-id" placeholder="e.g. 12345" autocomplete="off" />
@@ -243,19 +256,21 @@
   </div>
   <button class="btn-connect" id="offline-btn" style="background:var(--bg-primary,#0f0f0f);border:1px solid var(--border-subtle,#2a2a2a);" onclick="createOfflineProfile()">Create Offline Profile</button>
   {% endif %}
+  {% endif %}
 </div>
 
 {% if not connected %}
 <script>
 async function connectStrava() {
-  const clientId = document.getElementById('client-id').value.trim();
-  const clientSecret = document.getElementById('client-secret').value.trim();
+  const hasCredentials = {{ 'true' if has_credentials else 'false' }};
+  const clientId = hasCredentials ? '' : document.getElementById('client-id').value.trim();
+  const clientSecret = hasCredentials ? '' : document.getElementById('client-secret').value.trim();
   const errorBox = document.getElementById('error-box');
   const btn = document.getElementById('connect-btn');
 
   errorBox.style.display = 'none';
 
-  if (!clientId || !clientSecret) {
+  if (!hasCredentials && (!clientId || !clientSecret)) {
     errorBox.textContent = 'Both Client ID and Client Secret are required.';
     errorBox.style.display = 'block';
     return;
@@ -269,7 +284,7 @@ async function connectStrava() {
     const res = await fetch('/api/setup/credentials', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+      body: JSON.stringify(hasCredentials ? {} : { client_id: clientId, client_secret: clientSecret }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to save credentials');

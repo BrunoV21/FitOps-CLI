@@ -407,9 +407,7 @@ def equipment(
 @app.command("gear-add")
 def gear_add(
     name: str = typer.Option(..., "--name", help="Gear name."),
-    gear_type: str = typer.Option(
-        ..., "--type", help="Gear type: shoes or bike."
-    ),
+    gear_type: str = typer.Option(..., "--type", help="Gear type: shoes or bike."),
     primary: bool = typer.Option(False, "--primary", help="Mark as primary gear."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:

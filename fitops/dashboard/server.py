@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from fitops.docs_urls import DASHBOARD_DOCS
+from fitops.docs_urls import DASHBOARD_DOCS, LEGAL_DOCS
 
 _HERE = Path(__file__).parent
 
@@ -235,6 +235,7 @@ def create_app(port: int = 8888) -> FastAPI:
     # Expose DASHBOARD_DOCS as a Jinja2 global function so base.html can
     # resolve doc_url from the active_page context variable automatically.
     templates.env.globals["dashboard_docs"] = DASHBOARD_DOCS
+    templates.env.globals["legal_docs"] = LEGAL_DOCS
     # Provide a helper to look up a doc URL by page key from a template:
     # {{ dashboard_docs.get(active_page, '') }}
     # base.html uses: {% if doc_url %} — so we also set doc_url via a
