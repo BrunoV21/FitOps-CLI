@@ -323,9 +323,7 @@ async def test_webhook_activity_upsert_marks_ui_stamp_before_slow_followups(
         "fitops.strava.webhooks.fetch_weather_for_strava_ids",
         AsyncMock(return_value={"weather_fetched": 0, "weather_errors": 0}),
     )
-    monkeypatch.setattr(
-        "fitops.analytics.stamp.auto_stamp_new_activities", AsyncMock()
-    )
+    monkeypatch.setattr("fitops.analytics.stamp.auto_stamp_new_activities", AsyncMock())
     monkeypatch.setattr(
         "fitops.analytics.race_plan.sweep_unlinked_plans",
         AsyncMock(return_value=0),

@@ -296,7 +296,8 @@ def create_app(
     rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
     allowed = [
-        origin.rstrip("/") for origin in (allowed_origins or _allowed_origins_from_env())
+        origin.rstrip("/")
+        for origin in (allowed_origins or _allowed_origins_from_env())
     ]
     app = FastAPI(title="FitOps Deploy API", version="0.1.0")
     app.state.allowed_origins = allowed

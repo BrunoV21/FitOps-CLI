@@ -217,7 +217,7 @@ def _local_name(tag: str) -> str:
 
 
 def _course_points_from_coords(
-    coords: list[tuple[float, float, float]]
+    coords: list[tuple[float, float, float]],
 ) -> list[CoursePoint]:
     result: list[CoursePoint] = []
     cumulative = 0.0

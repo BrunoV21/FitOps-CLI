@@ -265,7 +265,9 @@ def register(templates: Jinja2Templates) -> APIRouter:
                 content = await file.read()
                 suffix = os.path.splitext(file.filename)[1].lower()
                 if suffix not in (".gpx", ".tcx", ".kmz"):
-                    raise ValueError(f"Unsupported file type '{suffix}'. Use .gpx, .tcx, or .kmz.")
+                    raise ValueError(
+                        f"Unsupported file type '{suffix}'. Use .gpx, .tcx, or .kmz."
+                    )
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(content)
                     tmp_path = tmp.name

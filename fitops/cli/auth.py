@@ -45,7 +45,9 @@ def login(
         )
         typer.echo("    Application Name:           FitOps")
         typer.echo("    Category:                   Performance Analysis")
-        typer.echo("    Website:                    https://github.com/BrunoV21/FitOps-CLI")
+        typer.echo(
+            "    Website:                    https://github.com/BrunoV21/FitOps-CLI"
+        )
         typer.echo("    Authorization Callback Domain: localhost")
         typer.echo("")
         typer.echo("Step 2 — Enter your credentials:")

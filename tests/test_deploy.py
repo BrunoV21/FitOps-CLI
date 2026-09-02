@@ -72,7 +72,7 @@ def test_hf_startup_restores_only_matching_hf_origin_backup():
     assert "fitops backup restore" in startup
     assert "--origin-kind hf-space" in startup
     assert "--origin-role primary" in startup
-    assert "--origin-label \"$FITOPS_INSTANCE_LABEL\"" in startup
+    assert '--origin-label "$FITOPS_INSTANCE_LABEL"' in startup
     assert "No HF-origin backup found" in startup
     assert "FITOPS_STRAVA_CLIENT_ID" in startup
     assert "settings.save_credentials" in startup
@@ -155,11 +155,15 @@ def test_deploy_api_rate_limits_job_creation(monkeypatch):
 
     with TestClient(app) as client:
         assert (
-            client.post("/api/deploy/hf/jobs", headers=headers, json=payload).status_code
+            client.post(
+                "/api/deploy/hf/jobs", headers=headers, json=payload
+            ).status_code
             == 200
         )
         assert (
-            client.post("/api/deploy/hf/jobs", headers=headers, json=payload).status_code
+            client.post(
+                "/api/deploy/hf/jobs", headers=headers, json=payload
+            ).status_code
             == 429
         )
 
@@ -211,9 +215,7 @@ def test_deploy_api_stream_redacts_secrets(monkeypatch):
         deadline = time.time() + 3
         status = {}
         while time.time() < deadline:
-            status = client.get(
-                f"/api/deploy/hf/jobs/{job_id}", headers=headers
-            ).json()
+            status = client.get(f"/api/deploy/hf/jobs/{job_id}", headers=headers).json()
             if status["status"] == "succeeded":
                 break
             time.sleep(0.05)

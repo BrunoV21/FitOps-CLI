@@ -100,7 +100,8 @@ _NEUTRAL_WEATHER = {
 @app.command("import")
 def import_course(
     source: str = typer.Argument(
-        ..., help="GPX/TCX/KMZ file path, MapMyRun URL, Strava URL, or Strava activity ID."
+        ...,
+        help="GPX/TCX/KMZ file path, MapMyRun URL, Strava URL, or Strava activity ID.",
     ),
     name: str = typer.Option(..., "--name", help="Course name (required)."),
     json_output: bool = typer.Option(

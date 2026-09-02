@@ -172,7 +172,11 @@ def test_even_split_wind_changes_flat_course_paces():
     assert splits[0]["wind_factor"] > 1.0
     assert splits[1]["wind_factor"] == pytest.approx(1.0, abs=0.001)
     assert splits[2]["wind_factor"] < 1.0
-    assert splits[0]["target_pace_s"] > splits[1]["target_pace_s"] > splits[2]["target_pace_s"]
+    assert (
+        splits[0]["target_pace_s"]
+        > splits[1]["target_pace_s"]
+        > splits[2]["target_pace_s"]
+    )
 
 
 def test_pacer_mode_total_time():

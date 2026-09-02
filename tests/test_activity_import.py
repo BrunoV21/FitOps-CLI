@@ -833,9 +833,7 @@ async def test_browser_publish_uploads_selected_file_and_links_returned_id(
         gear_type="shoes",
         strava_connected=False,
     )
-    imported = await import_activity_file(
-        FIXTURES / "sample.tcx", gear=gear["id"]
-    )
+    imported = await import_activity_file(FIXTURES / "sample.tcx", gear=gear["id"])
     upload = MagicMock(return_value=SimpleNamespace(strava_activity_id=987654321))
     monkeypatch.setattr("fitops.browser.publisher.upload_activity_file", upload)
 

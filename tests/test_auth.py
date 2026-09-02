@@ -121,10 +121,7 @@ def test_middleware_allows_login_page(auth_app):
         assert "Privacy" in resp.text
         assert "User Agreement" in resp.text
         assert "https://brunov21.github.io/FitOps-CLI/legal/privacy" in resp.text
-        assert (
-            "https://brunov21.github.io/FitOps-CLI/legal/user-agreement"
-            in resp.text
-        )
+        assert "https://brunov21.github.io/FitOps-CLI/legal/user-agreement" in resp.text
 
 
 def test_middleware_allows_health_endpoint(auth_app):
