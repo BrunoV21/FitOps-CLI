@@ -18,6 +18,7 @@ from fitops.db.models.analytics_snapshot import AnalyticsSnapshot  # noqa: F401
 
 # Import all models so their tables are registered on Base.metadata
 from fitops.db.models.athlete import Athlete  # noqa: F401
+from fitops.db.models.mobile_activity_origin import MobileActivityOrigin  # noqa: F401
 from fitops.db.models.note import Note  # noqa: F401
 from fitops.db.models.race_course import RaceCourse  # noqa: F401
 from fitops.db.models.race_plan import RacePlan  # noqa: F401

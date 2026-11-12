@@ -8,6 +8,29 @@ For running race activities, FitOps can store an official **chip time** and **ra
 
 ## Commands
 
+### `fitops activities import-mobile <PATH>`
+
+Import a **FitOps Mobile JSON export** into the active desktop athlete's local dataset. The file must use the `fitops.activities` version 1 format, contain 1–100 activities, and be no larger than 10 MiB. This command never posts to Strava or contacts Huawei.
+
+```bash
+fitops athlete init --name "Jane Runner"
+fitops activities import-mobile ~/Downloads/fitops-export.json --json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | false | Return `_meta`, imported activity records, source identities, counts, and data availability |
+
+The imported records preserve the original provider, provider account, and activity ID alongside available timestamped heart-rate, distance, and speed samples. Re-importing the same source identity updates that desktop activity; records belonging to another provider, account, or local athlete remain separate. FitOps does not automatically merge a mobile activity with a similar Strava activity. Importing a snapshot does not synchronize deletions.
+
+Desktop calibration remains unchanged. Moving time is unavailable because version 1 exports carry elapsed duration only, so stress and other metrics that require moving time are not copied or invented. VO₂max is computed only when the samples and existing desktop calibration support it. Results can differ from the phone because each application uses its own calibration and calculation methods. The JSON response's `data_availability` block describes these limits.
+
+When an export has distance samples but no speed samples, FitOps derives speed from consecutive distance/time pairs during import. It does not bridge intervals longer than 30 seconds or decreasing/missing distance readings. Recorded speed takes precedence, and the original speed samples remain available separately from the normalized stream. Desktop VO₂max uses its existing Daniels/Cooper model, while the mobile MVP uses a Daniels-only estimate.
+
+Keep exports private: they contain fitness records and may include heart-rate samples. Neither Huawei tokens nor mobile calibration settings are included in this exchange format.
+
+---
+
 ### `fitops activities import <PATH>`
 
 Import an original GPX or TCX recording, normalize its summary, streams, and laps, and compute the same cached analytics used for synced activities. Every import receives a local analytics stamp after weather and derived metrics are stored, including imports made with `--local-only`. Posting to Strava is enabled by default: FitOps uploads the selected source file and its generated stamp through the configured headless browser session. The returned Strava activity ID is linked to the local activity before the command finishes.

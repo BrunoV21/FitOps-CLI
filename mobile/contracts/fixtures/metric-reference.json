@@ -1,0 +1,144 @@
+{
+  "description": "Synthetic formula references. Bounds are inclusive lower/exclusive upper. No real athlete data. Desktop reference uses the same confirmed inputs, excluding fallback defaults and clipping.",
+  "zone_cases": [
+    {
+      "name": "lthr",
+      "calibration": {
+        "sport": "Run",
+        "method": "lthr",
+        "lthr_bpm": 170,
+        "max_hr_bpm": null,
+        "resting_hr_bpm": null,
+        "threshold_pace_seconds_per_km": null,
+        "source": "Synthetic reference test",
+        "calibrated_at": "2026-11-01T00:00:00Z",
+        "version": 1
+      },
+      "lower_bpm": [
+        0,
+        144,
+        156,
+        170,
+        180
+      ]
+    },
+    {
+      "name": "lthr-hrr-corrected",
+      "calibration": {
+        "sport": "Run",
+        "method": "lthr",
+        "lthr_bpm": 170,
+        "max_hr_bpm": 190,
+        "resting_hr_bpm": 50,
+        "threshold_pace_seconds_per_km": null,
+        "source": "Synthetic reference test",
+        "calibrated_at": "2026-11-01T00:00:00Z",
+        "version": 1
+      },
+      "lower_bpm": [
+        0,
+        144,
+        150,
+        170,
+        180
+      ]
+    },
+    {
+      "name": "hrr",
+      "calibration": {
+        "sport": "Run",
+        "method": "hrr",
+        "lthr_bpm": 170,
+        "max_hr_bpm": 190,
+        "resting_hr_bpm": 50,
+        "threshold_pace_seconds_per_km": null,
+        "source": "Synthetic reference test",
+        "calibrated_at": "2026-11-01T00:00:00Z",
+        "version": 1
+      },
+      "lower_bpm": [
+        120,
+        134,
+        148,
+        162,
+        176
+      ]
+    },
+    {
+      "name": "max-hr",
+      "calibration": {
+        "sport": "Run",
+        "method": "max-hr",
+        "lthr_bpm": 170,
+        "max_hr_bpm": 190,
+        "resting_hr_bpm": null,
+        "threshold_pace_seconds_per_km": null,
+        "source": "Synthetic reference test",
+        "calibrated_at": "2026-11-01T00:00:00Z",
+        "version": 1
+      },
+      "lower_bpm": [
+        95,
+        114,
+        133,
+        152,
+        171
+      ]
+    }
+  ],
+  "daniels_cases": [
+    {
+      "distance_m": 5000,
+      "duration_seconds": 1500,
+      "expected_ml_per_kg_min": 38.3
+    },
+    {
+      "distance_m": 6000,
+      "duration_seconds": 1800,
+      "expected_ml_per_kg_min": 38.3
+    },
+    {
+      "distance_m": 10000,
+      "duration_seconds": 2700,
+      "expected_ml_per_kg_min": 44.6
+    }
+  ],
+  "stress_cases": [
+    {
+      "name": "one-half-hour-at-lthr",
+      "duration_seconds": 1800,
+      "distance_m": 6000,
+      "heartrate_bpm": 170,
+      "threshold_pace_seconds_per_km": null,
+      "method": "hr-stress-v1",
+      "expected_tss": 50
+    },
+    {
+      "name": "one-hour-below-lthr",
+      "duration_seconds": 3600,
+      "distance_m": 10000,
+      "heartrate_bpm": 150,
+      "threshold_pace_seconds_per_km": null,
+      "method": "hr-stress-v1",
+      "expected_tss": 77.85
+    },
+    {
+      "name": "one-half-hour-at-threshold-pace",
+      "duration_seconds": 1800,
+      "distance_m": 6000,
+      "heartrate_bpm": 170,
+      "threshold_pace_seconds_per_km": 300,
+      "method": "pace-stress-v1",
+      "expected_tss": 50
+    },
+    {
+      "name": "one-hour-at-five-sixths-threshold-speed",
+      "duration_seconds": 3600,
+      "distance_m": 10000,
+      "heartrate_bpm": 150,
+      "threshold_pace_seconds_per_km": 300,
+      "method": "pace-stress-v1",
+      "expected_tss": 69.44
+    }
+  ]
+}

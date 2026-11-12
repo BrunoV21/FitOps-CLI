@@ -1,6 +1,6 @@
 # FitOps Mobile, AppGallery, and Huawei Data Transfer
 
-Research checked: 2026-11-12. This is a proposal, not a shipped integration or an assurance of Huawei approval.
+Research checked: 2026-11-12. The independent file-based Android MVP is being implemented; native release/device verification and AppGallery publication remain separate gates. Huawei access is not integrated or approved. This document is not an assurance of Huawei approval.
 
 ## Product direction
 
@@ -8,7 +8,7 @@ FitOps Mobile is an independent, local-first fitness app. It has its own databas
 
 The in-repository mobile workspace is [`mobile/`](../../../mobile/README.md), with its [architecture](../../../mobile/architecture.md) and [UI mockups](../../../mobile/mockups/README.md). It follows reusable patterns from the local `../BranchBalance` React Native project while retaining FitOps branding.
 
-Desktop can optionally import Huawei-origin data that the user has authorized FitOps Mobile to read and explicitly chosen to transfer. Mobile remains useful when no desktop is paired. Desktop remains useful when no phone is connected.
+The proposed Huawei-enabled release would let desktop import Huawei-origin data that the user has authorized FitOps Mobile to read and explicitly chosen to transfer. The initial file-based app does not read Huawei data. Mobile remains useful when no desktop is paired. Desktop remains useful when no phone is connected.
 
 The existing CLI/dashboard parity rule still applies to desktop features. It does not require a CLI on the phone or every desktop feature on mobile. Mobile-to-desktop imports must be available through both desktop interfaces when implemented.
 
@@ -73,7 +73,7 @@ The first version prioritizes trustworthy TSS, VO₂max estimates, and correctly
 
 The initial AppGallery release delivers the core features above using supported activity files with sufficient data. The Huawei-enabled update adds approved Huawei reads and exports the same canonical records to desktop. This is one product delivered in stages because Huawei requested release evidence before granting access; file-only publication does not complete the Huawei integration goal.
 
-File import requires format selection and implementation; it is not an existing mobile capability. The import format must carry the time, HR, distance/speed, and other inputs required by the methods selected for v1. Sample data can help onboarding, but is not a substitute for a working product. Huawei functionality should only be advertised as available once approved and implemented.
+The initial implementation supports TCX and version-1 FitOps JSON activity imports. TCX files must carry the time, HR, and distance/speed samples required by the selected methods; summary-only files cannot provide measured time in zones. Native/device verification and publication are still required. Sample data can help onboarding, but is not a substitute for a working product. Huawei functionality should only be advertised as available once approved and implemented.
 
 Huawei's [app function rules](https://developer.huawei.com/consumer/en/doc/app/50104-03) require working, complete functionality and allow rejection of test-only or non-independent apps. An independent first release resolves the publication-before-health-approval dependency in principle; acceptance remains Huawei's decision.
 
@@ -96,11 +96,11 @@ Desktop import adapter --> desktop SQLite --> CLI + dashboard
 
 Transfer data, not Huawei access tokens, refresh tokens, or client secrets. Desktop imports already-authorized records through a FitOps transfer format; it does not impersonate the mobile app against Huawei's API. This is the recommended technical boundary, not a claim that Huawei has already approved the scenario.
 
-Start with an explicit file export/import. Add paired local-network transfer later if desired: desktop displays a short-lived pairing QR code, the phone confirms the recipient, and an authenticated encrypted channel carries selected records. Do not expose the existing desktop server on the LAN as an unauthenticated receiver. File exports also need clear handling of sensitive contents and an encryption design.
+The initial implementation uses explicit selected-record JSON export/import, with unencrypted sensitive-data disclosure. It does not include calibration profiles or metric caches in the version-1 activity exchange. Add paired local-network transfer later if desired: desktop displays a short-lived pairing QR code, the phone confirms the recipient, and an authenticated encrypted channel carries selected records. Do not expose the existing desktop server on the LAN as an unauthenticated receiver. Future paired transfer needs its own encryption design; do not describe the current file export as encrypted.
 
 The first bridge should be one-way, mobile to desktop. Bidirectional sync would need additional conflict, deletion, and ownership rules and is not necessary to import Huawei data.
 
-Define a versioned transfer contract with:
+The initial version-1 exchange carries canonical activity records, provider/account identity, timezone-bearing start timestamps, elapsed duration, distance, available HR/distance/speed samples, and an export timestamp. Before extending it for approved Huawei reads, review additional requirements such as:
 
 - Original provider (`huawei`), provider account namespace, and original activity ID. Transport (`mobile_export`) is separate provenance, not the provider identity.
 - UTC timestamps, local timezone, explicit units, summary fields, and optional streams/laps.
@@ -142,11 +142,11 @@ Draft only; not sent:
 
 ## Next engineering milestones
 
-1. Verify account/app configuration and obtain Huawei's answer on the proposed data flow.
-2. Run the React Native/native SDK compatibility spike; confirm activity detail and scope coverage.
-3. Specify the agreed TSS, VO₂max, and HR-zone MVP above, including calculation methods, import format, canonical exchange schema, and shared metric reference cases.
-4. Build the independent mobile MVP and AppGallery materials.
-5. Obtain release evidence and resubmit the corrected Health Kit application.
-6. Implement approved Huawei import on mobile, then desktop file import through CLI and dashboard with tests and official docs.
+1. Verify the file-based Android MVP on an actual native build/device and complete calculation/import/desktop-handoff checks.
+2. Confirm owner account/app configuration, final Android package, production signing, countries, public policies, and reviewer materials using the [release checklist](../../../mobile/docs/appgallery-release.md).
+3. Publish the independently useful app, obtain actual AppGallery release evidence, and resubmit the corrected request using the [reapplication draft](../../../mobile/docs/huawei-reapplication.md).
+4. Confirm Huawei's acceptance of the disclosed optional desktop/agent use and the exact approved sample scopes/history tier.
+5. Establish Huawei native SDK/plugin compatibility with the chosen runtime and complete live integration tests after the applicable authorization.
+6. Complete any required formal permission review and release the Huawei-enabled update with updated consent, policy, tests, and documentation.
 
 The existing direct-REST provider plan remains an alternative requiring its own approval. It is not a dependency of the proposed mobile data bridge.

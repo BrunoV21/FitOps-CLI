@@ -37,6 +37,47 @@ from fitops.utils.exceptions import NotAuthenticatedError
 app = typer.Typer(no_args_is_help=True)
 
 
+@app.callback()
+def initialize_activity_commands(ctx: typer.Context) -> None:
+    """Bootstrap schema once before the new explicit write command runs."""
+    if ctx.invoked_subcommand == "import-mobile":
+        init_db()
+
+
+@app.command("import-mobile")
+def import_mobile_activity(
+    path: str = typer.Argument(..., help="Path to a FitOps Mobile JSON export."),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Import selected mobile records locally without posting to Strava."""
+    from fitops.importers.activity_files import ActivityFileError
+    from fitops.importers.mobile_exchange import (
+        import_mobile_file,
+        mobile_import_payload,
+    )
+
+    try:
+        result = asyncio.run(import_mobile_file(path))
+    except (ActivityFileError, OSError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2)
+    payload = mobile_import_payload(result)
+    payload["_meta"] = make_meta(
+        total_count=len(result.activities),
+        filters_applied={
+            "format": "fitops.activities",
+            "version": 1,
+            "post_to_strava": False,
+        },
+    )
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, default=str))
+    else:
+        typer.echo(
+            f"Imported {result.created_count}, updated {result.updated_count} mobile activities locally."
+        )
+
+
 @app.command("import")
 def import_activity(
     path: str = typer.Argument(..., help="Path to a GPX or TCX activity file."),

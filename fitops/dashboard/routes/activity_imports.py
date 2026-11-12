@@ -42,6 +42,36 @@ def register(templates: Jinja2Templates) -> APIRouter:
     async def activity_import_suggestion(filename: str):
         return JSONResponse(suggest_activity_from_filename(filename[:512]))
 
+    @router.post("/api/activities/import-mobile")
+    async def mobile_activity_import_api(file: UploadFile = File(...)):
+        from fitops.importers.mobile_exchange import (
+            MAX_MOBILE_FILE_BYTES,
+            import_mobile_bytes,
+            mobile_import_payload,
+        )
+
+        if not get_settings().active_athlete_id:
+            return JSONResponse(
+                {
+                    "error": "Create a local athlete profile before importing.",
+                    "code": "athlete_required",
+                },
+                status_code=409,
+            )
+        try:
+            result = await import_mobile_bytes(
+                await file.read(MAX_MOBILE_FILE_BYTES + 1)
+            )
+        except ActivityFileError as exc:
+            return JSONResponse(
+                {"error": str(exc), "code": exc.code},
+                status_code=413 if exc.code == "file_too_large" else 422,
+            )
+        return JSONResponse(
+            mobile_import_payload(result),
+            status_code=201 if result.created_count else 200,
+        )
+
     @router.post("/api/activities/import")
     async def activity_import_api(
         file: UploadFile = File(...),

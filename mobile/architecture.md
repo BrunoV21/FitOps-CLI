@@ -1,6 +1,6 @@
 # FitOps Mobile architecture
 
-Status: initial architecture and design scaffold, 2026-11-12. Android first; native HarmonyOS is deferred. Product and Huawei approval details live in the [provider plan](../docs/providers/huawei/mobile-appgallery-plan.md).
+Status: Android MVP implementation, 2026-11-12; native build/device verification and store publication are separate gates. Android first; native HarmonyOS is deferred. Product and Huawei approval details live in the [provider plan](../docs/providers/huawei/mobile-appgallery-plan.md), [release checklist](docs/appgallery-release.md), and [reapplication draft](docs/huawei-reapplication.md).
 
 ## Product boundary and v1
 
@@ -10,9 +10,9 @@ V1 includes:
 
 1. Athlete calibration: maximum HR, resting HR, LTHR where known, method selection, input provenance, sport applicability, and calibration date.
 2. Heart-rate zones: explicit method and boundaries, validation, time in zones from timestamped samples, and honest missing-data states. Manual confirmed thresholds suffice; automatic threshold detection is deferred.
-3. Per-activity TSS estimates with method, calibration dependency, and data quality visible.
-4. Running VO₂max estimates with date, simple history, method/source, and suitability/confidence information. Provider estimates remain distinct from FitOps estimates.
-5. Supported activity-file import, deduplicated local persistence, minimal activity history/details, offline metrics, and deletion.
+3. Per-activity TSS approximations with method, calibration dependency, and missing-data states visible. The initial methods are HR- and running-pace-based stress approximations, not normalized-power TSS or a proprietary hrTSS implementation.
+4. Running VO₂max estimates with date, simple history, method/source, and suitability/missing-data information. This initial Daniels running-performance proxy has no validated statistical confidence score and is not a laboratory measurement. Imported provider VO₂max estimates are not part of the version-1 exchange.
+5. TCX and FitOps JSON activity-file import, deduplicated local persistence, minimal activity history/details, offline metrics, and deletion.
 6. Selected-record export in a versioned format, followed by optional desktop import through CLI and dashboard. Huawei read-only import is added after approval; publication and Health Kit authorization are separate milestones.
 
 Deferred: training-session planning and compliance, form/TSB, CTL/ATL, readiness/recovery, coaching, race tools, advanced power/weather analysis, live recording, wearables, automatic calibration, paired network transfer, bidirectional sync, cross-provider duplicate merging, iOS, and native HarmonyOS.
@@ -31,13 +31,13 @@ The local reference is `../BranchBalance`. Inspected sources include `package.js
 | Colocated domain/component tests and shared test setup | Retain organization, replacing GitHub mocks with local import/provider fixtures. |
 | Standalone HTML/CSS/JS mockups | Use a dependency-free visual design workspace before native screens. |
 
-Do not bring across GitHub authentication, financial models, OCR, private records, environment files, signing files, project IDs, or native application identity. Current scaffold reuses patterns only. If implementation code is copied or adapted, retain the reference project's MIT attribution in `THIRD_PARTY_NOTICES.md` alongside the copied code.
+Do not bring across GitHub authentication, financial models, OCR, private records, environment files, signing files, project IDs, or native application identity. Theme-provider, application-composition, and UI primitive patterns have been adapted; the reference project's MIT attribution is retained in `THIRD_PARTY_NOTICES.md`.
 
 ## Runtime choice
 
-Use React Native with TypeScript and Expo Router, following the reference structure. Native Huawei integration requires an Android development/release build; Expo Go is not the target for that integration. Verify the reference Expo/React Native combination against the Huawei Health plugin and supported native SDK before pinning versions. Do not copy the reference lockfile or assume its dependency versions are compatible.
+Use React Native with TypeScript and Expo Router, following the reference structure. The initial app uses Expo SDK 57 and React Native 0.86, with exact versions in its own manifest and lockfile. Native Huawei integration requires an Android development/release build; Expo Go is not the target for that integration. The current package does not contain the Huawei Health SDK/plugin. Its compatibility must be established before adding Huawei access; the file-based app does not prove that compatibility.
 
-Prefer a native build/configuration workflow that can reproduce HMS configuration. A small Kotlin bridge under `modules/huawei-health/` is an escape hatch if the official plugin lacks required APIs. The first spike must establish which path works, including release signing, activity details, and intended devices. Build tooling and native directories are intentionally not generated yet.
+Expo prebuild/native Android builds provide the initial build workflow. A small Kotlin bridge under `modules/huawei-health/` remains an escape hatch if the official plugin lacks required APIs. The Huawei integration spike must establish which path works, including signing identity, approved activity details, and intended devices. The application package is provisionally `app.fitops.mobile`; verify it against app ID `117915041` before store registration or HMS configuration.
 
 ## Directory structure
 
@@ -45,6 +45,7 @@ Prefer a native build/configuration workflow that can reproduce HMS configuratio
 mobile/
   README.md
   architecture.md
+  docs/                    AppGallery release checklist and Health Kit reapplication draft
   mockups/                 HTML/CSS/JS proposals; synthetic data only
   assets/                  FitOps icons and approved bundled font assets
   contracts/
@@ -77,7 +78,13 @@ mobile/
     test/                  Test setup and synthetic adapters
 ```
 
-Empty implementation directories contain `.gitkeep` files. Future app configuration, package manifest/lockfile, test/lint settings, and Android build configuration belong under `mobile/`, independently of Python packaging.
+Runtime modules, app configuration, the package manifest/lockfile, and test/lint settings live under `mobile/`, independently of Python packaging. Remaining reserved directories contain `.gitkeep` files until their corresponding integration is implemented.
+
+## Internal QA mode
+
+`app.config.js` derives `extra.qaMode` from `FITOPS_QA_BUILD`. The internal build script forces it on and names the launcher **FitOps QA**; production release builds force it off. The internal variant has a separate `.internal` package identity and uses `fitops-mobile-qa.db` rather than the production database.
+
+The QA provider seeds three deterministic synthetic runs and labelled sample calibration once on first launch. A global demo badge identifies synthetic library records. `QA library` offers a confirmed replacement of the QA library with the fixtures; clearing the library does not silently reseed it on restart. No live Huawei data is involved. Production operation does not preload demo records or expose the QA controls. See the [QA screenshot workflow](docs/qa-screenshots.md) for expected fixture values and honest screenshot labelling.
 
 ## Dependency and data flow
 
@@ -97,19 +104,30 @@ Repository reads → feature view models → mobile screens
 Versioned export → desktop import adapter → desktop DB → CLI/dashboard
 ```
 
-Keep Huawei access/refresh tokens in Android-backed secure storage and out of exports, ordinary preferences, screenshots, and logs. Use preferences storage for theme choice only, not activity streams or credentials. Schema migrations run once at app initialization, never during render or repository reads. Import writes are transactional and restart-safe.
+No Huawei credentials are used by the initial app. When Huawei integration is implemented, keep access/refresh tokens in Android-backed secure storage and out of exports, ordinary preferences, screenshots, and logs. Appearance uses preferences storage; activity records, samples, calibration, and cached metrics use SQLite. Schema initialization runs once at app initialization, never during render or repository reads. Import and calibration updates use database transactions.
 
-Mobile and desktop use separate local databases. The exchange format contains records, not whole SQLite files. Preserve provider, provider-account namespace, original activity ID, explicit units, UTC timestamps/timezone, available samples, source update time, and schema/calculation provenance. Reimport must be idempotent. Define deletion behavior before implementing it; exported records are snapshots, not automatic synchronized replicas.
+Mobile and desktop use separate local databases. The version-1 exchange contains canonical activity records, not whole SQLite files or metric caches. It includes provider, provider-account namespace, original activity ID, sport, timestamp with timezone offset, elapsed duration, distance, and available time/HR/distance/speed samples. The envelope records schema version and export time. Local IDs are recomputed from provenance on import. Separate source-update timestamps, GPS, laps, granted-scope metadata, calibration profiles, and imported provider metrics are not in this version. Reimport updates matching identities. Exports are snapshots; deleting a record on one device does not delete copies elsewhere.
+
+Selected exports are unencrypted JSON shared only after explicit confirmation. They contain sensitive fitness data and must go to a destination chosen by the user. Do not describe this first export as end-to-end encrypted or automatically paired. The app disables Android app backup and does not configure a FitOps cloud account, advertising, analytics tracking, or automatic uploads. The release manifest and runtime still need device verification against these intended properties.
+
+Shared JSON files remain in the app's temporary export cache after the chooser returns so the receiving app can still read them. Files older than 24 hours are removed on a best-effort basis at the next app startup or export; this is not a scheduled 24-hour deletion guarantee. Erasing the local library also clears the local export cache. Copies already received by other apps or saved destinations are unaffected.
 
 Desktop imports records, not Huawei credentials. Huawei approval must explicitly cover the disclosed mobile-to-desktop flow. The mobile release does not imply desktop REST authorization. File-based handoff comes first; encrypted paired LAN transfer is deferred.
 
 ## Calculation correctness and caching
 
-Existing reference modules are `fitops/analytics/zones.py`, `training_load.py`, and `vo2max.py`. Review their assumptions before porting. React Native does not directly run Python; use TypeScript implementations verified with shared synthetic reference cases, not duplicated formulas inside screens.
+Existing reference modules are `fitops/analytics/zones.py`, `training_load.py`, and `vo2max.py`. React Native does not directly run Python. Mobile calculations live in pure TypeScript domain functions; shared reference cases must verify the formulas offered on both runtimes. Mobile intentionally does not inherit desktop fallback assumptions that invent intensity when calibration is absent.
 
 Results carry method/version, input availability, calibration version, units, and source. Do not silently swap zone methods or report a generic HR-based TSS estimate as equivalent to a power-based calculation. A VO₂max estimate must have a qualifying activity and sufficient inputs; unsupported data returns an explicit unavailable reason.
 
-Calculate during import and explicit/background calibration updates. Persist results and invalidate affected caches when thresholds or methods change. Establish retrospective calibration policy before implementation. Read paths display cached results only. Metric reference cases cover boundaries, missing/gapped streams, zero duration, invalid calibration, unsuitable activities, and Python/TypeScript consistency.
+Calculate during import and calibration updates, then persist the results. Saving calibration retrospectively recalculates every saved activity for the same sport in the same transaction. Removing calibration invalidates dependent estimates. Read paths display cached results only. Metric reference cases cover boundaries, missing/gapped streams, zero duration, invalid calibration, unsuitable activities, and Python/TypeScript consistency.
+
+Initial calculation rules:
+
+- HR zones support LTHR, HR reserve, and maximum HR, using sport-specific manual inputs. Bounds are lower-inclusive/upper-exclusive; below-Zone-1 HRR/max-HR intervals are unclassified.
+- Time in zones uses measured HR intervals only. Intervals longer than 30 seconds are excluded, and the last sample is not extended to fill missing time.
+- Stress is `elapsed_hours × intensity² × 100`. Running uses average-speed/threshold-speed when threshold pace is provided. Otherwise an LTHR-based approximation uses measured average HR/LTHR with at least 80% HR coverage. Method and calibration version accompany the cache.
+- The initial running VO₂max proxy uses the Daniels pace model on qualifying near-threshold continuous segments. It requires at least 10 continuous minutes and 1.5 km in total, suitable HR/speed samples, and a running LTHR or maximum-HR reference. The UI explains unavailable results and model limitations; it must not imply a clinical measurement or calibrated confidence probability.
 
 ## Design system: FitOps on a phone
 
@@ -133,12 +151,11 @@ Next design passes should add activity detail, import review, export confirmatio
 
 ## Delivery and verification
 
-1. Review mockups and v1 scope; settle import format and supported sports/methods.
-2. Prove Expo/native Huawei compatibility on intended Android hardware before locking dependencies. Huawei calls require appropriate test authorization; build/configuration checks can precede it.
-3. Scaffold the executable application with the verified dependencies; adapt the reference UI/theme patterns with attribution where code is copied.
-4. Implement storage, calibration, and pure calculations with shared reference tests, then file import and core screens. Verify offline use and independent operation.
-5. Verify both themes, text scaling, touch targets, screen-reader labels, actual contrast, metric empty states, and Android back/keyboard behavior. Unit tests are not a substitute for device checks.
-6. Publish the useful file-based app, resubmit Huawei materials, and add approved Huawei import. Validate deduplication, scope/error handling, revocation, and deletion with offline test doubles.
-7. Implement versioned export and desktop CLI/dashboard import with schema-validation and idempotence tests; update official product documentation as features ship.
+1. Finish verification of file imports, local storage, calibration, and the three core metrics against reference fixtures and UI tests.
+2. Build the independently useful Android app and verify it on intended hardware, including offline launch, both themes, large text, screen readers, import/export, deletion, and Android back/keyboard behavior.
+3. Verify selected-record export and desktop CLI/dashboard import with schema validation, identity preservation, and idempotence tests. Add official user documentation as behavior is implemented.
+4. Verify final owner-controlled package/signing identity and publish the useful file-based app. Capture production AppGallery release evidence, not merely a debug/internal APK.
+5. Resubmit Huawei materials with the actual release, least-privilege requests, and the disclosed optional desktop data flow.
+6. After approval, establish Expo/native Huawei compatibility on intended hardware, implement approved reads, and test scope/error handling, consent/revocation, persistence, and the permitted export flow before releasing the Huawei-enabled update.
 
-The scaffold itself needs only file/link/token and diff checks. Runtime tests, native builds, device checks, and Huawei approval are pending implementation, not completed validations.
+The runtime has TypeScript domain/import/repository tests, including real in-memory SQLite repository tests. Passing test counts, native build success, physical-device results, screenshots, and release signing are evidence to collect from actual runs, not claims established by this document. The [release checklist](docs/appgallery-release.md) separates implementation from verification, AppGallery publication, and later Huawei permission approval.

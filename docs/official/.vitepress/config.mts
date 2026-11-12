@@ -20,6 +20,7 @@ export default defineConfig({
       { text: 'Commands', link: '/commands/' },
       { text: 'Concepts', link: '/concepts/' },
       { text: 'Dashboard', link: '/dashboard/' },
+      { text: 'Android', link: '/mobile/' },
       { text: 'vs. Alternatives', link: '/comparison' },
       { text: 'Roadmap', link: '/roadmap' },
     ],
@@ -32,6 +33,7 @@ export default defineConfig({
           { text: 'Installation', link: '/getting-started/installation' },
           { text: 'Authentication', link: '/getting-started/authentication' },
           { text: 'Huawei Health Kit Access', link: '/getting-started/huawei-health-kit' },
+          { text: 'FitOps for Android', link: '/mobile/' },
           { text: 'First Sync', link: '/getting-started/first-sync' },
         ]
       },
@@ -111,6 +113,7 @@ export default defineConfig({
         text: '// LEGAL',
         items: [
           { text: 'Privacy Policy', link: '/legal/privacy' },
+          { text: 'Android Privacy Notice', link: '/legal/mobile-privacy' },
           { text: 'User Agreement', link: '/legal/user-agreement' },
         ]
       },

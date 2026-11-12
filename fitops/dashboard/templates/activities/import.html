@@ -15,6 +15,16 @@
   Create an offline profile first with <code>fitops athlete init --name "Your Name"</code>.
 </div>
 {% else %}
+<form id="mobile-import-form" class="card" style="display:flex;flex-direction:column;gap:12px;max-width:680px;margin-bottom:20px;" enctype="multipart/form-data">
+  <h2>Import from FitOps Mobile</h2>
+  <p class="text-dim">Choose a version 1 FitOps JSON export containing up to 100 activities (10 MiB maximum). Records and available samples stay local. Matching provider/account/activity identities update previous mobile imports. This does not post to Strava or change your desktop calibration.</p>
+  <label>FitOps export
+    <input class="input-ctrl" type="file" name="file" accept=".json,application/json" required style="display:block;width:100%;margin-top:6px;">
+  </label>
+  <div><button class="btn btn-primary" type="submit">Import Mobile Export</button></div>
+  <p id="mobile-import-status" class="text-dim" role="status"></p>
+  <ul id="mobile-import-results"></ul>
+</form>
 <form id="activity-import-form" class="card" style="display:flex;flex-direction:column;gap:16px;max-width:680px;" enctype="multipart/form-data">
   <label>Activity file
     <input id="activity-file" class="input-ctrl" type="file" name="file" accept=".gpx,.tcx,application/gpx+xml,application/vnd.garmin.tcx+xml" required style="display:block;width:100%;margin-top:6px;">
@@ -71,6 +81,35 @@
 
 {% block scripts %}
 <script>
+const mobileImportForm = document.getElementById('mobile-import-form');
+if (mobileImportForm) mobileImportForm.addEventListener('submit', async function(event) {
+  event.preventDefault();
+  const status = document.getElementById('mobile-import-status');
+  const results = document.getElementById('mobile-import-results');
+  const button = mobileImportForm.querySelector('button[type=submit]');
+  button.disabled = true;
+  results.replaceChildren();
+  status.textContent = 'Importing selected mobile records…';
+  try {
+    const response = await fetch('/api/activities/import-mobile', {method: 'POST', body: new FormData(mobileImportForm)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Mobile import failed');
+    status.textContent = result.import.created_count + ' imported, ' + result.import.updated_count + ' updated. Desktop calibration remains unchanged. Moving time and dependent stress metrics are unavailable when absent from the export.';
+    for (const activity of result.activities) {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = '/activities/' + activity.activity_id;
+      link.className = 'panel-link';
+      link.textContent = activity.name;
+      item.appendChild(link);
+      const source = activity.source_identity;
+      item.appendChild(document.createTextNode(' · ' + source.provider + ' · ' + source.provider_activity_id));
+      results.appendChild(item);
+    }
+  } catch (error) {
+    status.textContent = error.message || 'Mobile import failed';
+  } finally { button.disabled = false; }
+});
 const importForm = document.getElementById('activity-import-form');
 const activityFile = document.getElementById('activity-file');
 const activityName = document.getElementById('activity-name');
