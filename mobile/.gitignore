@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+coverage/
+android/.gradle/
+android/local.properties
+android/**/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+.env*
+!.env.example
+agconnect-services.json
+signing/

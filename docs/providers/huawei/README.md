@@ -29,6 +29,7 @@ Strava source documents reviewed:
 
 | File | Purpose |
 |------|---------|
+| [`mobile-appgallery-plan.md`](./mobile-appgallery-plan.md) | Independent mobile app, AppGallery release requirements, and optional Huawei data transfer to desktop following the permission rejection. |
 | [`source-index.md`](./source-index.md) | Exact source documents and endpoint pages used for this planning pass. |
 | [`provider-architecture.md`](./provider-architecture.md) | Provider abstraction and migration path away from Strava-shaped internals. |
 | [`endpoint-comparison.md`](./endpoint-comparison.md) | Equivalent Strava and Huawei endpoints, with gaps and implementation notes. |
