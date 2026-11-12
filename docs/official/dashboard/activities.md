@@ -2,6 +2,16 @@
 
 The Activities page (`/activities`) is your full training history in one place, including both Strava-synced and locally imported sessions.
 
+## Importing from FitOps Mobile
+
+Choose **Upload Activity**, then use **Import from FitOps Mobile** to select a version 1 FitOps JSON export from your phone. Up to 100 selected activities can be imported in one file, with a maximum size of 10 MiB. FitOps shows how many records were imported or updated and provides links to their local detail pages. The original provider and activity ID appear in the import result.
+
+This import stays local: it does not post to Strava or contact Huawei. Re-importing a provider/account/activity identity updates its previous mobile import; similar Strava activities are kept separate. Export snapshots do not synchronize deletions or change your desktop calibration.
+
+Available heart-rate, distance, and speed samples are preserved. The export carries elapsed duration, so moving time and dependent stress scores remain unavailable. The desktop computes VO₂max only where the samples and your desktop calibration support it; phone and desktop estimates may differ. Imported activities use an **Imported FITOPS-MOBILE** badge on their detail page.
+
+If recorded speed is missing, FitOps derives it from consecutive distance samples without bridging gaps longer than 30 seconds, missing values, or backward distance readings. Original distance and speed samples are preserved. The normalized speed supports eligible desktop VO₂max estimates; the desktop's Daniels/Cooper model intentionally differs from the phone's Daniels-only model.
+
 ## Uploading GPX or TCX
 
 Choose **Upload Activity** to open `/activities/import`. Select an original GPX or TCX recording, optionally provide a title and description, and either let FitOps detect the sport or choose an override. You can also choose shoes or a bike from the active profile's **Gear** list. **Post to Strava after import** is selected by default. FitOps processes the summary, streams, laps, training scores, VO2max/running-power inputs, training-load snapshot, and race-plan matching, then builds and stores the local stamp. When posting is enabled, it uploads the selected file and generated stamp through the configured headless browser session. Local-only imports keep the same generated stamp without contacting Strava.

@@ -1,5 +1,7 @@
 # Huawei Provider Implementation Plan
 
+The current product direction is an independent FitOps Mobile app with optional transfer of authorized Huawei records to desktop. See [Mobile and AppGallery plan](./mobile-appgallery-plan.md). The direct-REST phases below describe an alternative access path; publishing mobile must not be assumed to grant desktop REST access. Provider-neutral storage and mapping remain useful for both paths.
+
 This plan assumes Huawei API access is not available yet. The first engineering milestone is therefore provider abstraction plus fixture-driven mappers, not live HTTP sync.
 
 ## Phase 0: Access, Fixtures, and Scope Validation

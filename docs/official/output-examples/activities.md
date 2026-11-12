@@ -4,6 +4,53 @@ All examples show default output. Add `--json` to any command for raw JSON.
 
 ---
 
+## `fitops activities import-mobile <PATH>`
+
+```bash
+fitops activities import-mobile fitops-export.json --json
+```
+
+The response contains formatted activity records under `activities`. This shortened example shows the import-specific fields:
+
+```json
+{
+  "_meta": {
+    "tool": "fitops",
+    "version": "0.1.0",
+    "generated_at": "2026-11-12T12:00:00+00:00",
+    "total_count": 1,
+    "filters_applied": {
+      "format": "fitops.activities",
+      "version": 1,
+      "post_to_strava": false
+    }
+  },
+  "activities": [
+    {
+      "activity_id": 42,
+      "strava_activity_id": null,
+      "origin": "fitops-mobile",
+      "name": "Morning run",
+      "source_identity": {
+        "provider": "file",
+        "provider_account_id": "local",
+        "provider_activity_id": "tcx:Run:2026-11-01T08:00:00.000Z"
+      }
+    }
+  ],
+  "import": {"created_count": 1, "updated_count": 0},
+  "publication": {"requested": false, "status": "not_requested"},
+  "data_availability": {
+    "streams_imported": true,
+    "calibration_transferred": false,
+    "moving_time_available": false,
+    "metrics": "computed_where_supported_using_desktop_settings"
+  }
+}
+```
+
+---
+
 ## `fitops activities import <PATH>`
 
 ```bash
